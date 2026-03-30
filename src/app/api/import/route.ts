@@ -64,7 +64,7 @@ export async function POST() {
         data: {
           stripePaymentIntentId: p.stripePaymentIntentId,
           amountCents: p.amountCents, currency: "usd", status: "succeeded",
-          paidAt: new Date(), isMonth1: true, customerName: p.customerName || null,
+          paidAt: p.paidAt ? new Date(p.paidAt) : new Date(), isMonth1: true, customerName: p.customerName || null,
         },
       });
       created.payments++;

@@ -238,6 +238,7 @@ export default function DemosPage() {
   const totalShowed = demos.filter((d) => d.status === "showed").length;
   const totalNoShow = demos.filter((d) => d.status === "no_show").length;
   const totalPending = demos.filter((d) => d.status === "pending").length;
+  const totalCloses = demos.filter((d) => d.deal?.status === "closed_won").length;
 
   // Selected day data
   const selectedDemos = demosByDay[selectedDay] || [];
@@ -251,6 +252,7 @@ export default function DemosPage() {
   const selectedShowed = selectedDemos.filter((d) => d.status === "showed").length;
   const selectedNoShow = selectedDemos.filter((d) => d.status === "no_show").length;
   const selectedPending = selectedDemos.filter((d) => d.status === "pending").length;
+  const selectedCloses = selectedDemos.filter((d) => d.deal?.status === "closed_won").length;
 
   // Demos and payments to display based on view mode
   const displayDemos = viewMode === "week" ? demos : selectedDemos;
@@ -258,6 +260,7 @@ export default function DemosPage() {
   const displayShowed = viewMode === "week" ? totalShowed : selectedShowed;
   const displayNoShow = viewMode === "week" ? totalNoShow : selectedNoShow;
   const displayPending = viewMode === "week" ? totalPending : selectedPending;
+  const displayCloses = viewMode === "week" ? totalCloses : selectedCloses;
   const displayTotal = viewMode === "week" ? totalBooked : selectedDemos.length;
   const displayCash = displayPayments.reduce((s, p) => s + p.amountCents, 0);
 
@@ -539,7 +542,77 @@ export default function DemosPage() {
         </div>
       )}
 
-      {/* ===== MIDDLE: CONTROLS BAR ===== */}
+      {/* ===== STATS BAR (right under calendar) ===== */}
+      {!loading && (
+        <div className="bg-white rounded-xl border p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-6">
+              <div>
+                <p className="text-xs text-gray-500">{viewMode === "week" ? "Week" : DAY_NAMES[selectedDay]}</p>
+                <p className="text-xl font-bold">{displayTotal}</p>
+                <p className="text-[10px] text-gray-400">booked</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Shows</p>
+                <p className="text-xl font-bold text-green-600">{displayShowed}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">No Shows</p>
+                <p className="text-xl font-bold text-red-600">{displayNoShow}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Closes</p>
+                <p className="text-xl font-bold text-blue-600">{displayCloses}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Show Rate</p>
+                <p className="text-xl font-bold">
+                  {displayTotal > 0 ? ((displayShowed / displayTotal) * 100).toFixed(0) : "—"}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Cash</p>
+                <p className="text-xl font-bold text-green-600">{formatCents(displayCash)}</p>
+              </div>
+              {viewMode === "week" && (
+                <div>
+                  <p className="text-xs text-gray-500">Days Locked</p>
+                  <p className="text-xl font-bold">{dayLocks.length}/7</p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {viewMode === "day" && selectedPending > 0 && !selectedLock && (
+                <>
+                  <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
+                    All Showed ({selectedPending})
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => bulkMarkDay(selectedDemos, "no_show")}>
+                    All No Show
+                  </Button>
+                </>
+              )}
+              {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && (
+                <Button size="sm" variant="outline" onClick={() => lockDay(selectedDayDate)}>
+                  🔒 Lock {DAY_NAMES[selectedDay]}
+                </Button>
+              )}
+              {viewMode === "day" && selectedLock && (
+                <Button size="sm" variant="ghost" onClick={() => unlockDay(selectedLock.date)}>
+                  🔓 Unlock
+                </Button>
+              )}
+              {displayPending > 0 && (
+                <Badge variant="warning" className="text-sm px-3 py-1">
+                  {displayPending} need review
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== DAY/WEEK TABS ===== */}
       {!loading && (
         <div className="space-y-4">
           {/* Day Tabs + View Toggle */}
@@ -575,29 +648,6 @@ export default function DemosPage() {
                 Week
               </button>
             </div>
-            {/* Action buttons */}
-            <div className="flex gap-2 pb-2">
-              {viewMode === "day" && selectedPending > 0 && !selectedLock && (
-                <>
-                  <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
-                    All Showed ({selectedPending})
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => bulkMarkDay(selectedDemos, "no_show")}>
-                    All No Show
-                  </Button>
-                </>
-              )}
-              {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && (
-                <Button size="sm" variant="outline" onClick={() => lockDay(selectedDayDate)}>
-                  🔒 Lock {DAY_NAMES[selectedDay]}
-                </Button>
-              )}
-              {viewMode === "day" && selectedLock && (
-                <Button size="sm" variant="ghost" onClick={() => unlockDay(selectedLock.date)}>
-                  🔓 Unlock
-                </Button>
-              )}
-            </div>
           </div>
 
           {/* ===== MAIN: SIDE-BY-SIDE DEMOS + FINANCIALS ===== */}
@@ -613,47 +663,8 @@ export default function DemosPage() {
             </div>
           </div>
 
-          {/* ===== BOTTOM: AGGREGATE STATS ===== */}
-          <div className="bg-white rounded-xl border p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-6">
-                <div>
-                  <p className="text-xs text-gray-500">{viewMode === "week" ? "Week Total" : DAY_NAMES[selectedDay]}</p>
-                  <p className="text-xl font-bold">{displayTotal}</p>
-                  <p className="text-[10px] text-gray-400">demos</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Showed</p>
-                  <p className="text-xl font-bold text-green-600">{displayShowed}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">No Show</p>
-                  <p className="text-xl font-bold text-red-600">{displayNoShow}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Show Rate</p>
-                  <p className="text-xl font-bold">
-                    {displayTotal > 0 ? ((displayShowed / displayTotal) * 100).toFixed(0) : "—"}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Cash</p>
-                  <p className="text-xl font-bold text-green-600">{formatCents(displayCash)}</p>
-                </div>
-                {viewMode === "week" && (
-                  <div>
-                    <p className="text-xs text-gray-500">Days Locked</p>
-                    <p className="text-xl font-bold">{dayLocks.length}/7</p>
-                  </div>
-                )}
-              </div>
-              {displayPending > 0 && (
-                <Badge variant="warning" className="text-sm px-3 py-1">
-                  {displayPending} need review
-                </Badge>
-              )}
-            </div>
-          </div>
+
+
         </div>
       )}
     </div>
