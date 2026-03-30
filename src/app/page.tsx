@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { formatCents, formatPercent } from "@/lib/utils";
@@ -39,7 +39,7 @@ export default function Dashboard() {
   const [demos, setDemos] = useState<DemoRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     if (!weekId) return;
     setLoading(true);
     Promise.all([
@@ -51,6 +51,14 @@ export default function Dashboard() {
       setLoading(false);
     });
   }, [weekId]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => { loadData(); }, 60000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   if (!weekId) {
     return (

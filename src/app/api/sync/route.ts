@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 
+// GET handler for Vercel cron
+export async function GET() {
+  return POST();
+}
+
 export async function POST() {
   const results: Record<string, { status: string; records?: number; error?: string }> = {};
 

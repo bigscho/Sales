@@ -117,6 +117,12 @@ export default function DemosPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Auto-refresh from database every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => { loadData(); }, 60000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
   const updateDemo = async (demoId: string, data: Record<string, unknown>) => {
     const res = await fetch("/api/demos", {
       method: "PATCH",
