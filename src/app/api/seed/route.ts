@@ -20,8 +20,8 @@ export async function POST() {
     });
   }
 
-  // Create weeks for the last 4 weeks (using UTC to match import data)
-  for (let i = 0; i < 4; i++) {
+  // Create weeks: 4 past + 2 future (using UTC to match import data)
+  for (let i = -2; i < 4; i++) {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - i * 7);
     const day = d.getUTCDay();
@@ -56,6 +56,6 @@ export async function POST() {
 
   return NextResponse.json({
     success: true,
-    message: "Seeded 6 team members, 4 weeks, and 8 expense categories",
+    message: "Seeded 6 team members, 6 weeks (4 past + 2 future), and 8 expense categories",
   });
 }

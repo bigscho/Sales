@@ -5,10 +5,10 @@ import { getWeekRange } from "@/lib/utils";
 export async function POST() {
   const results: Record<string, { status: string; records?: number; error?: string }> = {};
 
-  // Ensure current week + last 3 weeks exist
-  for (let i = 0; i < 4; i++) {
+  // Ensure current week + last 3 weeks + 2 future weeks exist
+  for (let i = -2; i < 4; i++) {
     const d = new Date();
-    d.setDate(d.getDate() - i * 7);
+    d.setUTCDate(d.getUTCDate() - i * 7);
     const { start, end } = getWeekRange(d);
     await prisma.week.upsert({
       where: { weekStart: start },
@@ -107,84 +107,111 @@ async function syncStripe(): Promise<number> {
 
 async function syncGoogleCalendar(): Promise<number> {
   const apiKey = process.env.GOOGLE_CALENDAR_API_KEY;
-  const calendarId = process.env.GOOGLE_CALENDAR_ID || "colin@grsfd.co";
   if (!apiKey) return 0;
+
+  // Sync both Colin and Mark's calendars
+  const calendarIds = (process.env.GOOGLE_CALENDAR_IDS || "colin@grsfd.co,mark@grsfd.co").split(",");
+  const closerMap: Record<string, string> = { "colin@grsfd.co": "Colin", "mark@grsfd.co": "Mark" };
 
   const now = new Date();
   const fourWeeksAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
-
-  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
-  url.searchParams.set("key", apiKey);
-  url.searchParams.set("timeMin", fourWeeksAgo.toISOString());
-  url.searchParams.set("timeMax", now.toISOString());
-  url.searchParams.set("maxResults", "100");
-  url.searchParams.set("singleEvents", "true");
-  url.searchParams.set("orderBy", "startTime");
-
-  const res = await fetch(url.toString());
-  if (!res.ok) return 0;
-
-  const data = await res.json();
-  const events = data.items || [];
+  const twoWeeksAhead = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
   let count = 0;
-  for (const event of events) {
-    const desc = event.description || "";
-    if (!desc.includes("Calendly") && !desc.includes("Booked by")) continue;
+  for (const calendarId of calendarIds) {
+    const calId = calendarId.trim();
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`);
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("timeMin", fourWeeksAgo.toISOString());
+    url.searchParams.set("timeMax", twoWeeksAhead.toISOString());
+    url.searchParams.set("maxResults", "250");
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("orderBy", "startTime");
 
-    const parsed = parseCalendlyEvent(event);
-    if (!parsed) continue;
+    const res = await fetch(url.toString());
+    if (!res.ok) continue;
 
-    // Check if already synced
-    const existing = await prisma.booking.findUnique({
-      where: { calendarEventId: event.id },
-    });
-    if (existing) continue;
+    const data = await res.json();
+    const events = data.items || [];
+    const closerName = closerMap[calId] || calId.split("@")[0];
+    const eventIdSuffix = `_${closerName}`;
 
-    // Find the week
-    const { start } = getWeekRange(new Date(parsed.demoDate));
-    const week = await prisma.week.findFirst({ where: { weekStart: start } });
-    if (!week) continue;
+    for (const event of events) {
+      const desc = event.description || "";
+      if (!desc.includes("Calendly") && !desc.includes("Booked by") && !desc.includes("Grassfed Demo")) continue;
 
-    // Find setter
-    let setterId: string | null = null;
-    if (parsed.setterName) {
-      const setter = await prisma.teamMember.findFirst({
-        where: { name: { equals: parsed.setterName, mode: "insensitive" }, role: "setter" },
+      // Handle cancelled events — mark existing demos as cancelled
+      if (event.status === "cancelled") {
+        const existing = await prisma.booking.findUnique({
+          where: { calendarEventId: event.id + eventIdSuffix },
+        });
+        if (existing) {
+          await prisma.demo.updateMany({
+            where: { bookingId: existing.id, status: "pending" },
+            data: { status: "cancelled", confirmedBy: "calendar_sync", confirmedAt: new Date() },
+          });
+        }
+        continue;
+      }
+
+      const parsed = parseCalendlyEvent(event);
+      if (!parsed) continue;
+
+      const compositeId = event.id + eventIdSuffix;
+
+      // Check if already synced
+      const existing = await prisma.booking.findUnique({
+        where: { calendarEventId: compositeId },
       });
-      setterId = setter?.id || null;
-    }
+      if (existing) continue;
 
-    // Find closer
-    let closerId: string | null = null;
-    if (parsed.closerName) {
+      // Find the week
+      const { start } = getWeekRange(new Date(parsed.demoDate));
+      let week = await prisma.week.findFirst({ where: { weekStart: start } });
+      if (!week) {
+        const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6, 23, 59, 59, 999));
+        week = await prisma.week.create({ data: { weekStart: start, weekEnd: end } });
+      }
+
+      // Find setter
+      let setterId: string | null = null;
+      if (parsed.setterName) {
+        const setter = await prisma.teamMember.findFirst({
+          where: { name: { equals: parsed.setterName, mode: "insensitive" }, role: "setter" },
+        });
+        setterId = setter?.id || null;
+      }
+
+      // Find closer
+      let closerId: string | null = null;
+      const resolvedCloserName = parsed.closerName || closerName;
       const closer = await prisma.teamMember.findFirst({
-        where: { name: { contains: parsed.closerName, mode: "insensitive" }, role: "closer" },
+        where: { name: { contains: resolvedCloserName, mode: "insensitive" }, role: "closer" },
       });
       closerId = closer?.id || null;
+
+      const booking = await prisma.booking.create({
+        data: {
+          weekId: week.id,
+          prospectName: parsed.prospectName,
+          prospectPhone: parsed.phone,
+          setterId,
+          demoDate: new Date(parsed.demoDate),
+          calendarEventId: compositeId,
+          source: "auto",
+        },
+      });
+
+      await prisma.demo.create({
+        data: {
+          bookingId: booking.id,
+          weekId: week.id,
+          closerId,
+        },
+      });
+
+      count++;
     }
-
-    const booking = await prisma.booking.create({
-      data: {
-        weekId: week.id,
-        prospectName: parsed.prospectName,
-        prospectPhone: parsed.phone,
-        setterId,
-        demoDate: new Date(parsed.demoDate),
-        calendarEventId: event.id,
-        source: "auto",
-      },
-    });
-
-    await prisma.demo.create({
-      data: {
-        bookingId: booking.id,
-        weekId: week.id,
-        closerId,
-      },
-    });
-
-    count++;
   }
 
   return count;

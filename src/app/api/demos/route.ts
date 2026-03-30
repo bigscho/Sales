@@ -123,3 +123,48 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
+
+export async function DELETE(request: NextRequest) {
+  const { demoId } = await request.json();
+  if (!demoId) {
+    return NextResponse.json({ error: "demoId required" }, { status: 400 });
+  }
+
+  const demo = await prisma.demo.findUnique({
+    where: { id: demoId },
+    include: { booking: true },
+  });
+  if (!demo) {
+    return NextResponse.json({ error: "Demo not found" }, { status: 404 });
+  }
+
+  // Check if day is locked
+  const demoDate = new Date(demo.booking.demoDate);
+  const dayStart = new Date(Date.UTC(demoDate.getUTCFullYear(), demoDate.getUTCMonth(), demoDate.getUTCDate()));
+  const lock = await prisma.dayLock.findUnique({
+    where: { weekId_date: { weekId: demo.weekId, date: dayStart } },
+  });
+  if (lock) {
+    return NextResponse.json({ error: "Cannot delete: day is locked" }, { status: 403 });
+  }
+
+  // Unlink any deal referencing this demo
+  await prisma.deal.updateMany({ where: { demoId }, data: { demoId: null } });
+
+  // Delete demo then booking
+  await prisma.demo.delete({ where: { id: demoId } });
+  await prisma.booking.delete({ where: { id: demo.bookingId } });
+
+  // Audit log
+  await prisma.auditLog.create({
+    data: {
+      entityType: "demo",
+      entityId: demoId,
+      action: "deleted",
+      oldValue: JSON.stringify({ prospect: demo.booking.prospectName, status: demo.status }),
+      performedBy: "admin",
+    },
+  });
+
+  return NextResponse.json({ success: true });
+}

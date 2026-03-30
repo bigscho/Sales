@@ -3,13 +3,17 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 
 export async function GET() {
-  // Ensure current week exists
-  const { start, end } = getWeekRange(new Date());
-  await prisma.week.upsert({
-    where: { weekStart: start },
-    create: { weekStart: start, weekEnd: end },
-    update: {},
-  });
+  // Ensure current week + 2 future weeks exist
+  for (let i = -2; i <= 0; i++) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i * 7);
+    const { start, end } = getWeekRange(d);
+    await prisma.week.upsert({
+      where: { weekStart: start },
+      create: { weekStart: start, weekEnd: end },
+      update: {},
+    });
+  }
 
   const weeks = await prisma.week.findMany({
     orderBy: { weekStart: "desc" },

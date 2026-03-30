@@ -163,6 +163,21 @@ export default function DemosPage() {
     loadData();
   };
 
+  const deleteDemo = async (demoId: string, prospectName: string) => {
+    if (!confirm(`Remove "${prospectName}" from this day? This cannot be undone.`)) return;
+    const res = await fetch("/api/demos", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demoId }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || "Failed to delete");
+      return;
+    }
+    loadData();
+  };
+
   const addDemo = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
@@ -463,6 +478,7 @@ export default function DemosPage() {
                   <th className="text-left p-3 font-medium">Closer</th>
                   <th className="text-left p-3 font-medium">Status</th>
                   <th className="text-left p-3 font-medium">Confirmed By</th>
+                  <th className="p-3 w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -522,11 +538,25 @@ export default function DemosPage() {
                         <Badge variant="warning">Needs Review</Badge>
                       ) : null}
                     </td>
+                    <td className="p-3">
+                      {!selectedLock && (
+                        <button
+                          onClick={() => deleteDemo(demo.id, demo.booking.prospectName)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                          title="Remove demo"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {selectedDemos.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
                       No demos on {DAY_NAMES[selectedDay]}
                     </td>
                   </tr>
