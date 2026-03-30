@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getWeekLabel } from "@/lib/utils";
 
@@ -11,8 +11,11 @@ interface WeekOption {
   status: string;
 }
 
+const STORAGE_KEY = "grassfed_weekId";
+
 export function WeekSelector() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentWeekId = searchParams.get("weekId") || "";
   const [weeks, setWeeks] = useState<WeekOption[]>([]);
@@ -24,24 +27,35 @@ export function WeekSelector() {
       .then((data) => {
         setWeeks(data.weeks || []);
         setLoading(false);
-        // Auto-select current week if none selected
-        if (!currentWeekId && data.weeks?.length > 0) {
-          const params = new URLSearchParams(searchParams.toString());
-          params.set("weekId", data.weeks[0].id);
-          router.replace(`?${params.toString()}`);
+
+        // Restore from localStorage or auto-select current week
+        const savedWeekId = localStorage.getItem(STORAGE_KEY);
+        const paramWeekId = new URLSearchParams(window.location.search).get("weekId");
+
+        if (paramWeekId) {
+          // URL already has a weekId — save it
+          localStorage.setItem(STORAGE_KEY, paramWeekId);
+        } else if (savedWeekId && data.weeks?.some((w: WeekOption) => w.id === savedWeekId)) {
+          // Restore saved week
+          router.replace(`${pathname}?weekId=${savedWeekId}`);
+        } else if (data.weeks?.length > 0) {
+          // Default to most recent week
+          const defaultId = data.weeks[0].id;
+          localStorage.setItem(STORAGE_KEY, defaultId);
+          router.replace(`${pathname}?weekId=${defaultId}`);
         }
       })
       .catch(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pathname]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("weekId", e.target.value);
-      router.push(`?${params.toString()}`);
+      const weekId = e.target.value;
+      localStorage.setItem(STORAGE_KEY, weekId);
+      router.push(`${pathname}?weekId=${weekId}`);
     },
-    [router, searchParams]
+    [router, pathname]
   );
 
   if (loading) return <div className="h-10 w-56 bg-gray-100 animate-pulse rounded-lg" />;

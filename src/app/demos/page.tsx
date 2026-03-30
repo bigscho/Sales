@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate } from "@/lib/utils";
+// import { formatDate } from "@/lib/utils";
 
 interface TeamMember {
   id: string;
@@ -34,12 +34,24 @@ interface DemoRecord {
 }
 
 const statusOptions = [
-  { value: "pending", label: "Pending", variant: "warning" as const },
-  { value: "showed", label: "Showed", variant: "success" as const },
-  { value: "no_show", label: "No Show", variant: "danger" as const },
-  { value: "cancelled", label: "Cancelled", variant: "secondary" as const },
-  { value: "rescheduled", label: "Rescheduled", variant: "secondary" as const },
+  { value: "pending", label: "Pending" },
+  { value: "showed", label: "Showed" },
+  { value: "no_show", label: "No Show" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "rescheduled", label: "Rescheduled" },
 ];
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Day columns render Sun-Sat
+
+function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr).getDay();
+}
+
+function getDateLabel(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 export default function DemosPage() {
   const searchParams = useSearchParams();
@@ -47,7 +59,6 @@ export default function DemosPage() {
   const [demos, setDemos] = useState<DemoRecord[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showAddForm, setShowAddForm] = useState(false);
 
   const loadData = useCallback(() => {
@@ -76,17 +87,14 @@ export default function DemosPage() {
     loadData();
   };
 
-  const bulkConfirm = async (status: string) => {
+  const bulkMarkDay = async (dayDemos: DemoRecord[], status: string) => {
+    const pendingIds = dayDemos.filter((d) => d.status === "pending").map((d) => d.id);
+    if (pendingIds.length === 0) return;
     await fetch("/api/demos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "bulk_confirm",
-        demoIds: Array.from(selectedIds),
-        status,
-      }),
+      body: JSON.stringify({ action: "bulk_confirm", demoIds: pendingIds, status }),
     });
-    setSelectedIds(new Set());
     loadData();
   };
 
@@ -112,34 +120,49 @@ export default function DemosPage() {
 
   if (!weekId) return <p className="text-[var(--muted-foreground)]">Select a week first</p>;
 
-  const pendingCount = demos.filter((d) => d.status === "pending").length;
   const setters = team.filter((m) => m.role === "setter");
   const closers = team.filter((m) => m.role === "closer");
+
+  // Group demos by day of week (0=Sun, 6=Sat)
+  const demosByDay: Record<number, DemoRecord[]> = {};
+  for (let i = 0; i < 7; i++) demosByDay[i] = [];
+  for (const demo of demos) {
+    const day = getDayOfWeek(demo.booking.demoDate);
+    demosByDay[day].push(demo);
+  }
+
+  // Stats
+  const totalBooked = demos.length;
+  const totalShowed = demos.filter((d) => d.status === "showed").length;
+  const totalNoShow = demos.filter((d) => d.status === "no_show").length;
+  const totalPending = demos.filter((d) => d.status === "pending").length;
+
+  // Get the dates for this week (for column headers)
+  const weekDates: Record<number, string> = {};
+  if (demos.length > 0) {
+    for (const demo of demos) {
+      const day = getDayOfWeek(demo.booking.demoDate);
+      if (!weekDates[day]) weekDates[day] = demo.booking.demoDate;
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Demo Management</h2>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            {demos.length} demos total, {pendingCount} pending confirmation
-          </p>
+          <div className="flex gap-4 mt-1 text-sm">
+            <span className="text-[var(--muted-foreground)]">{totalBooked} booked</span>
+            <span className="text-green-600 font-medium">{totalShowed} showed</span>
+            <span className="text-red-600 font-medium">{totalNoShow} no-show</span>
+            {totalPending > 0 && (
+              <span className="text-yellow-600 font-medium">{totalPending} pending</span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          {selectedIds.size > 0 && (
-            <>
-              <Button size="sm" onClick={() => bulkConfirm("showed")}>
-                Mark {selectedIds.size} as Showed
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => bulkConfirm("no_show")}>
-                Mark {selectedIds.size} as No Show
-              </Button>
-            </>
-          )}
-          <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
-            + Add Demo
-          </Button>
-        </div>
+        <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
+          + Add Demo
+        </Button>
       </div>
 
       {showAddForm && (
@@ -173,127 +196,186 @@ export default function DemosPage() {
       )}
 
       {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-16 bg-white rounded-xl border animate-pulse" />
+        <div className="grid grid-cols-7 gap-3">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="h-48 bg-white rounded-xl border animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="p-3 w-8">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === demos.filter((d) => d.status === "pending").length && demos.filter((d) => d.status === "pending").length > 0}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedIds(new Set(demos.filter((d) => d.status === "pending").map((d) => d.id)));
-                      } else {
-                        setSelectedIds(new Set());
-                      }
-                    }}
-                  />
-                </th>
-                <th className="text-left p-3 font-medium">Prospect</th>
-                <th className="text-left p-3 font-medium">Demo Date</th>
-                <th className="text-left p-3 font-medium">Setter</th>
-                <th className="text-left p-3 font-medium">Closer</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Source</th>
-                <th className="text-left p-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {demos.map((demo) => (
-                <tr key={demo.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="p-3">
-                    {demo.status === "pending" && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(demo.id)}
-                        onChange={(e) => {
-                          const next = new Set(selectedIds);
-                          if (e.target.checked) { next.add(demo.id); } else { next.delete(demo.id); }
-                          setSelectedIds(next);
-                        }}
-                      />
+        /* Calendar Week View */
+        <div className="grid grid-cols-7 gap-2">
+          {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => {
+            const dayDemos = demosByDay[dayIndex];
+            const dayShowed = dayDemos.filter((d) => d.status === "showed").length;
+            const dayNoShow = dayDemos.filter((d) => d.status === "no_show").length;
+            const dayPending = dayDemos.filter((d) => d.status === "pending").length;
+            const isToday = new Date().getDay() === dayIndex;
+            const dateLabel = weekDates[dayIndex] ? getDateLabel(weekDates[dayIndex]) : "";
+
+            return (
+              <div
+                key={dayIndex}
+                className={`rounded-xl border bg-white flex flex-col min-h-[200px] ${
+                  isToday ? "border-[var(--primary)] border-2 shadow-md" : "border-[var(--border)]"
+                }`}
+              >
+                {/* Day Header */}
+                <div className={`px-3 py-2 border-b rounded-t-xl ${
+                  isToday ? "bg-green-50" : "bg-gray-50"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className={`text-sm font-semibold ${isToday ? "text-[var(--primary)]" : ""}`}>
+                        {DAY_NAMES[dayIndex]}
+                      </span>
+                      {dateLabel && (
+                        <span className="text-xs text-gray-500 ml-1">{dateLabel}</span>
+                      )}
+                    </div>
+                    {dayDemos.length > 0 && (
+                      <span className="text-xs font-medium text-gray-500">{dayDemos.length}</span>
                     )}
-                  </td>
-                  <td className="p-3">
-                    <div className="font-medium">{demo.booking.prospectName}</div>
-                    {demo.booking.prospectEmail && (
-                      <div className="text-xs text-gray-500">{demo.booking.prospectEmail}</div>
-                    )}
-                  </td>
-                  <td className="p-3">{formatDate(demo.booking.demoDate)}</td>
-                  <td className="p-3">{demo.booking.setter?.name || "—"}</td>
-                  <td className="p-3">
-                    <select
-                      value={demo.closer?.id || ""}
-                      onChange={(e) => updateDemo(demo.id, { closerId: e.target.value || null })}
-                      className="border rounded px-2 py-1 text-xs"
-                    >
-                      <option value="">Assign...</option>
-                      {closers.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-3">
-                    <select
-                      value={demo.status}
-                      onChange={(e) => updateDemo(demo.id, { status: e.target.value })}
-                      className={`border rounded px-2 py-1 text-xs font-medium ${
-                        demo.status === "showed" ? "bg-green-50 text-green-700" :
-                        demo.status === "no_show" ? "bg-red-50 text-red-700" :
-                        demo.status === "pending" ? "bg-yellow-50 text-yellow-700" :
-                        "bg-gray-50 text-gray-700"
+                  </div>
+                  {dayDemos.length > 0 && (
+                    <div className="flex gap-2 mt-1">
+                      {dayShowed > 0 && <span className="text-xs text-green-600">{dayShowed}✓</span>}
+                      {dayNoShow > 0 && <span className="text-xs text-red-600">{dayNoShow}✗</span>}
+                      {dayPending > 0 && <span className="text-xs text-yellow-600">{dayPending}?</span>}
+                    </div>
+                  )}
+                </div>
+
+                {/* Demo Cards for this day */}
+                <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[500px]">
+                  {dayDemos.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-4">No demos</p>
+                  )}
+                  {dayDemos.map((demo) => (
+                    <div
+                      key={demo.id}
+                      className={`rounded-lg border p-2 text-xs transition-all ${
+                        demo.status === "showed" ? "bg-green-50 border-green-200" :
+                        demo.status === "no_show" ? "bg-red-50 border-red-200" :
+                        demo.status === "cancelled" ? "bg-gray-50 border-gray-200 opacity-60" :
+                        "bg-yellow-50 border-yellow-200"
                       }`}
                     >
-                      {statusOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-3">
-                    <Badge variant="secondary">{demo.booking.source}</Badge>
-                    {demo.hasFirefliesRecording && (
-                      <Badge variant="success" className="ml-1">Recording</Badge>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    {demo.confirmedBy ? (
-                      <div>
-                        <span className={`text-xs font-medium ${
-                          demo.confirmedBy === "fireflies_auto" ? "text-purple-600" :
-                          demo.confirmedBy === "payment_auto" ? "text-blue-600" :
-                          "text-green-600"
-                        }`}>
-                          {demo.confirmedBy === "fireflies_auto" ? "🎙 Fireflies" :
-                           demo.confirmedBy === "payment_auto" ? "💳 Payment match" :
-                           `✓ ${demo.confirmedBy}`}
-                        </span>
-                        {demo.notes && (
-                          <p className="text-xs text-gray-400 mt-0.5 max-w-[200px] truncate" title={demo.notes}>{demo.notes}</p>
-                        )}
+                      {/* Prospect Name */}
+                      <div className="font-semibold text-sm truncate" title={demo.booking.prospectName}>
+                        {demo.booking.prospectName}
                       </div>
-                    ) : demo.status === "pending" ? (
-                      <Badge variant="warning">Needs Review</Badge>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-              {demos.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
-                    No demos this week. Click &quot;Add Demo&quot; or sync data from Google Calendar.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+
+                      {/* Time */}
+                      <div className="text-gray-500 mt-0.5">
+                        {new Date(demo.booking.demoDate).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </div>
+
+                      {/* Setter & Closer */}
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-gray-500">
+                          {demo.booking.setter?.name || "—"}
+                        </span>
+                        <span className="text-gray-400">
+                          → {demo.closer?.name || "—"}
+                        </span>
+                      </div>
+
+                      {/* Status selector */}
+                      <select
+                        value={demo.status}
+                        onChange={(e) => updateDemo(demo.id, { status: e.target.value })}
+                        className={`w-full mt-1.5 border rounded px-1.5 py-1 text-xs font-medium ${
+                          demo.status === "showed" ? "bg-green-100 text-green-700 border-green-300" :
+                          demo.status === "no_show" ? "bg-red-100 text-red-700 border-red-300" :
+                          demo.status === "pending" ? "bg-yellow-100 text-yellow-700 border-yellow-300" :
+                          "bg-gray-100 text-gray-700 border-gray-300"
+                        }`}
+                      >
+                        {statusOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+
+                      {/* Confirmation source */}
+                      {demo.confirmedBy && (
+                        <div className="mt-1">
+                          <span className={`text-[10px] font-medium ${
+                            demo.confirmedBy === "fireflies_auto" ? "text-purple-600" :
+                            demo.confirmedBy === "payment_auto" ? "text-blue-600" :
+                            "text-green-600"
+                          }`}>
+                            {demo.confirmedBy === "fireflies_auto" ? "🎙 Fireflies" :
+                             demo.confirmedBy === "payment_auto" ? "💳 Payment" :
+                             `✓ ${demo.confirmedBy}`}
+                          </span>
+                        </div>
+                      )}
+                      {!demo.confirmedBy && demo.status === "pending" && (
+                        <div className="mt-1">
+                          <Badge variant="warning" className="text-[10px] px-1.5 py-0">Needs Review</Badge>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Day bulk actions */}
+                {dayPending > 0 && (
+                  <div className="p-2 border-t flex gap-1">
+                    <button
+                      onClick={() => bulkMarkDay(dayDemos, "showed")}
+                      className="flex-1 text-[10px] font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded py-1 transition-colors"
+                    >
+                      All Showed
+                    </button>
+                    <button
+                      onClick={() => bulkMarkDay(dayDemos, "no_show")}
+                      className="flex-1 text-[10px] font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded py-1 transition-colors"
+                    >
+                      All No Show
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Week Summary Bar */}
+      {!loading && demos.length > 0 && (
+        <div className="bg-white rounded-xl border p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-6">
+              <div>
+                <p className="text-xs text-gray-500">Total Booked</p>
+                <p className="text-xl font-bold">{totalBooked}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Showed</p>
+                <p className="text-xl font-bold text-green-600">{totalShowed}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">No Show</p>
+                <p className="text-xl font-bold text-red-600">{totalNoShow}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Show Rate</p>
+                <p className="text-xl font-bold">
+                  {totalBooked > 0 ? ((totalShowed / totalBooked) * 100).toFixed(1) : "0"}%
+                </p>
+              </div>
+            </div>
+            {totalPending > 0 && (
+              <Badge variant="warning" className="text-sm px-3 py-1">
+                {totalPending} demos need review
+              </Badge>
+            )}
+          </div>
         </div>
       )}
     </div>
