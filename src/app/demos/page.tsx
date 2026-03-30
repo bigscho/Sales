@@ -417,35 +417,44 @@ export default function DemosPage() {
                   </select>
                 </td>
                 <td className="p-3">
-                  {demo.confirmedBy ? (
-                    <span className={`text-xs font-medium inline-flex items-center gap-1 ${
-                      demo.confirmedBy === "fireflies_auto" ? "text-purple-600" :
-                      demo.confirmedBy === "payment_auto" ? "text-blue-600" :
-                      demo.confirmedBy === "calendly_webhook" ? "text-orange-600" :
-                      "text-green-600"
-                    }`}>
-                      {demo.confirmedBy === "fireflies_auto" ? (
-                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Fireflies</>
-                      ) : demo.confirmedBy === "payment_auto" ? (
-                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Payment</>
-                      ) : demo.confirmedBy === "calendly_webhook" ? (
-                        "Calendly"
-                      ) : demo.confirmedBy === "gcal_sync" ? (
-                        "Calendar"
-                      ) : (
-                        demo.confirmedBy
-                      )}
-                    </span>
-                  ) : demo.status === "pending" ? (
-                    demo.notes?.includes("no_transcript") ? (
-                      <span className="text-xs text-orange-500 inline-flex items-center gap-1">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        No transcript
+                  <div className="flex flex-col gap-1">
+                    {demo.confirmedBy && (
+                      <span className={`text-xs font-medium inline-flex items-center gap-1 ${
+                        demo.confirmedBy === "fireflies_auto" ? "text-purple-600" :
+                        demo.confirmedBy === "payment_auto" ? "text-blue-600" :
+                        demo.confirmedBy === "calendly_webhook" ? "text-orange-600" :
+                        "text-green-600"
+                      }`}>
+                        {demo.confirmedBy === "fireflies_auto" ? (
+                          <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Fireflies</>
+                        ) : demo.confirmedBy === "payment_auto" ? (
+                          <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Payment</>
+                        ) : demo.confirmedBy === "calendly_webhook" ? (
+                          "Calendly"
+                        ) : demo.confirmedBy === "gcal_sync" ? (
+                          "Calendar"
+                        ) : (
+                          demo.confirmedBy
+                        )}
                       </span>
-                    ) : (
-                      <Badge variant="warning">Needs Review</Badge>
-                    )
-                  ) : null}
+                    )}
+                    {/* Show Fireflies badge if transcript exists, even if admin confirmed first */}
+                    {demo.hasFirefliesRecording && demo.confirmedBy !== "fireflies_auto" && (
+                      <span className="text-xs font-medium inline-flex items-center gap-1 text-purple-500">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Fireflies
+                      </span>
+                    )}
+                    {!demo.confirmedBy && demo.status === "pending" && (
+                      demo.notes?.includes("no_transcript") ? (
+                        <span className="text-xs text-orange-500 inline-flex items-center gap-1">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                          No transcript
+                        </span>
+                      ) : (
+                        <Badge variant="warning">Needs Review</Badge>
+                      )
+                    )}
+                  </div>
                 </td>
                 <td className="p-3">
                   {!dayLock && (

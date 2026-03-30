@@ -66,14 +66,15 @@ export async function POST() {
 
   const results = { showed: 0, noShow: 0, skipped: 0, errors: [] as string[] };
 
-  // Get all pending demos from the last 2 weeks
+  // Get all demos from the last 2 weeks that Fireflies hasn't verified yet
   const twoWeeksAgo = new Date();
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
   const pendingDemos = await prisma.demo.findMany({
     where: {
-      status: "pending",
+      hasFirefliesRecording: false,
       booking: { demoDate: { gte: twoWeeksAgo } },
+      status: { in: ["pending", "showed"] },
     },
     include: {
       booking: { include: { setter: true } },
@@ -129,13 +130,14 @@ export async function POST() {
       });
 
       if (match) {
-        // Transcript found → showed
+        // Transcript found — mark as showed + Fireflies verified
+        const wasAlreadyConfirmed = demo.status === "showed";
         await prisma.demo.update({
           where: { id: demo.id },
           data: {
             status: "showed",
-            confirmedBy: "fireflies_auto",
-            confirmedAt: new Date(),
+            // Only overwrite confirmedBy if it was pending
+            ...(wasAlreadyConfirmed ? {} : { confirmedBy: "fireflies_auto", confirmedAt: new Date() }),
             hasFirefliesRecording: true,
             firefliesTranscriptId: match.id,
           },

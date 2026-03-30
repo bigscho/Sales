@@ -75,10 +75,11 @@ export async function POST(request: NextRequest) {
     const windowStart = new Date(meetingDate.getTime() - 3 * 60 * 60 * 1000);
     const windowEnd = new Date(meetingDate.getTime() + 3 * 60 * 60 * 1000);
 
-    // Find matching pending demo by attendee email or name
+    // Find matching demos (pending or already confirmed) that Fireflies hasn't verified yet
     const pendingDemos = await prisma.demo.findMany({
       where: {
-        status: "pending",
+        hasFirefliesRecording: false,
+        status: { in: ["pending", "showed"] },
         booking: {
           demoDate: { gte: windowStart, lte: windowEnd },
         },
@@ -104,12 +105,12 @@ export async function POST(request: NextRequest) {
       );
 
       if (emailMatch || nameMatch) {
+        const wasAlreadyConfirmed = demo.status === "showed";
         await prisma.demo.update({
           where: { id: demo.id },
           data: {
             status: "showed",
-            confirmedBy: "fireflies_auto",
-            confirmedAt: new Date(),
+            ...(wasAlreadyConfirmed ? {} : { confirmedBy: "fireflies_auto", confirmedAt: new Date() }),
             hasFirefliesRecording: true,
             firefliesTranscriptId: meetingId,
           },
