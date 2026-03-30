@@ -15,6 +15,10 @@
     {
       "path": "/api/sync",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/sync/gcal",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
