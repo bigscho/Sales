@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getWeekRange } from "@/lib/utils";
 
 export async function POST() {
   // Seed team members
@@ -21,11 +20,14 @@ export async function POST() {
     });
   }
 
-  // Create weeks for the last 4 weeks
+  // Create weeks for the last 4 weeks (using UTC to match import data)
   for (let i = 0; i < 4; i++) {
     const d = new Date();
-    d.setDate(d.getDate() - i * 7);
-    const { start, end } = getWeekRange(d);
+    d.setUTCDate(d.getUTCDate() - i * 7);
+    const day = d.getUTCDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diffToMonday));
+    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6, 23, 59, 59, 999));
     await prisma.week.upsert({
       where: { weekStart: start },
       create: { weekStart: start, weekEnd: end },

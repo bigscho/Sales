@@ -18,14 +18,10 @@ export function formatPercent(value: number): string {
 
 export function getWeekRange(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
-  const day = d.getDay();
+  const day = d.getUTCDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
-  const start = new Date(d);
-  start.setDate(d.getDate() + diffToMonday);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diffToMonday));
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6, 23, 59, 59, 999));
   return { start, end };
 }
 
