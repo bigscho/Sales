@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/slack",
+      "schedule": "0 14 * * 3"
+    },
+    {
+      "path": "/api/slack",
+      "schedule": "0 14 * * 6"
+    }
+  ]
+}

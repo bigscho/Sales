@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model TeamMember {
+  id                      String   @id @default(cuid())
+  name                    String
+  role                    String   // setter | closer | show_rate_rep
+  tier                    Int      @default(1) // 1-4 for setters
+  cumulativeShows         Int      @default(0)
+  consecutive15PlusWeeks  Int      @default(0)
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  bookings       Booking[]
+  demosAsCLoser  Demo[]          @relation("CloserDemos")
+  deals          Deal[]
+  payrollItems   PayrollLineItem[]
+}
+
+model Week {
+  id          String    @id @default(cuid())
+  weekStart   DateTime
+  weekEnd     DateTime
+  status      String    @default("draft") // draft | confirmed
+  confirmedBy String?
+  confirmedAt DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  bookings    Booking[]
+  demos       Demo[]
+  deals       Deal[]
+  payrollRuns PayrollRun[]
+  expenses    Expense[]
+
+  @@unique([weekStart])
+}
+
+model Booking {
+  id               String   @id @default(cuid())
+  weekId           String
+  prospectName     String
+  prospectEmail    String?
+  prospectPhone    String?
+  setterId         String?
+  bookedAt         DateTime?
+  demoDate         DateTime
+  calendarEventId  String?  @unique
+  airtableRecordId String?
+  source           String   @default("auto") // auto | manual
+  createdAt        DateTime @default(now())
+
+  week   Week        @relation(fields: [weekId], references: [id])
+  setter TeamMember? @relation(fields: [setterId], references: [id])
+  demo   Demo?
+}
+
+model Demo {
+  id                     String    @id @default(cuid())
+  bookingId              String    @unique
+  weekId                 String
+  closerId               String?
+  status                 String    @default("pending") // pending | showed | no_show | cancelled | rescheduled
+  confirmedBy            String?
+  confirmedAt            DateTime?
+  firefliesTranscriptId  String?
+  hasFirefliesRecording  Boolean   @default(false)
+  notes                  String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  booking Booking    @relation(fields: [bookingId], references: [id])
+  week    Week       @relation(fields: [weekId], references: [id])
+  closer  TeamMember? @relation("CloserDemos", fields: [closerId], references: [id])
+  deal    Deal?
+}
+
+model Deal {
+  id                   String    @id @default(cuid())
+  demoId               String?   @unique
+  weekId               String
+  closerId             String?
+  prospectName         String
+  prospectEmail        String?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  dealType             String    @default("subscription") // subscription | one_time
+  month1Cash           Int       @default(0) // cents
+  status               String    @default("pending") // closed_won | closed_lost | pending | held
+  closedAt             DateTime?
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  demo     Demo?       @relation(fields: [demoId], references: [id])
+  week     Week        @relation(fields: [weekId], references: [id])
+  closer   TeamMember? @relation(fields: [closerId], references: [id])
+  payments Payment[]
+}
+
+model Payment {
+  id                    String   @id @default(cuid())
+  dealId                String?
+  stripePaymentIntentId String?  @unique
+  amountCents           Int
+  currency              String   @default("usd")
+  status                String   // succeeded | pending | failed
+  paidAt                DateTime
+  isMonth1              Boolean  @default(false)
+  customerName          String?
+  customerEmail         String?
+  createdAt             DateTime @default(now())
+
+  deal Deal? @relation(fields: [dealId], references: [id])
+}
+
+model PayrollRun {
+  id          String    @id @default(cuid())
+  weekId      String
+  status      String    @default("draft") // draft | confirmed | paid
+  createdAt   DateTime  @default(now())
+  confirmedAt DateTime?
+
+  week      Week              @relation(fields: [weekId], references: [id])
+  lineItems PayrollLineItem[]
+}
+
+model PayrollLineItem {
+  id           String @id @default(cuid())
+  payrollRunId String
+  teamMemberId String
+  lineType     String // base | per_show | commission | show_rate_bonus
+  description  String
+  quantity     Float  @default(0)
+  rateCents    Int    @default(0)
+  amountCents  Int
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  teamMember TeamMember @relation(fields: [teamMemberId], references: [id])
+}
+
+model Expense {
+  id         String   @id @default(cuid())
+  weekId     String
+  category   String
+  vendor     String?
+  description String?
+  amountCents Int
+  date       DateTime
+  source     String   @default("manual") // manual | csv_import
+  createdAt  DateTime @default(now())
+
+  week Week @relation(fields: [weekId], references: [id])
+}
+
+model ExpenseCategory {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+}
+
+model SyncLog {
+  id            String    @id @default(cuid())
+  source        String    // stripe | gcal | airtable | fireflies
+  syncType      String
+  status        String    // success | error
+  recordsSynced Int       @default(0)
+  errorMessage  String?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  oldValue   String?  // JSON
+  newValue   String?  // JSON
+  performedBy String?
+  createdAt  DateTime @default(now())
+}

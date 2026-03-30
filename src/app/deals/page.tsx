@@ -1,0 +1,264 @@
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatCents, formatDate } from "@/lib/utils";
+
+interface DealRecord {
+  id: string;
+  prospectName: string;
+  prospectEmail: string | null;
+  stripeCustomerId: string | null;
+  dealType: string;
+  month1Cash: number;
+  status: string;
+  closedAt: string | null;
+  notes: string | null;
+  demo: {
+    id: string;
+    booking: { setter: { name: string } | null; demoDate: string };
+  } | null;
+  closer: { id: string; name: string } | null;
+  payments: { id: string; amountCents: number; status: string; paidAt: string; isMonth1: boolean }[];
+}
+
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
+const statusOptions = [
+  { value: "pending", label: "Pending" },
+  { value: "closed_won", label: "Closed Won" },
+  { value: "closed_lost", label: "Closed Lost" },
+  { value: "held", label: "Held" },
+];
+
+export default function DealsPage() {
+  const searchParams = useSearchParams();
+  const weekId = searchParams.get("weekId") || "";
+  const [deals, setDeals] = useState<DealRecord[]>([]);
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [expandedDeal, setExpandedDeal] = useState<string | null>(null);
+
+  const loadData = useCallback(() => {
+    if (!weekId) return;
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/deals?weekId=${weekId}`).then((r) => r.json()),
+      fetch("/api/team").then((r) => r.json()),
+    ]).then(([dealData, teamData]) => {
+      setDeals(dealData.deals || []);
+      setTeam(teamData.members || []);
+      setLoading(false);
+    });
+  }, [weekId]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const updateDeal = async (dealId: string, data: Record<string, unknown>) => {
+    await fetch("/api/deals", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dealId, ...data }),
+    });
+    loadData();
+  };
+
+  const addDeal = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    await fetch("/api/deals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        weekId,
+        prospectName: form.get("prospectName"),
+        prospectEmail: form.get("prospectEmail"),
+        closerId: form.get("closerId") || null,
+        dealType: form.get("dealType"),
+        status: form.get("status"),
+        month1Cash: Math.round(Number(form.get("month1Cash")) * 100),
+        stripeCustomerId: form.get("stripeCustomerId") || null,
+        notes: form.get("notes") || null,
+      }),
+    });
+    setShowAddForm(false);
+    loadData();
+  };
+
+  if (!weekId) return <p className="text-[var(--muted-foreground)]">Select a week first</p>;
+
+  const closers = team.filter((m) => m.role === "closer");
+  const totalCash = deals.filter((d) => d.status === "closed_won").reduce((sum, d) =>
+    sum + d.payments.reduce((s, p) => s + p.amountCents, 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Deals</h2>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {deals.length} deals, {formatCents(totalCash)} cash collected
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
+          + Add Deal
+        </Button>
+      </div>
+
+      {showAddForm && (
+        <Card>
+          <CardHeader><CardTitle>Add Deal</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={addDeal} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <input name="prospectName" placeholder="Prospect Name" required className="border rounded-lg px-3 py-2 text-sm" />
+              <input name="prospectEmail" placeholder="Email" className="border rounded-lg px-3 py-2 text-sm" />
+              <select name="closerId" className="border rounded-lg px-3 py-2 text-sm">
+                <option value="">Closer</option>
+                {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select name="dealType" className="border rounded-lg px-3 py-2 text-sm">
+                <option value="subscription">Subscription</option>
+                <option value="one_time">One-Time</option>
+              </select>
+              <select name="status" className="border rounded-lg px-3 py-2 text-sm">
+                {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <input name="month1Cash" type="number" step="0.01" placeholder="Month 1 Cash ($)" className="border rounded-lg px-3 py-2 text-sm" />
+              <input name="stripeCustomerId" placeholder="Stripe Customer ID" className="border rounded-lg px-3 py-2 text-sm" />
+              <div className="flex gap-2">
+                <input name="notes" placeholder="Notes" className="border rounded-lg px-3 py-2 text-sm flex-1" />
+                <Button type="submit" size="sm">Add</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-16 bg-white rounded-xl border animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left p-3 font-medium">Prospect</th>
+                <th className="text-left p-3 font-medium">Closer</th>
+                <th className="text-left p-3 font-medium">Type</th>
+                <th className="text-left p-3 font-medium">Status</th>
+                <th className="text-right p-3 font-medium">Month 1 Cash</th>
+                <th className="text-right p-3 font-medium">Payments</th>
+                <th className="text-left p-3 font-medium">Setter</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deals.map((deal) => (
+                <>
+                  <tr
+                    key={deal.id}
+                    className="border-b hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setExpandedDeal(expandedDeal === deal.id ? null : deal.id)}
+                  >
+                    <td className="p-3">
+                      <div className="font-medium">{deal.prospectName}</div>
+                      {deal.prospectEmail && <div className="text-xs text-gray-500">{deal.prospectEmail}</div>}
+                    </td>
+                    <td className="p-3">
+                      <select
+                        value={deal.closer?.id || ""}
+                        onChange={(e) => { e.stopPropagation(); updateDeal(deal.id, { closerId: e.target.value }); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="border rounded px-2 py-1 text-xs"
+                      >
+                        <option value="">Assign...</option>
+                        {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="p-3"><Badge variant="secondary">{deal.dealType}</Badge></td>
+                    <td className="p-3">
+                      <select
+                        value={deal.status}
+                        onChange={(e) => { e.stopPropagation(); updateDeal(deal.id, { status: e.target.value }); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`border rounded px-2 py-1 text-xs font-medium ${
+                          deal.status === "closed_won" ? "bg-green-50 text-green-700" :
+                          deal.status === "closed_lost" ? "bg-red-50 text-red-700" :
+                          deal.status === "held" ? "bg-blue-50 text-blue-700" :
+                          "bg-yellow-50 text-yellow-700"
+                        }`}
+                      >
+                        {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
+                    <td className="p-3 text-right font-medium">{formatCents(deal.month1Cash)}</td>
+                    <td className="p-3 text-right">
+                      {deal.payments.length > 0
+                        ? formatCents(deal.payments.reduce((s, p) => s + p.amountCents, 0))
+                        : "—"
+                      }
+                    </td>
+                    <td className="p-3 text-xs text-gray-500">
+                      {deal.demo?.booking?.setter?.name || "—"}
+                    </td>
+                  </tr>
+                  {expandedDeal === deal.id && (
+                    <tr key={`${deal.id}-detail`}>
+                      <td colSpan={7} className="bg-gray-50 p-4">
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <p className="font-medium text-gray-600">Stripe Customer ID</p>
+                            <p>{deal.stripeCustomerId || "Not linked"}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-600">Demo Date</p>
+                            <p>{deal.demo ? formatDate(deal.demo.booking.demoDate) : "No demo linked"}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-600">Notes</p>
+                            <p>{deal.notes || "—"}</p>
+                          </div>
+                          {deal.payments.length > 0 && (
+                            <div className="col-span-3">
+                              <p className="font-medium text-gray-600 mb-2">Stripe Payments</p>
+                              {deal.payments.map((p) => (
+                                <div key={p.id} className="flex justify-between py-1 border-b last:border-0">
+                                  <span>{formatDate(p.paidAt)}</span>
+                                  <span>{formatCents(p.amountCents)}</span>
+                                  <Badge variant={p.isMonth1 ? "success" : "secondary"}>
+                                    {p.isMonth1 ? "Month 1" : "Recurring"}
+                                  </Badge>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+              {deals.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-gray-500">
+                    No deals this week. Add deals manually or they&apos;ll be created from confirmed demos.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
