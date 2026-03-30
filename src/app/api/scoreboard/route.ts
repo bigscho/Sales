@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
   });
 
   // Current week stats
-  let weekStats: Record<string, { bookings: number; shows: number; noShows: number; pending: number }> = {};
-  let weekTotal = { bookings: 0, shows: 0, noShows: 0, pending: 0 };
+  const weekStats: Record<string, { bookings: number; shows: number; noShows: number; pending: number }> = {};
+  const weekTotal = { bookings: 0, shows: 0, noShows: 0, pending: 0 };
 
   if (weekId) {
     const demos = await prisma.demo.findMany({
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   });
 
   const allTimeStats: Record<string, { bookings: number; shows: number; noShows: number }> = {};
-  let allTimeTotal = { bookings: 0, shows: 0, noShows: 0 };
+  const allTimeTotal = { bookings: 0, shows: 0, noShows: 0 };
 
   for (const demo of allDemos) {
     const sid = demo.booking.setterId || "unattributed";
