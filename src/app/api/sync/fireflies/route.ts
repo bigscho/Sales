@@ -59,10 +59,13 @@ export async function GET() {
 }
 
 export async function POST() {
-  const apiKey = process.env.FIREFLIES_API_KEY;
-  if (!apiKey) {
+  // Support multiple API keys (comma-separated) for team coverage
+  // e.g. FIREFLIES_API_KEY=colin_key,mark_key
+  const apiKeyEnv = process.env.FIREFLIES_API_KEY;
+  if (!apiKeyEnv) {
     return NextResponse.json({ error: "FIREFLIES_API_KEY not set" }, { status: 500 });
   }
+  const apiKeys = apiKeyEnv.split(",").map((k) => k.trim()).filter(Boolean);
 
   const results = { showed: 0, noShow: 0, skipped: 0, errors: [] as string[] };
 
@@ -94,7 +97,19 @@ export async function POST() {
   const fromDate = new Date(earliestDemo.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const transcripts = await fetchFirefliesTranscripts(apiKey, fromDate, toDate);
+  // Fetch transcripts from all API keys and deduplicate by ID
+  const allTranscripts: FirefliesTranscript[] = [];
+  const seenIds = new Set<string>();
+  for (const key of apiKeys) {
+    const batch = await fetchFirefliesTranscripts(key, fromDate, toDate);
+    for (const t of batch) {
+      if (!seenIds.has(t.id)) {
+        seenIds.add(t.id);
+        allTranscripts.push(t);
+      }
+    }
+  }
+  const transcripts = allTranscripts;
 
   for (const demo of pendingDemos) {
     try {

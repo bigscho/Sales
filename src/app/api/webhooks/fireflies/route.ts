@@ -55,13 +55,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, action: "ignored" });
     }
 
-    const apiKey = process.env.FIREFLIES_API_KEY;
-    if (!apiKey) {
+    const apiKeyEnv = process.env.FIREFLIES_API_KEY;
+    if (!apiKeyEnv) {
       return NextResponse.json({ error: "FIREFLIES_API_KEY not set" }, { status: 500 });
     }
 
     // Fetch full transcript details
-    const transcript = await fetchTranscript(apiKey, meetingId);
+    // Try each API key until one returns the transcript
+    const apiKeys = apiKeyEnv.split(",").map((k) => k.trim()).filter(Boolean);
+    let transcript: TranscriptData | null = null;
+    for (const key of apiKeys) {
+      transcript = await fetchTranscript(key, meetingId);
+      if (transcript) break;
+    }
     if (!transcript) {
       return NextResponse.json({ received: true, action: "transcript_not_found" });
     }
