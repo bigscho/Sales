@@ -10,7 +10,7 @@ const FIREFLIES_GQL = "https://api.fireflies.ai/graphql";
 interface TranscriptData {
   id: string;
   title: string;
-  date: string;
+  date: number; // millisecond timestamp
   duration: number;
   organizer_email: string;
   participants: string[];
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, action: "too_short" });
     }
 
-    const meetingDate = new Date(transcript.date);
+    const meetingDate = new Date(typeof transcript.date === "number" ? transcript.date : parseInt(transcript.date));
     const windowStart = new Date(meetingDate.getTime() - 3 * 60 * 60 * 1000);
     const windowEnd = new Date(meetingDate.getTime() + 3 * 60 * 60 * 1000);
 

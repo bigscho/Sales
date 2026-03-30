@@ -15,24 +15,25 @@ const FIREFLIES_GQL = "https://api.fireflies.ai/graphql";
 interface FirefliesTranscript {
   id: string;
   title: string;
-  date: string;
+  date: number; // millisecond timestamp
   duration: number;
   organizer_email: string;
   participants: string[];
-  cal_id: string | null;
 }
 
 async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDate: string): Promise<FirefliesTranscript[]> {
+  // Fireflies uses millisecond timestamps for date fields
+  const fromMs = new Date(fromDate).getTime();
+  const toMs = new Date(toDate).getTime();
   const query = `
     query {
-      transcripts(fromDate: "${fromDate}", toDate: "${toDate}", limit: 50) {
+      transcripts(fromDate: ${fromMs}, toDate: ${toMs}, limit: 50) {
         id
         title
         date
         duration
         organizer_email
         participants
-        cal_id
       }
     }
   `;
@@ -120,7 +121,7 @@ export async function POST() {
       // 2. Attendee email matches prospect email, OR title contains prospect name
       // 3. Duration > 2 minutes (not a false join)
       const match = transcripts.find((t) => {
-        const tDate = new Date(t.date);
+        const tDate = new Date(typeof t.date === "number" ? t.date : parseInt(t.date));
         const timeDiff = Math.abs(tDate.getTime() - demoDate.getTime());
         const withinWindow = timeDiff < 3 * 60 * 60 * 1000; // 3 hours
 
