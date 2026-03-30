@@ -7,6 +7,10 @@
     {
       "path": "/api/slack",
       "schedule": "0 14 * * 6"
+    },
+    {
+      "path": "/api/sync/leaderboard",
+      "schedule": "0 */2 * * 1-5"
     }
   ]
 }

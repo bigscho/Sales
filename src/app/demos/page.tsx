@@ -264,9 +264,24 @@ export default function DemosPage() {
                     )}
                   </td>
                   <td className="p-3">
-                    {demo.confirmedAt && (
-                      <span className="text-xs text-green-600">Confirmed</span>
-                    )}
+                    {demo.confirmedBy ? (
+                      <div>
+                        <span className={`text-xs font-medium ${
+                          demo.confirmedBy === "fireflies_auto" ? "text-purple-600" :
+                          demo.confirmedBy === "payment_auto" ? "text-blue-600" :
+                          "text-green-600"
+                        }`}>
+                          {demo.confirmedBy === "fireflies_auto" ? "🎙 Fireflies" :
+                           demo.confirmedBy === "payment_auto" ? "💳 Payment match" :
+                           `✓ ${demo.confirmedBy}`}
+                        </span>
+                        {demo.notes && (
+                          <p className="text-xs text-gray-400 mt-0.5 max-w-[200px] truncate" title={demo.notes}>{demo.notes}</p>
+                        )}
+                      </div>
+                    ) : demo.status === "pending" ? (
+                      <Badge variant="warning">Needs Review</Badge>
+                    ) : null}
                   </td>
                 </tr>
               ))}

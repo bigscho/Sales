@@ -109,13 +109,18 @@ model Payment {
   id                    String   @id @default(cuid())
   dealId                String?
   stripePaymentIntentId String?  @unique
+  stripeCustomerId      String?
   amountCents           Int
   currency              String   @default("usd")
   status                String   // succeeded | pending | failed
   paidAt                DateTime
   isMonth1              Boolean  @default(false)
+  isSubscription        Boolean  @default(false) // true = MRR, false = one-time
+  revenueType           String   @default("unknown") // mrr | one_time | unknown
   customerName          String?
   customerEmail         String?
+  matchStatus           String   @default("unmatched") // matched | unmatched | needs_review
+  matchReason           String?
   createdAt             DateTime @default(now())
 
   deal Deal? @relation(fields: [dealId], references: [id])

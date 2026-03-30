@@ -42,7 +42,7 @@ export default function DealsPage() {
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
   const [deals, setDeals] = useState<DealRecord[]>([]);
-  const [unlinkedPayments, setUnlinkedPayments] = useState<{ id: string; amountCents: number; customerName: string | null; customerEmail: string | null; paidAt: string; stripePaymentIntentId: string | null }[]>([]);
+  const [unlinkedPayments, setUnlinkedPayments] = useState<{ id: string; amountCents: number; customerName: string | null; customerEmail: string | null; paidAt: string; stripePaymentIntentId: string | null; revenueType: string; matchStatus: string; matchReason: string | null; isSubscription: boolean }[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -275,8 +275,9 @@ export default function DealsPage() {
                 <tr>
                   <th className="text-left p-3 font-medium">Customer</th>
                   <th className="text-left p-3 font-medium">Date</th>
+                  <th className="text-left p-3 font-medium">Type</th>
+                  <th className="text-left p-3 font-medium">Status</th>
                   <th className="text-right p-3 font-medium">Amount</th>
-                  <th className="text-left p-3 font-medium">Stripe ID</th>
                 </tr>
               </thead>
               <tbody>
@@ -284,16 +285,38 @@ export default function DealsPage() {
                   <tr key={p.id} className="border-b last:border-0">
                     <td className="p-3 font-medium">{p.customerName || p.customerEmail || "Unknown"}</td>
                     <td className="p-3">{formatDate(p.paidAt)}</td>
+                    <td className="p-3">
+                      <Badge variant={p.isSubscription ? "success" : "warning"}>
+                        {p.isSubscription ? "MRR" : p.revenueType === "one_time" ? "One-Time" : "Unknown"}
+                      </Badge>
+                    </td>
+                    <td className="p-3">
+                      {p.matchStatus === "needs_review" ? (
+                        <span className="text-xs text-orange-600 font-medium">🚩 Review</span>
+                      ) : p.matchStatus === "matched" ? (
+                        <span className="text-xs text-green-600 font-medium">Matched</span>
+                      ) : (
+                        <span className="text-xs text-gray-500">Unlinked</span>
+                      )}
+                      {p.matchReason && (
+                        <p className="text-xs text-gray-400 truncate max-w-[150px]" title={p.matchReason}>{p.matchReason}</p>
+                      )}
+                    </td>
                     <td className="p-3 text-right font-medium">{formatCents(p.amountCents)}</td>
-                    <td className="p-3 text-xs text-gray-500 font-mono">{p.stripePaymentIntentId?.slice(0, 20)}...</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr>
-                  <td colSpan={2} className="p-3 font-semibold">Total</td>
+                  <td colSpan={4} className="p-3 font-semibold">
+                    Total
+                    <span className="ml-4 font-normal text-xs text-gray-500">
+                      MRR: {formatCents(unlinkedPayments.filter(p => p.isSubscription).reduce((s, p) => s + p.amountCents, 0))}
+                      {" | "}
+                      One-Time: {formatCents(unlinkedPayments.filter(p => !p.isSubscription).reduce((s, p) => s + p.amountCents, 0))}
+                    </span>
+                  </td>
                   <td className="p-3 text-right font-bold">{formatCents(unlinkedPayments.reduce((s, p) => s + p.amountCents, 0))}</td>
-                  <td></td>
                 </tr>
               </tfoot>
             </table>
