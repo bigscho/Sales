@@ -88,6 +88,7 @@ export default function DemosPage() {
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
   const [viewMode, setViewMode] = useState<"day" | "week">("day");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(() => {
     if (!weekId) return;
@@ -189,6 +190,56 @@ export default function DemosPage() {
     loadData();
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (demosList: DemoRecord[]) => {
+    const allIds = demosList.map((d) => d.id);
+    const allSelected = allIds.every((id) => selectedIds.has(id));
+    if (allSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const bulkAction = async (action: "showed" | "no_show" | "delete") => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (action === "delete") {
+      if (!confirm(`Delete ${ids.length} selected demo(s)? This cannot be undone.`)) return;
+      for (const id of ids) {
+        await fetch("/api/demos", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ demoId: id }),
+        });
+      }
+    } else {
+      await fetch("/api/demos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "bulk_confirm", demoIds: ids, status: action }),
+      });
+    }
+    setSelectedIds(new Set());
+    loadData();
+  };
+
   const addDemo = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
@@ -273,9 +324,29 @@ export default function DemosPage() {
   // Helper to render the demo table
   const renderDemoTable = (demosToShow: DemoRecord[], isWeekView: boolean) => (
     <div className="bg-white rounded-xl border overflow-hidden">
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-blue-50 border-b px-4 py-2 flex items-center justify-between">
+          <span className="text-sm font-medium text-blue-700">{selectedIds.size} selected</span>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => bulkAction("showed")}>Mark Showed</Button>
+            <Button size="sm" variant="destructive" onClick={() => bulkAction("no_show")}>Mark No Show</Button>
+            <Button size="sm" variant="ghost" onClick={() => bulkAction("delete")}>Delete</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+          </div>
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead className="bg-gray-50 border-b">
           <tr>
+            <th className="p-3 w-10">
+              <input
+                type="checkbox"
+                checked={demosToShow.length > 0 && demosToShow.every((d) => selectedIds.has(d.id))}
+                onChange={() => toggleSelectAll(demosToShow)}
+                className="rounded"
+              />
+            </th>
             {isWeekView && <th className="text-left p-3 font-medium w-16">Day</th>}
             <th className="text-left p-3 font-medium">Prospect</th>
             <th className="text-left p-3 font-medium">Time</th>
@@ -292,10 +363,19 @@ export default function DemosPage() {
             const dayLock = locksByDay[demoDay];
             return (
               <tr key={demo.id} className={`border-b last:border-0 ${
+                selectedIds.has(demo.id) ? "bg-blue-50/50" :
                 demo.status === "showed" ? "bg-green-50/30" :
                 demo.status === "no_show" ? "bg-red-50/30" :
                 demo.status === "pending" ? "bg-yellow-50/30" : ""
               }`}>
+                <td className="p-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(demo.id)}
+                    onChange={() => toggleSelect(demo.id)}
+                    className="rounded"
+                  />
+                </td>
                 {isWeekView && (
                   <td className="p-3 text-xs font-medium text-gray-500">
                     {DAY_NAMES[demoDay]}
@@ -338,14 +418,23 @@ export default function DemosPage() {
                 </td>
                 <td className="p-3">
                   {demo.confirmedBy ? (
-                    <span className={`text-xs font-medium ${
+                    <span className={`text-xs font-medium inline-flex items-center gap-1 ${
                       demo.confirmedBy === "fireflies_auto" ? "text-purple-600" :
                       demo.confirmedBy === "payment_auto" ? "text-blue-600" :
+                      demo.confirmedBy === "calendly_webhook" ? "text-orange-600" :
                       "text-green-600"
                     }`}>
-                      {demo.confirmedBy === "fireflies_auto" ? "Fireflies" :
-                       demo.confirmedBy === "payment_auto" ? "Payment" :
-                       demo.confirmedBy}
+                      {demo.confirmedBy === "fireflies_auto" ? (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Fireflies</>
+                      ) : demo.confirmedBy === "payment_auto" ? (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Payment</>
+                      ) : demo.confirmedBy === "calendly_webhook" ? (
+                        "Calendly"
+                      ) : demo.confirmedBy === "gcal_sync" ? (
+                        "Calendar"
+                      ) : (
+                        demo.confirmedBy
+                      )}
                     </span>
                   ) : demo.status === "pending" ? (
                     <Badge variant="warning">Needs Review</Badge>
@@ -370,7 +459,7 @@ export default function DemosPage() {
           })}
           {demosToShow.length === 0 && (
             <tr>
-              <td colSpan={isWeekView ? 8 : 7} className="p-8 text-center text-gray-500">
+              <td colSpan={isWeekView ? 9 : 8} className="p-8 text-center text-gray-500">
                 {isWeekView ? "No demos this week" : `No demos on ${DAY_NAMES[selectedDay]}`}
               </td>
             </tr>
