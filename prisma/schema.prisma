@@ -39,6 +39,7 @@ model Week {
   deals       Deal[]
   payrollRuns PayrollRun[]
   expenses    Expense[]
+  dayLocks    DayLock[]
 
   @@unique([weekStart])
 }
@@ -192,4 +193,21 @@ model AuditLog {
   newValue   String?  // JSON
   performedBy String?
   createdAt  DateTime @default(now())
+}
+
+model DayLock {
+  id          String   @id @default(cuid())
+  weekId      String
+  date        DateTime
+  dayOfWeek   Int
+  demoCount   Int      @default(0)
+  showCount   Int      @default(0)
+  noShowCount Int      @default(0)
+  cashCents   Int      @default(0)
+  lockedBy    String   @default("admin")
+  lockedAt    DateTime @default(now())
+
+  week Week @relation(fields: [weekId], references: [id])
+
+  @@unique([weekId, date])
 }

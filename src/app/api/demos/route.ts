@@ -24,6 +24,22 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json();
   const { demoId, status, closerId, notes } = body;
 
+  // Check if demo's day is locked
+  const existingDemo = await prisma.demo.findUnique({
+    where: { id: demoId },
+    include: { booking: true },
+  });
+  if (existingDemo && status) {
+    const demoDate = new Date(existingDemo.booking.demoDate);
+    const dayStart = new Date(Date.UTC(demoDate.getUTCFullYear(), demoDate.getUTCMonth(), demoDate.getUTCDate()));
+    const lock = await prisma.dayLock.findUnique({
+      where: { weekId_date: { weekId: existingDemo.weekId, date: dayStart } },
+    });
+    if (lock) {
+      return NextResponse.json({ error: "Cannot update: day is locked" }, { status: 403 });
+    }
+  }
+
   const updateData: Record<string, unknown> = {};
   if (status) {
     updateData.status = status;
@@ -33,7 +49,7 @@ export async function PATCH(request: NextRequest) {
   if (closerId !== undefined) updateData.closerId = closerId;
   if (notes !== undefined) updateData.notes = notes;
 
-  const oldDemo = await prisma.demo.findUnique({ where: { id: demoId } });
+  const oldDemo = existingDemo;
 
   const demo = await prisma.demo.update({
     where: { id: demoId },
