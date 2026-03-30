@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/sync/gcal",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ]
 }
