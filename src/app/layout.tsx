@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Sidebar } from "@/components/sidebar";
 import { WeekSelector } from "@/components/week-selector";
+import { SyncButton } from "@/components/sync-button";
 import { Suspense } from "react";
 import "./globals.css";
 
@@ -37,18 +38,5 @@ export default function RootLayout({
         </div>
       </body>
     </html>
-  );
-}
-
-function SyncButton() {
-  return (
-    <form action="/api/sync" method="POST">
-      <button
-        type="submit"
-        className="h-9 px-4 rounded-lg bg-[var(--primary)] text-white text-sm font-medium hover:bg-green-700 transition-colors"
-      >
-        Sync Data
-      </button>
-    </form>
   );
 }
