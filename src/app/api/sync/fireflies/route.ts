@@ -142,22 +142,21 @@ export async function POST() {
         });
         results.showed++;
       } else {
-        // No transcript — only mark as no-show if demo time has passed by > 1 hour
+        // No transcript — leave as pending, but flag "no transcript" if demo time passed
         const now = new Date();
         const hourAfterDemo = new Date(demoDate.getTime() + 60 * 60 * 1000);
 
-        if (now > hourAfterDemo) {
+        if (now > hourAfterDemo && !demo.notes?.includes("no_transcript")) {
+          // Add a note so the UI can show "No Fireflies transcript" badge
           await prisma.demo.update({
             where: { id: demo.id },
             data: {
-              status: "no_show",
-              confirmedBy: "fireflies_auto",
-              confirmedAt: new Date(),
+              notes: [demo.notes, "no_transcript"].filter(Boolean).join(","),
             },
           });
-          results.noShow++;
+          results.noShow++; // counted as "flagged", not actually marked no-show
         } else {
-          results.skipped++; // Demo hasn't happened yet or just ended
+          results.skipped++;
         }
       }
     } catch (e) {
