@@ -17,7 +17,13 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ deals });
+  // Also return unlinked payments (not associated with any deal)
+  const unlinkedPayments = await prisma.payment.findMany({
+    where: { dealId: null },
+    orderBy: { paidAt: "desc" },
+  });
+
+  return NextResponse.json({ deals, unlinkedPayments });
 }
 
 export async function POST(request: NextRequest) {

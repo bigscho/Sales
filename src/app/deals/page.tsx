@@ -42,6 +42,7 @@ export default function DealsPage() {
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
   const [deals, setDeals] = useState<DealRecord[]>([]);
+  const [unlinkedPayments, setUnlinkedPayments] = useState<{ id: string; amountCents: number; customerName: string | null; customerEmail: string | null; paidAt: string; stripePaymentIntentId: string | null }[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -55,6 +56,7 @@ export default function DealsPage() {
       fetch("/api/team").then((r) => r.json()),
     ]).then(([dealData, teamData]) => {
       setDeals(dealData.deals || []);
+      setUnlinkedPayments(dealData.unlinkedPayments || []);
       setTeam(teamData.members || []);
       setLoading(false);
     });
@@ -257,6 +259,45 @@ export default function DealsPage() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Unlinked Stripe Payments */}
+      {!loading && unlinkedPayments.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Unlinked Stripe Payments</h3>
+          <p className="text-sm text-[var(--muted-foreground)] mb-3">
+            These payments are in Stripe but not linked to a deal yet. Create a deal above to associate them.
+          </p>
+          <div className="bg-white rounded-xl border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left p-3 font-medium">Customer</th>
+                  <th className="text-left p-3 font-medium">Date</th>
+                  <th className="text-right p-3 font-medium">Amount</th>
+                  <th className="text-left p-3 font-medium">Stripe ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unlinkedPayments.map((p) => (
+                  <tr key={p.id} className="border-b last:border-0">
+                    <td className="p-3 font-medium">{p.customerName || p.customerEmail || "Unknown"}</td>
+                    <td className="p-3">{formatDate(p.paidAt)}</td>
+                    <td className="p-3 text-right font-medium">{formatCents(p.amountCents)}</td>
+                    <td className="p-3 text-xs text-gray-500 font-mono">{p.stripePaymentIntentId?.slice(0, 20)}...</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50">
+                <tr>
+                  <td colSpan={2} className="p-3 font-semibold">Total</td>
+                  <td className="p-3 text-right font-bold">{formatCents(unlinkedPayments.reduce((s, p) => s + p.amountCents, 0))}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
     </div>

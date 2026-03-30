@@ -45,12 +45,16 @@ export default function PnLPage() {
     ]).then(([expData, dealData]) => {
       setExpenses(expData.expenses || []);
       setCategories(expData.categories || []);
-      // Collect all payments from deals
+      // Collect all payments from deals + unlinked payments
       const allPayments: PaymentRecord[] = [];
       for (const deal of dealData.deals || []) {
         for (const p of deal.payments || []) {
           allPayments.push({ ...p, customerName: deal.prospectName, customerEmail: deal.prospectEmail });
         }
+      }
+      // Include unlinked Stripe payments as revenue too
+      for (const p of dealData.unlinkedPayments || []) {
+        allPayments.push({ id: p.id, amountCents: p.amountCents, paidAt: p.paidAt, customerName: p.customerName, customerEmail: p.customerEmail, status: "succeeded" });
       }
       setPayments(allPayments);
       setLoading(false);
