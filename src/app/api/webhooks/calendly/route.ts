@@ -82,16 +82,10 @@ export async function POST(request: NextRequest) {
       });
       if (byCalendlyId) return byCalendlyId;
 
-      // Try GCal-format ID (eventId_CloserName)
-      if (closerName) {
-        // Google Calendar event IDs won't match Calendly UUIDs, but if GCal sync
-        // already created this booking, we can find it by email + date window
-      }
-
-      // Find by email + date (within 2 hour window to account for timezone shifts)
+      // Find by email + date (within 4 hour window to account for timezone shifts)
       if (inviteeEmail && demoDate) {
-        const windowStart = new Date(demoDate.getTime() - 2 * 60 * 60 * 1000);
-        const windowEnd = new Date(demoDate.getTime() + 2 * 60 * 60 * 1000);
+        const windowStart = new Date(demoDate.getTime() - 4 * 60 * 60 * 1000);
+        const windowEnd = new Date(demoDate.getTime() + 4 * 60 * 60 * 1000);
         const byEmailDate = await prisma.booking.findFirst({
           where: {
             prospectEmail: { equals: inviteeEmail, mode: "insensitive" },
@@ -102,18 +96,38 @@ export async function POST(request: NextRequest) {
         if (byEmailDate) return byEmailDate;
       }
 
-      // Find by name + date (fallback if no email match)
-      if (inviteeName && demoDate) {
-        const windowStart = new Date(demoDate.getTime() - 2 * 60 * 60 * 1000);
-        const windowEnd = new Date(demoDate.getTime() + 2 * 60 * 60 * 1000);
-        const byNameDate = await prisma.booking.findFirst({
+      // Find by email alone (same week) — catches cases where time offset is large
+      if (inviteeEmail) {
+        const byEmail = await prisma.booking.findFirst({
           where: {
-            prospectName: { equals: inviteeName, mode: "insensitive" },
-            demoDate: { gte: windowStart, lte: windowEnd },
+            prospectEmail: { equals: inviteeEmail, mode: "insensitive" },
           },
+          orderBy: { demoDate: "desc" },
           include: { demo: true },
         });
-        if (byNameDate) return byNameDate;
+        if (byEmail && demoDate) {
+          // Only match if within same week (7 days)
+          const diff = Math.abs(new Date(byEmail.demoDate).getTime() - demoDate.getTime());
+          if (diff < 7 * 24 * 60 * 60 * 1000) return byEmail;
+        }
+      }
+
+      // Find by name + date (fallback if no email match)
+      if (inviteeName && demoDate) {
+        const windowStart = new Date(demoDate.getTime() - 4 * 60 * 60 * 1000);
+        const windowEnd = new Date(demoDate.getTime() + 4 * 60 * 60 * 1000);
+        // Use first name only for matching to handle "Nick Mercado" vs "Nick Mercado Schofield"
+        const firstName = inviteeName.split(/\s+/)[0];
+        if (firstName && firstName.length > 2) {
+          const byNameDate = await prisma.booking.findFirst({
+            where: {
+              prospectName: { startsWith: firstName, mode: "insensitive" },
+              demoDate: { gte: windowStart, lte: windowEnd },
+            },
+            include: { demo: true },
+          });
+          if (byNameDate) return byNameDate;
+        }
       }
 
       return null;
