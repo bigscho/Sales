@@ -10,11 +10,10 @@ const FIREFLIES_GQL = "https://api.fireflies.ai/graphql";
 interface TranscriptData {
   id: string;
   title: string;
-  dateString: string;
+  date: string;
   duration: number;
-  organizerEmail: string;
+  organizer_email: string;
   participants: string[];
-  meetingAttendees: { email: string; displayName: string | null }[];
 }
 
 async function fetchTranscript(apiKey: string, meetingId: string): Promise<TranscriptData | null> {
@@ -23,11 +22,10 @@ async function fetchTranscript(apiKey: string, meetingId: string): Promise<Trans
       transcript(id: "${meetingId}") {
         id
         title
-        dateString
+        date
         duration
-        organizerEmail
+        organizer_email
         participants
-        meetingAttendees { email displayName }
       }
     }
   `;
@@ -77,7 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, action: "too_short" });
     }
 
-    const meetingDate = new Date(transcript.dateString);
+    const meetingDate = new Date(transcript.date);
     const windowStart = new Date(meetingDate.getTime() - 3 * 60 * 60 * 1000);
     const windowEnd = new Date(meetingDate.getTime() + 3 * 60 * 60 * 1000);
 
