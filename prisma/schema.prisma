@@ -211,3 +211,10 @@ model DayLock {
 
   @@unique([weekId, date])
 }
+
+model DismissedEvent {
+  id              String   @id @default(cuid())
+  calendarEventId String   @unique
+  reason          String   @default("deleted")
+  dismissedAt     DateTime @default(now())
+}

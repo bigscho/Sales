@@ -151,6 +151,15 @@ export async function DELETE(request: NextRequest) {
   // Unlink any deal referencing this demo
   await prisma.deal.updateMany({ where: { demoId }, data: { demoId: null } });
 
+  // Add to dismissed events so syncs don't re-create it
+  if (demo.booking.calendarEventId) {
+    await prisma.dismissedEvent.upsert({
+      where: { calendarEventId: demo.booking.calendarEventId },
+      create: { calendarEventId: demo.booking.calendarEventId, reason: "deleted" },
+      update: { reason: "deleted", dismissedAt: new Date() },
+    });
+  }
+
   // Delete demo then booking
   await prisma.demo.delete({ where: { id: demoId } });
   await prisma.booking.delete({ where: { id: demo.bookingId } });

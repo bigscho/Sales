@@ -196,6 +196,12 @@ async function syncCalendar(
 
       const compositeId = `${event.id}_${closerName}`;
 
+      // Skip dismissed events (manually deleted by user)
+      const dismissed = await prisma.dismissedEvent.findUnique({
+        where: { calendarEventId: compositeId },
+      });
+      if (dismissed) continue;
+
       // Handle cancelled events
       if (event.status === "cancelled") {
         const existing = await prisma.booking.findUnique({

@@ -140,6 +140,14 @@ export async function POST(request: NextRequest) {
 
     // === HANDLE invitee.created ===
     if (event === "invitee.created") {
+      // Skip if this event was manually dismissed/deleted
+      const dismissed = await prisma.dismissedEvent.findUnique({
+        where: { calendarEventId: calendlyId },
+      });
+      if (dismissed) {
+        return NextResponse.json({ received: true, action: "dismissed_skipped" });
+      }
+
       const existing = await findExistingBooking();
       if (existing) {
         // Already exists (created by GCal sync or previous webhook) — update if needed
