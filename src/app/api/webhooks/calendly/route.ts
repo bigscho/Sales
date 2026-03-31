@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
       // Setter pigeon game — real-time booking notification
       if (setterId) {
         try {
-          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday, formatSetterMention } = await import("@/lib/setter-game");
+          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday, formatSetterMention, getAllSetterScoresToday } = await import("@/lib/setter-game");
           const { sendSlackSetter } = await import("@/lib/slack");
 
           if (isWeekday()) {
@@ -263,13 +263,22 @@ export async function POST(request: NextRequest) {
               const { count } = await getSetterTodayBookings(setterId);
               const mention = formatSetterMention(setter);
 
+              // Number emoji for the count (1-10, then just the number)
+              const numEmojis = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+              const countEmoji = count <= 10 ? numEmojis[count] : `*${count}*`;
+
               // Check if this booking crossed a tier threshold (fires GIF message)
               const tierCrossed = await checkAndFireTierCrossing(setterId, count);
 
               // If no tier was crossed, send a simple count update
               if (!tierCrossed) {
-                await sendSlackSetter(`${mention} is at ${count} today`);
+                await sendSlackSetter(`${countEmoji}\n${mention} is at ${count} today`);
               }
+
+              // Always send team total
+              const allScores = await getAllSetterScoresToday();
+              const teamTotal = allScores.reduce((sum, s) => sum + s.bookings, 0);
+              await sendSlackSetter(`*TOTAL booked today so far: ${teamTotal}*`);
             }
           }
         } catch { /* setter game not configured */ }
