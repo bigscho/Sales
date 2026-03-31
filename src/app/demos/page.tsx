@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,10 +95,13 @@ export default function DemosPage() {
   const [viewMode, setViewMode] = useState<"day" | "week">("day");
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [matchingPaymentId, setMatchingPaymentId] = useState<string | null>(null);
+  const initialLoad = useRef(true);
 
   const loadData = useCallback(() => {
     if (!weekId) return;
-    setLoading(true);
+    // Only show skeleton on very first load — subsequent refreshes update silently
+    if (initialLoad.current) setLoading(true);
     Promise.all([
       fetch(`/api/demos?weekId=${weekId}`).then((r) => r.json()),
       fetch("/api/team").then((r) => r.json()),
@@ -119,6 +122,7 @@ export default function DemosPage() {
       }
       setPayments(allPayments);
       setLoading(false);
+      initialLoad.current = false;
     });
   }, [weekId]);
 
@@ -581,15 +585,53 @@ export default function DemosPage() {
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         ) : (p.matchStatus === "needs_review" || p.matchStatus === "unmatched") ? (
-                          <span
-                            className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-100 text-yellow-600 text-xs font-bold flex-shrink-0 cursor-pointer transition-opacity hover:opacity-70 hover:bg-yellow-200"
-                            title="Click to match"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Full dropdown matching will be added separately
-                              alert("Match dropdown coming soon — use the API to match this payment to a demo.");
-                            }}
-                          >?</span>
+                          <span className="relative inline-block">
+                            <span
+                              className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-100 text-yellow-600 text-xs font-bold flex-shrink-0 cursor-pointer transition-opacity hover:opacity-70 hover:bg-yellow-200"
+                              title="Click to match to a demo"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMatchingPaymentId(matchingPaymentId === p.id ? null : p.id);
+                              }}
+                            >?</span>
+                            {matchingPaymentId === p.id && (
+                              <div className="absolute left-0 top-6 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-64 max-h-48 overflow-y-auto">
+                                <div className="px-3 py-2 border-b text-xs font-medium text-gray-500">Match to demo:</div>
+                                {demos.filter(d => d.status === "showed" || d.status === "pending").length === 0 ? (
+                                  <div className="px-3 py-2 text-xs text-gray-400">No demos available</div>
+                                ) : (
+                                  demos.filter(d => d.status === "showed" || d.status === "pending").map(d => (
+                                    <button
+                                      key={d.id}
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-green-50 border-b last:border-0 flex items-center justify-between"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await fetch("/api/payments", {
+                                          method: "PATCH",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ paymentId: p.id, matchToDemoId: d.id }),
+                                        });
+                                        setMatchingPaymentId(null);
+                                        loadData();
+                                      }}
+                                    >
+                                      <div>
+                                        <span className="font-medium">{d.booking.prospectName}</span>
+                                        <span className="text-gray-400 ml-1">
+                                          {new Date(d.booking.demoDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                        </span>
+                                      </div>
+                                      <span className="text-gray-400">{d.closer?.name || ""}</span>
+                                    </button>
+                                  ))
+                                )}
+                                <button
+                                  className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50"
+                                  onClick={(e) => { e.stopPropagation(); setMatchingPaymentId(null); }}
+                                >Cancel</button>
+                              </div>
+                            )}
+                          </span>
                         ) : null}
                       </span>
                     </td>

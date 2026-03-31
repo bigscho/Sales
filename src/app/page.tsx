@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { formatCents, formatPercent } from "@/lib/utils";
@@ -40,10 +40,11 @@ export default function Dashboard() {
   const [kpis, setKpis] = useState<KPIData | null>(null);
   const [demos, setDemos] = useState<DemoRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const initialLoad = useRef(true);
 
   const loadData = useCallback(() => {
     if (!weekId) return;
-    setLoading(true);
+    if (initialLoad.current) setLoading(true);
     Promise.all([
       fetch(`/api/kpis?weekId=${weekId}`).then((r) => r.json()),
       fetch(`/api/demos?weekId=${weekId}`).then((r) => r.json()),
@@ -51,6 +52,7 @@ export default function Dashboard() {
       setKpis(kpiData);
       setDemos(demoData.demos || []);
       setLoading(false);
+      initialLoad.current = false;
     });
   }, [weekId]);
 
