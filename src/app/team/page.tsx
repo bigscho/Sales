@@ -10,6 +10,7 @@ interface TeamMember {
   name: string;
   role: string;
   tier: number;
+  slackUserId: string | null;
   cumulativeShows: number;
   consecutive15PlusWeeks: number;
   isActive: boolean;
@@ -53,6 +54,7 @@ export default function TeamPage() {
         name: form.get("name"),
         role: form.get("role"),
         tier: Number(form.get("tier")) || 1,
+        slackUserId: form.get("slackUserId") || null,
       }),
     });
     setShowAddForm(false);
@@ -96,6 +98,7 @@ export default function TeamPage() {
                 <option value="3">Tier 3 - Senior SDR</option>
                 <option value="4">Tier 4 - Lead SDR</option>
               </select>
+              <input name="slackUserId" placeholder="Slack ID (U0...)" className="border rounded-lg px-3 py-2 text-sm w-36" />
               <Button type="submit" size="sm">Add</Button>
             </form>
           </CardContent>
@@ -119,6 +122,7 @@ export default function TeamPage() {
                   <tr>
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Tier</th>
+                    <th className="text-left p-3 font-medium">Slack ID</th>
                     <th className="text-right p-3 font-medium">Cumulative Shows</th>
                     <th className="text-right p-3 font-medium">Consec. 15+ Weeks</th>
                     <th className="text-left p-3 font-medium">Status</th>
@@ -140,6 +144,20 @@ export default function TeamPage() {
                           ))}
                         </select>
                       </td>
+                      <td className="p-3">
+                        <input
+                          value={m.slackUserId || ""}
+                          placeholder="U0..."
+                          className="border rounded px-2 py-1 text-xs w-28"
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== m.slackUserId) updateMember(m.id, { slackUserId: val });
+                          }}
+                          onChange={(e) => {
+                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, slackUserId: e.target.value } : p));
+                          }}
+                        />
+                      </td>
                       <td className="p-3 text-right">{m.cumulativeShows}</td>
                       <td className="p-3 text-right">{m.consecutive15PlusWeeks}</td>
                       <td className="p-3">
@@ -159,7 +177,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {setters.length === 0 && (
-                    <tr><td colSpan={6} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
+                    <tr><td colSpan={7} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
                   )}
                 </tbody>
               </table>
@@ -174,6 +192,7 @@ export default function TeamPage() {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-left p-3 font-medium">Name</th>
+                    <th className="text-left p-3 font-medium">Slack ID</th>
                     <th className="text-left p-3 font-medium">Status</th>
                     <th className="p-3 font-medium">Actions</th>
                   </tr>
@@ -182,6 +201,20 @@ export default function TeamPage() {
                   {closers.map((m) => (
                     <tr key={m.id} className="border-b last:border-0">
                       <td className="p-3 font-medium">{m.name}</td>
+                      <td className="p-3">
+                        <input
+                          value={m.slackUserId || ""}
+                          placeholder="U0..."
+                          className="border rounded px-2 py-1 text-xs w-28"
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== m.slackUserId) updateMember(m.id, { slackUserId: val });
+                          }}
+                          onChange={(e) => {
+                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, slackUserId: e.target.value } : p));
+                          }}
+                        />
+                      </td>
                       <td className="p-3">
                         <Badge variant={m.isActive ? "success" : "secondary"}>
                           {m.isActive ? "Active" : "Inactive"}
@@ -195,7 +228,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {closers.length === 0 && (
-                    <tr><td colSpan={3} className="p-4 text-center text-gray-500">No closers added yet</td></tr>
+                    <tr><td colSpan={4} className="p-4 text-center text-gray-500">No closers added yet</td></tr>
                   )}
                 </tbody>
               </table>
