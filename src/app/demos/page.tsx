@@ -46,6 +46,9 @@ interface PaymentRecord {
   customerEmail: string | null;
   paidAt: string;
   status: string;
+  revenueType: string;
+  matchStatus: string;
+  isSubscription: boolean;
 }
 
 const statusOptions = [
@@ -486,45 +489,106 @@ export default function DemosPage() {
   );
 
   // Helper to render the financial feed
-  const renderFinancialFeed = (paymentsToShow: PaymentRecord[], isWeekView: boolean) => (
-    <div className="bg-white rounded-xl border overflow-hidden h-full">
-      <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">
-          {isWeekView ? "Week Payments" : `Payments — ${DAY_NAMES[selectedDay]}`}
-          {!isWeekView && selectedDayDate && ` ${getDateLabel(selectedDayDate)}`}
-        </h3>
-        <span className="text-sm font-bold text-green-600">
-          {formatCents(paymentsToShow.reduce((s, p) => s + p.amountCents, 0))}
-        </span>
-      </div>
-      {paymentsToShow.length > 0 ? (
-        <table className="w-full text-sm">
-          <thead className="border-b">
-            <tr>
-              {isWeekView && <th className="text-left p-2 pl-4 font-medium text-xs text-gray-500">Day</th>}
-              <th className="text-left p-2 pl-4 font-medium text-xs text-gray-500">Customer</th>
-              <th className="text-right p-2 pr-4 font-medium text-xs text-gray-500">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paymentsToShow.map((p) => (
-              <tr key={p.id} className="border-b last:border-0">
-                {isWeekView && (
-                  <td className="p-2 pl-4 text-xs text-gray-500">{DAY_NAMES[getDayOfWeek(p.paidAt)]}</td>
-                )}
-                <td className="p-2 pl-4 text-sm">{p.customerName || p.customerEmail || "Unknown"}</td>
-                <td className="p-2 pr-4 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="p-6 text-center text-gray-400 text-sm">
-          {isWeekView ? "No payments this week" : "No payments today"}
+  const renderFinancialFeed = (paymentsToShow: PaymentRecord[], isWeekView: boolean) => {
+    const mrrTotal = paymentsToShow
+      .filter((p) => p.revenueType === "mrr")
+      .reduce((s, p) => s + p.amountCents, 0);
+    const oneTimeTotal = paymentsToShow
+      .filter((p) => p.revenueType === "one_time")
+      .reduce((s, p) => s + p.amountCents, 0);
+    const miscTotal = paymentsToShow
+      .filter((p) => p.revenueType === "unknown")
+      .reduce((s, p) => s + p.amountCents, 0);
+
+    return (
+      <div className="bg-white rounded-xl border overflow-hidden h-full">
+        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">
+            {isWeekView ? "Week Payments" : `Payments — ${DAY_NAMES[selectedDay]}`}
+            {!isWeekView && selectedDayDate && ` ${getDateLabel(selectedDayDate)}`}
+          </h3>
+          <span className="text-sm font-bold text-green-600">
+            {formatCents(paymentsToShow.reduce((s, p) => s + p.amountCents, 0))}
+          </span>
         </div>
-      )}
-    </div>
-  );
+        {paymentsToShow.length > 0 ? (
+          <>
+            <table className="w-full text-sm">
+              <thead className="border-b">
+                <tr>
+                  {isWeekView && <th className="text-left p-2 pl-4 font-medium text-xs text-gray-500">Day</th>}
+                  <th className="text-left p-2 pl-4 font-medium text-xs text-gray-500">Customer</th>
+                  <th className="text-left p-2 font-medium text-xs text-gray-500">Type</th>
+                  <th className="text-right p-2 pr-4 font-medium text-xs text-gray-500">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentsToShow.map((p) => (
+                  <tr key={p.id} className="border-b last:border-0">
+                    {isWeekView && (
+                      <td className="p-2 pl-4 text-xs text-gray-500">{DAY_NAMES[getDayOfWeek(p.paidAt)]}</td>
+                    )}
+                    <td className="p-2 pl-4 text-sm">
+                      <span className="inline-flex items-center gap-1.5">
+                        {p.customerName || p.customerEmail || "Unknown"}
+                        {p.matchStatus === "matched" ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline-block flex-shrink-0">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        ) : (p.matchStatus === "needs_review" || p.matchStatus === "unmatched") ? (
+                          <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-100 text-yellow-600 text-xs font-bold flex-shrink-0">?</span>
+                        ) : null}
+                      </span>
+                    </td>
+                    <td className="p-2">
+                      {p.revenueType === "mrr" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">MRR</span>
+                      ) : p.revenueType === "one_time" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">One-time</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">Misc</span>
+                      )}
+                    </td>
+                    <td className="p-2 pr-4 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {/* Summary totals */}
+            <div className="border-t bg-gray-50 px-4 py-3 space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">MRR</span>
+                  Total
+                </span>
+                <span className="font-semibold text-blue-700">{formatCents(mrrTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">One-time</span>
+                  Total
+                </span>
+                <span className="font-semibold text-orange-700">{formatCents(oneTimeTotal)}</span>
+              </div>
+              {miscTotal > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">Misc</span>
+                    Total
+                  </span>
+                  <span className="font-semibold text-gray-600">{formatCents(miscTotal)}</span>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="p-6 text-center text-gray-400 text-sm">
+            {isWeekView ? "No payments this week" : "No payments today"}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">

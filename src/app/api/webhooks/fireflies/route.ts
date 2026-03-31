@@ -134,6 +134,11 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        try {
+          const { sendSlackTeam } = await import("@/lib/slack");
+          await sendSlackTeam(`✅ ${demo.booking.prospectName} SHOWED on call (verified by Fireflies)`);
+        } catch { /* Slack not configured */ }
+
         matched = true;
         break; // One transcript = one demo
       }

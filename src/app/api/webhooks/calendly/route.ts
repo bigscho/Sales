@@ -251,6 +251,13 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      try {
+        const { sendSlackTeam } = await import("@/lib/slack");
+        const dateStr = effectiveDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        const setterLabel = setterName ? ` (booked by ${setterName})` : "";
+        await sendSlackTeam(`🗓 New demo booked: ${inviteeName} with ${closerName || "TBD"} on ${dateStr}${setterLabel}`);
+      } catch { /* Slack not configured */ }
+
       return NextResponse.json({
         received: true,
         action: "created",

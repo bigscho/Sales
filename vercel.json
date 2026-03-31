@@ -23,6 +23,14 @@
     {
       "path": "/api/sync/fireflies",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/slack/daily",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/slack/ceo",
+      "schedule": "0 15 * * 6"
     }
   ]
 }

@@ -37,6 +37,7 @@ model Week {
   bookings    Booking[]
   demos       Demo[]
   deals       Deal[]
+  payments    Payment[]
   payrollRuns PayrollRun[]
   expenses    Expense[]
   dayLocks    DayLock[]
@@ -109,6 +110,7 @@ model Deal {
 model Payment {
   id                    String   @id @default(cuid())
   dealId                String?
+  weekId                String?
   stripePaymentIntentId String?  @unique
   stripeCustomerId      String?
   amountCents           Int
@@ -125,6 +127,7 @@ model Payment {
   createdAt             DateTime @default(now())
 
   deal Deal? @relation(fields: [dealId], references: [id])
+  week Week? @relation(fields: [weekId], references: [id])
 }
 
 model PayrollRun {

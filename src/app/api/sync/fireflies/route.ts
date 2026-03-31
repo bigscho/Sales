@@ -156,6 +156,10 @@ export async function POST() {
             firefliesTranscriptId: match.id,
           },
         });
+        try {
+          const { sendSlackTeam } = await import("@/lib/slack");
+          await sendSlackTeam(`✅ ${demo.booking.prospectName} SHOWED on ${demo.closer?.name || "unknown"}'s call`);
+        } catch { /* Slack not configured */ }
         results.showed++;
       } else {
         // No transcript — leave as pending, but flag "no transcript" if demo time passed
