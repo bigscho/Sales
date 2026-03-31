@@ -1,4 +1,15 @@
-# Grassfed Sales Dashboard — Session Handoff (March 30, 2026)
+# Grassfed Sales Dashboard — Session Handoff (March 31, 2026)
+
+## IMPORTANT: Documentation Rules
+- **Read `GrassfedSales.md` first** for full project context (schema, routes, architecture)
+- **After making changes**, update both this file AND `GrassfedSales.md` if you:
+  - Add/modify API routes
+  - Change the Prisma schema
+  - Add new Slack channels or notifications
+  - Add new cron jobs
+  - Change integrations (Calendly, Stripe, GCal, Fireflies)
+  - Add new environment variables
+- **Before ending a session**, update the "Known Bugs" and "Remaining Pillars" sections below
 
 ## Project
 Next.js sales tracker at /home/user/Sales, deployed on Vercel (sales-puce-six.vercel.app).
@@ -15,22 +26,29 @@ DB: Neon PostgreSQL via Prisma ORM.
 - **Demos page**: day/week view, bulk select, side-by-side financials, no-flash refresh
 - **Day locking** system
 - **Dismissed events** (deleted demos stay deleted)
-- **Slack**: real-time alerts (bookings, shows, payments) + daily recap (6pm ET) + CEO weekly (Sat 11am ET)
+- **Slack #sales-team**: real-time alerts (bookings, shows, payments) + daily recap (6pm ET)
+- **Slack #setter-tpds**: pigeon gamification (9AM/12PM/6PM + real-time tier crossings)
+- **Slack #show-rate-tpds**: show notifications tagging setter + weekly totals
+- **Slack #closer-tpds**: close/payment notifications tagging closer + revenue totals
+- **Slack CEO DM**: weekly briefing (Sat 11am ET)
 - **Dashboard**: New Revenue as headline KPI
+- **Setter pigeon gamification**: daily score tracking, tier crossings (4/9/12), points system
 
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)
 - CALENDLY_API_TOKEN
 - GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_KEY
-- STRIPE_WEBHOOK_SECRET
+- STRIPE_WEBHOOK_SECRET + STRIPE_SECRET_KEY
 - FIREFLIES_API_KEY (comma-separated: Colin's,Mark's)
-- SLACK_WEBHOOK_URL (team channel)
+- SLACK_WEBHOOK_URL (#sales-team)
 - SLACK_CEO_WEBHOOK_URL (CEO DM)
+- SLACK_SETTER_WEBHOOK_URL (#setter-tpds)
+- SLACK_SHOWRATE_WEBHOOK_URL (#show-rate-tpds)
+- SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
 
 ## Known Bugs to Fix
-1. **Duplicate demos** — dedup fix pushed but confirm with fresh booking
-2. **Calendly "Schofield" name** — webhook appends closer's last name to prospect
-3. **Test $1 payments** — need to be deleted from DB
+1. **Calendly "Schofield" name** — webhook sometimes appends closer's last name to prospect name. Dedup catches most cases but edge cases remain
+2. **Team page Slack ID field** — was being added when session ended, needs completion (add slackUserId input to add/edit form on team page)
 
 ## Remaining Pillars (in order)
 1. **Pillar 3: CEO Slack Deep Dive** — P&L summary, anomaly detection, cash flow week-over-week. User said "let's dive deeper when we do it"
