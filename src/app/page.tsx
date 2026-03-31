@@ -13,6 +13,8 @@ interface KPIData {
   totalNoShows: number;
   totalPending: number;
   showRate: number;
+  confirmedShowRate: number;
+  totalConfirmed: number;
   totalCloses: number;
   totalHeld: number;
   totalLost: number;
@@ -152,8 +154,8 @@ export default function Dashboard() {
         />
         <KPICard
           title="Show Rate"
-          value={formatPercent(kpis.showRate)}
-          subtitle={`${kpis.totalShows} of ${kpis.totalBookings} booked`}
+          value={kpis.totalConfirmed > 0 ? formatPercent(kpis.confirmedShowRate) : "\u2014"}
+          subtitle={`${kpis.totalShows} of ${kpis.totalConfirmed} confirmed (${kpis.totalPending} pending)`}
         />
         <KPICard
           title="Close Rate"

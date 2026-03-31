@@ -9,6 +9,8 @@ export interface WeeklyKPIs {
   totalNoShows: number;
   totalPending: number;
   showRate: number;
+  confirmedShowRate: number; // shows / (shows + noShows)
+  totalConfirmed: number; // shows + noShows
   totalCloses: number;
   totalHeld: number;
   totalLost: number;
@@ -60,6 +62,8 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const totalNoShows = allDemos.filter((d) => d.status === "no_show").length;
   const totalPending = allDemos.filter((d) => d.status === "pending").length;
   const showRate = totalBookings > 0 ? totalShows / totalBookings : 0;
+  const totalConfirmed = totalShows + totalNoShows;
+  const confirmedShowRate = totalConfirmed > 0 ? totalShows / totalConfirmed : 0;
 
   const deals = await prisma.deal.findMany({
     where: { weekId },
@@ -159,6 +163,8 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     totalNoShows,
     totalPending,
     showRate,
+    confirmedShowRate,
+    totalConfirmed,
     totalCloses,
     totalHeld,
     totalLost,
