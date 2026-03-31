@@ -17,11 +17,25 @@ export async function POST(request: NextRequest) {
     }
 
     const inviteeEmail = payload.email;
-    const inviteeName = payload.name;
+    let inviteeName = payload.name;
     const inviteeUri = payload.uri;
     const eventUri = payload.event;
     const tracking = payload.tracking || {};
     const rescheduled = payload.rescheduled || false;
+
+    // Clean prospect name — Calendly sometimes includes closer name
+    // "c c Schofield" or "Nick Mercado and Colin Schofield" → strip it
+    if (inviteeName) {
+      // Remove "and [Closer Name]" pattern
+      inviteeName = inviteeName.replace(/\s+and\s+.*$/i, "").trim();
+      // Remove known closer last names that get appended
+      const closerLastNames = ["Schofield", "Whittelsey"];
+      for (const ln of closerLastNames) {
+        if (inviteeName.endsWith(` ${ln}`)) {
+          inviteeName = inviteeName.slice(0, -(ln.length + 1)).trim();
+        }
+      }
+    }
 
     const eventUuid = eventUri?.split("/scheduled_events/")[1]?.split("/")[0] || "";
     const calendlyId = `calendly_${eventUuid}`;
