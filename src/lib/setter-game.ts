@@ -206,3 +206,35 @@ export async function getPipelineCount(): Promise<number> {
     },
   });
 }
+
+// Get weekly show totals for the show rate channel
+export async function getWeeklyShowStats(): Promise<{ totalShows: number; totalPending: number }> {
+  // Get current week boundaries
+  const { getWeekRange } = await import("./utils");
+  const { start } = getWeekRange(new Date());
+  const week = await prisma.week.findFirst({ where: { weekStart: start } });
+  if (!week) return { totalShows: 0, totalPending: 0 };
+
+  const demos = await prisma.demo.findMany({ where: { weekId: week.id } });
+  const totalShows = demos.filter(d => d.status === "showed").length;
+  const totalPending = demos.filter(d => d.status === "pending").length;
+  return { totalShows, totalPending };
+}
+
+// Send show rate notification to #show-rate-tpds
+export async function sendShowNotification(prospectName: string, setterId: string | null, closerName: string | null) {
+  const { sendSlackShowRate } = await import("./slack");
+
+  let setterMention = "Unknown setter";
+  if (setterId) {
+    const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
+    if (setter) setterMention = formatSetterMention(setter);
+  }
+
+  const { totalShows } = await getWeeklyShowStats();
+  const pipeline = await getPipelineCount();
+
+  const message = `+1 SHOW on the board for ${setterMention}\n\n${prospectName} showed to their demo${closerName ? ` with ${closerName}` : ""}\n\n*TOTAL Shows for the week so far: ${totalShows}*\n*TOTAL Demos pending ahead: ${pipeline}*`;
+
+  await sendSlackShowRate(message);
+}

@@ -134,10 +134,13 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        try {
-          const { sendSlackTeam } = await import("@/lib/slack");
-          await sendSlackTeam(`✅ ${demo.booking.prospectName} SHOWED on call (verified by Fireflies)`);
-        } catch { /* Slack not configured */ }
+        // Notify show rate channel
+        if (!wasAlreadyConfirmed) {
+          try {
+            const { sendShowNotification } = await import("@/lib/setter-game");
+            await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, null);
+          } catch { /* show rate notification failed */ }
+        }
 
         matched = true;
         break; // One transcript = one demo

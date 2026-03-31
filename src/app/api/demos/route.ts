@@ -72,6 +72,18 @@ export async function PATCH(request: NextRequest) {
     },
   });
 
+  // Show rate notification — fires when a demo is newly marked as showed
+  if (status === "showed" && oldDemo?.status !== "showed") {
+    try {
+      const { sendShowNotification } = await import("@/lib/setter-game");
+      await sendShowNotification(
+        demo.booking.prospectName,
+        demo.booking.setter?.id || null,
+        demo.closer?.name || null,
+      );
+    } catch { /* show rate notification failed */ }
+  }
+
   return NextResponse.json({ demo });
 }
 
