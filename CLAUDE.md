@@ -13,8 +13,24 @@
 
 ## Project
 Next.js sales tracker at /home/user/Sales, deployed on Vercel (sales-puce-six.vercel.app).
-Branch: `claude/recap-session-progress-CNZlu`
+Primary dev branch: `claude/setup-project-access-dGk7x` (merged all work from resume-session-JU9mq)
 DB: Neon PostgreSQL via Prisma ORM.
+
+## Debug Endpoint
+`GET /api/debug` — query the DB directly to investigate booking issues:
+- `?name=andrea` — find bookings by prospect name (case-insensitive)
+- `?email=foo@bar.com` — find bookings by email
+- `?all_dismissed=true` — list all dismissed events
+- `?all_no_shows=true` — list all no-show/rescheduled demos
+- `?calendar_event_id=xxx` — look up by specific calendarEventId
+- Always returns summary stats (total bookings, demos, dismissed, status counts)
+
+## Enterprise Claude Permissions Needed
+If using Enterprise Claude (without MCP tools), it needs:
+- **Read access to Vercel env vars** or `.env.local` — the GCal service account credentials, DB URL
+- **Ability to run `npx prisma studio`** or hit the debug endpoint above to query the DB
+- **Access to Google Calendar API** responses — to see what events look like for specific attendees
+- Without these, it can write code fixes but cannot verify if they work for specific records
 
 ## What's Working
 - **Calendly webhook** → instant demo creation + Slack alert
@@ -53,6 +69,7 @@ DB: Neon PostgreSQL via Prisma ORM.
 
 ## Known Bugs to Fix
 1. **Calendly "Schofield" name** — webhook strips known closer last names but edge cases may remain with new closers
+2. **Andrea Reeves-Witherspoon invisible** — marked no_show, GCal invite dragged to next Thursday, sync returns 0 updated. She's not visible in UI on any date. Needs DB investigation via `/api/debug?name=andrea`. Likely causes: (a) calendarEventId format mismatch preventing lookup, (b) booking in DismissedEvent table, (c) weekId pointing to nonexistent/wrong week. Four code fixes already applied in gcal/route.ts but her specific record needs manual investigation.
 
 ## Remaining Pillars (in order)
 1. **Pillar 3: CEO Slack Deep Dive** — P&L summary, anomaly detection, cash flow week-over-week. User said "let's dive deeper when we do it"
