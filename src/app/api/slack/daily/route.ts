@@ -36,6 +36,13 @@ export async function POST() {
   });
   const cashCents = todayPayments.reduce((sum, p) => sum + p.amountCents, 0);
 
+  const newRevenueCents = todayPayments
+    .filter((p) => (p.customerStatusOverride || p.customerStatus) === "new")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+  const returningRevenueCents = todayPayments
+    .filter((p) => (p.customerStatusOverride || p.customerStatus) === "returning")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+
   // Tomorrow's demos count
   const tomorrowCount = await prisma.booking.count({
     where: {
@@ -56,6 +63,7 @@ export async function POST() {
     `Today's demos: *${total}* booked, *${showed}* showed, *${noShow}* no-show, *${pending}* pending`,
     `Show rate: *${showRate}%*`,
     `Cash collected today: *${formatCents(cashCents)}*`,
+    `💵 New Revenue: *${formatCents(newRevenueCents)}* | Returning: *${formatCents(returningRevenueCents)}*`,
     `Tomorrow's preview: *${tomorrowCount}* demos scheduled`,
   ];
 

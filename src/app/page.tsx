@@ -21,6 +21,8 @@ interface KPIData {
   avgCashPerClose: number;
   cashPerBooking: number;
   cashPerShow: number;
+  newRevenue: number;
+  returningRevenue: number;
   setterStats: { setterId: string; setterName: string; bookings: number; shows: number; noShows: number; showRate: number }[];
   closerStats: { closerId: string; closerName: string; shows: number; closes: number; held: number; lost: number; closeRate: number; cashCollected: number }[];
 }
@@ -161,9 +163,9 @@ export default function Dashboard() {
       {/* Revenue KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KPICard
-          title="Cash Collected"
-          value={formatCents(kpis.cashCollected)}
-          subtitle={`${kpis.totalCloses} deals closed`}
+          title="New Revenue"
+          value={formatCents(kpis.newRevenue)}
+          subtitle={`Total: ${formatCents(kpis.cashCollected)} (${formatCents(kpis.returningRevenue)} returning)`}
         />
         <KPICard
           title="Avg Cash / Close"

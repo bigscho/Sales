@@ -506,17 +506,42 @@ export default function DemosPage() {
     const newRevenue = paymentsToShow.filter((p) => getStatus(p) === "new").reduce((s, p) => s + p.amountCents, 0);
     const returningRevenue = paymentsToShow.filter((p) => getStatus(p) === "returning").reduce((s, p) => s + p.amountCents, 0);
 
+    // Revenue type cycle order
+    const revenueTypeCycle: Record<string, string> = { mrr: "one_time", one_time: "misc", misc: "mrr", unknown: "mrr" };
+
     // Badge components
-    const typeBadge = (type: string) => {
-      if (type === "mrr") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">MRR</span>;
-      if (type === "one_time") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">One-time</span>;
-      if (type === "misc") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">Misc</span>;
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-100 text-yellow-600">Unknown</span>;
+    const typeBadge = (p: PaymentRecord) => {
+      const type = getType(p);
+      const nextType = revenueTypeCycle[type] || "mrr";
+      const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        fetch('/api/payments', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId: p.id, revenueTypeOverride: nextType })
+        }).then(() => loadData());
+      };
+      const base = "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-opacity hover:opacity-70";
+      if (type === "mrr") return <span onClick={handleClick} title={`Click to change to One-time`} className={`${base} bg-blue-100 text-blue-700`}>MRR</span>;
+      if (type === "one_time") return <span onClick={handleClick} title={`Click to change to Misc`} className={`${base} bg-orange-100 text-orange-700`}>One-time</span>;
+      if (type === "misc") return <span onClick={handleClick} title={`Click to change to MRR`} className={`${base} bg-gray-100 text-gray-600`}>Misc</span>;
+      return <span onClick={handleClick} title={`Click to change to MRR`} className={`${base} bg-yellow-100 text-yellow-600`}>Unknown</span>;
     };
 
-    const statusBadge = (status: string) => {
-      if (status === "new") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">NEW</span>;
-      if (status === "returning") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600">RTN</span>;
+    const statusBadge = (p: PaymentRecord) => {
+      const status = getStatus(p);
+      const nextStatus = status === "new" ? "returning" : "new";
+      const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        fetch('/api/payments', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId: p.id, customerStatusOverride: nextStatus })
+        }).then(() => loadData());
+      };
+      const base = "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-pointer transition-opacity hover:opacity-70";
+      if (status === "new") return <span onClick={handleClick} title="Click to change to Returning" className={`${base} bg-green-100 text-green-700`}>NEW</span>;
+      if (status === "returning") return <span onClick={handleClick} title="Click to change to New" className={`${base} bg-blue-50 text-blue-600`}>RTN</span>;
       return null;
     };
 
@@ -556,14 +581,22 @@ export default function DemosPage() {
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         ) : (p.matchStatus === "needs_review" || p.matchStatus === "unmatched") ? (
-                          <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-100 text-yellow-600 text-xs font-bold flex-shrink-0">?</span>
+                          <span
+                            className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-100 text-yellow-600 text-xs font-bold flex-shrink-0 cursor-pointer transition-opacity hover:opacity-70 hover:bg-yellow-200"
+                            title="Click to match"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Full dropdown matching will be added separately
+                              alert("Match dropdown coming soon — use the API to match this payment to a demo.");
+                            }}
+                          >?</span>
                         ) : null}
                       </span>
                     </td>
                     <td className="p-2">
                       <div className="flex items-center gap-1">
-                        {typeBadge(getType(p))}
-                        {statusBadge(getStatus(p))}
+                        {typeBadge(p)}
+                        {statusBadge(p)}
                       </div>
                     </td>
                     <td className="p-2 pr-4 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>

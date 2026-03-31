@@ -21,6 +21,13 @@ export async function POST() {
     .reduce((s, p) => s + p.amountCents, 0);
   const oneTimeRevenue = totalRevenue - mrrRevenue;
 
+  const newRevenue = payments
+    .filter((p) => (p.customerStatusOverride || p.customerStatus) === "new")
+    .reduce((s, p) => s + p.amountCents, 0);
+  const returningRevenue = payments
+    .filter((p) => (p.customerStatusOverride || p.customerStatus) === "returning")
+    .reduce((s, p) => s + p.amountCents, 0);
+
   // Demos
   const demos = await prisma.demo.findMany({ where: { weekId: week.id } });
   const booked = demos.length;
@@ -71,6 +78,7 @@ export async function POST() {
     `📈 *CEO Weekly Briefing — Week of ${weekLabel}*`,
     "",
     `*Revenue:* ${formatCents(totalRevenue)} (${formatCents(mrrRevenue)} MRR + ${formatCents(oneTimeRevenue)} one-time)`,
+    `*New Revenue:* ${formatCents(newRevenue)} | *Returning:* ${formatCents(returningRevenue)}`,
     `*Demos:* ${booked} booked, ${showed} showed (${showRate}% show rate)`,
     `*Closes:* ${closeCount} closed (${closeRate}% close rate)`,
     `*Cash/booking:* ${formatCents(cashPerBooking)}`,

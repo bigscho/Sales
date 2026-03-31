@@ -17,6 +17,8 @@ export interface WeeklyKPIs {
   avgCashPerClose: number; // cents
   cashPerBooking: number; // cents
   cashPerShow: number; // cents
+  newRevenue: number; // cents
+  returningRevenue: number; // cents
   setterStats: SetterKPI[];
   closerStats: CloserKPI[];
 }
@@ -79,6 +81,16 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   });
   const unlinkedCash = unlinkedPayments.reduce((sum, p) => sum + p.amountCents, 0);
   const totalCash = cashCollected + unlinkedCash;
+
+  const allWeekPayments = await prisma.payment.findMany({
+    where: { weekId, status: "succeeded" },
+  });
+  const newRevenue = allWeekPayments
+    .filter(p => (p.customerStatusOverride || p.customerStatus) === "new")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+  const returningRevenue = allWeekPayments
+    .filter(p => (p.customerStatusOverride || p.customerStatus) === "returning")
+    .reduce((sum, p) => sum + p.amountCents, 0);
 
   const avgCashPerClose = totalCloses > 0 ? Math.round(totalCash / totalCloses) : 0;
   const cashPerBooking = totalBookings > 0 ? Math.round(totalCash / totalBookings) : 0;
@@ -155,6 +167,8 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     avgCashPerClose,
     cashPerBooking,
     cashPerShow,
+    newRevenue,
+    returningRevenue,
     setterStats: Array.from(setterMap.values()),
     closerStats: Array.from(closerMap.values()),
   };
