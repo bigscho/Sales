@@ -42,6 +42,14 @@ export async function POST() {
     await sendSlackSetter(message, blocks);
   }
 
+  // Team show rate summary
+  const { getWeeklyShowStats } = await import("@/lib/setter-game");
+  const { totalShows: wkShows, totalNoShows: wkNoShows, totalPending: wkPending } = await getWeeklyShowStats();
+  const wkConfirmed = wkShows + wkNoShows;
+  const wkShowRate = wkConfirmed > 0 ? ((wkShows / wkConfirmed) * 100).toFixed(0) : "—";
+
+  await sendSlackSetter(`*Show rate to date: ${wkShowRate}%* (${wkShows} showed, ${wkNoShows} no-show${wkPending > 0 ? `, ${wkPending} pending` : ""})`);
+
   // Team pipeline post
   const pipelineCount = await getPipelineCount();
   let pipelineMessage: string;

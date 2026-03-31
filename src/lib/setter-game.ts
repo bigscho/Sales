@@ -213,17 +213,17 @@ export async function getPipelineCount(): Promise<number> {
 }
 
 // Get weekly show totals for the show rate channel
-export async function getWeeklyShowStats(): Promise<{ totalShows: number; totalPending: number }> {
-  // Get current week boundaries
+export async function getWeeklyShowStats(): Promise<{ totalShows: number; totalNoShows: number; totalPending: number }> {
   const { getWeekRange } = await import("./utils");
   const { start } = getWeekRange(new Date());
   const week = await prisma.week.findFirst({ where: { weekStart: start } });
-  if (!week) return { totalShows: 0, totalPending: 0 };
+  if (!week) return { totalShows: 0, totalNoShows: 0, totalPending: 0 };
 
   const demos = await prisma.demo.findMany({ where: { weekId: week.id } });
   const totalShows = demos.filter(d => d.status === "showed").length;
+  const totalNoShows = demos.filter(d => d.status === "no_show").length;
   const totalPending = demos.filter(d => d.status === "pending").length;
-  return { totalShows, totalPending };
+  return { totalShows, totalNoShows, totalPending };
 }
 
 // Get a setter's show stats for the current week
@@ -256,7 +256,11 @@ export async function sendShowNotification(prospectName: string, setterId: strin
     setterPending = stats.pending;
   }
 
-  const { totalShows } = await getWeeklyShowStats();
+  const { totalShows, totalPending, totalNoShows } = await getWeeklyShowStats();
+
+  // Team show rate to date
+  const confirmed = totalShows + totalNoShows;
+  const showRatePct = confirmed > 0 ? ((totalShows / confirmed) * 100).toFixed(0) : "—";
 
   // Number emoji for setter's show count
   const numEmojis = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
@@ -267,7 +271,7 @@ export async function sendShowNotification(prospectName: string, setterId: strin
     ? "\n_Confirmed automatically by Fireflies transcript_"
     : "";
 
-  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} just showed to the demo${closerName ? ` with ${closerName}` : ""}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}*`;
+  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} just showed to the demo${closerName ? ` with ${closerName}` : ""}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}* | *Show rate to date: ${showRatePct}%*${totalPending > 0 ? ` | *${totalPending} pending*` : ""}`;
 
   await sendSlackShowRate(message);
 }
@@ -324,7 +328,12 @@ export async function sendCloseNotification(
   const { totalNewRevenue, totalCloses } = await getWeeklyCloserStats();
   const newRevStr = `$${(totalNewRevenue / 100).toFixed(2)}`;
 
-  const message = `+1 CLOSE for ${closerMention}\n\n${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || "Unknown"}\n\n*TOTAL closes this week: ${totalCloses}*\n*TOTAL new revenue this week: ${newRevStr}*`;
+  // Get show rate context
+  const { totalShows: weekShows, totalNoShows: weekNoShows, totalPending: weekPend } = await getWeeklyShowStats();
+  const weekConfirmed = weekShows + weekNoShows;
+  const weekShowRate = weekConfirmed > 0 ? ((weekShows / weekConfirmed) * 100).toFixed(0) : "—";
+
+  const message = `+1 CLOSE for ${closerMention}\n\n${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || "Unknown"}\n\n*TOTAL closes this week: ${totalCloses}* | *New revenue: ${newRevStr}*\n*Show rate to date: ${weekShowRate}%* (${weekShows} showed, ${weekNoShows} no-show${weekPend > 0 ? `, ${weekPend} pending` : ""})`;
 
   await sendSlackCloser(message);
 }
