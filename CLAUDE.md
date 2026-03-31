@@ -28,8 +28,13 @@ DB: Neon PostgreSQL via Prisma ORM.
 - **Dismissed events** (deleted demos stay deleted)
 - **Slack #sales-team**: real-time alerts (bookings, shows, payments) + daily recap (6pm ET)
 - **Slack #setter-tpds**: pigeon gamification (9AM/12PM/6PM + real-time tier crossings)
-- **Slack #show-rate-tpds**: show notifications tagging setter + weekly totals
+- **Slack #show-rate-tpds**: show notifications tagging setter + closer + weekly totals + Friday report
 - **Slack #closer-tpds**: close/payment notifications tagging closer + revenue totals
+- **Reschedule handling**: Calendly reschedules update booking date in-place (not mark+recreate)
+- **Show rate formula**: uses shows/(shows+noShows) everywhere — pending excluded
+- **Booking feed**: shows all bookings created today across all weeks
+- **Team page**: Slack user ID field on add/edit forms for real @mentions
+- **Video game tier system**: COMMON/UNCOMMON/RARE/LEGENDARY pigeon tiers
 - **Slack CEO DM**: weekly briefing (Sat 11am ET)
 - **Dashboard**: New Revenue as headline KPI
 - **Setter pigeon gamification**: daily score tracking, tier crossings (4/9/12), points system
@@ -47,8 +52,7 @@ DB: Neon PostgreSQL via Prisma ORM.
 - SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
 
 ## Known Bugs to Fix
-1. **Calendly "Schofield" name** — webhook sometimes appends closer's last name to prospect name. Dedup catches most cases but edge cases remain
-2. **Team page Slack ID field** — was being added when session ended, needs completion (add slackUserId input to add/edit form on team page)
+1. **Calendly "Schofield" name** — webhook strips known closer last names but edge cases may remain with new closers
 
 ## Remaining Pillars (in order)
 1. **Pillar 3: CEO Slack Deep Dive** — P&L summary, anomaly detection, cash flow week-over-week. User said "let's dive deeper when we do it"
