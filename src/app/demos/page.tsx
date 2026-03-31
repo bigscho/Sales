@@ -775,7 +775,7 @@ export default function DemosPage() {
                       <span className="text-lg">🔒</span>
                       <p className="text-sm font-bold mt-1">{lock.showCount}/{lock.demoCount} showed</p>
                       <p className="text-xs text-gray-500">
-                        {lock.demoCount > 0 ? ((lock.showCount / lock.demoCount) * 100).toFixed(0) : 0}% show rate
+                        {(lock.showCount + lock.noShowCount) > 0 ? ((lock.showCount / (lock.showCount + lock.noShowCount)) * 100).toFixed(0) : 0}% show rate
                       </p>
                       {lock.cashCents > 0 && (
                         <p className="text-xs font-medium text-green-600 mt-0.5">{formatCents(lock.cashCents)}</p>
@@ -844,8 +844,9 @@ export default function DemosPage() {
               <div>
                 <p className="text-xs text-gray-500">Show Rate</p>
                 <p className="text-xl font-bold">
-                  {displayTotal > 0 ? ((displayShowed / displayTotal) * 100).toFixed(0) : "—"}%
+                  {(displayShowed + displayNoShow) > 0 ? (((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)) : "—"}%
                 </p>
+                {displayPending > 0 && <p className="text-[10px] text-yellow-600">({displayPending} pending)</p>}
               </div>
               <div>
                 <p className="text-xs text-gray-500">Cash</p>

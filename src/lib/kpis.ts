@@ -61,7 +61,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const totalShows = allDemos.filter((d) => d.status === "showed").length;
   const totalNoShows = allDemos.filter((d) => d.status === "no_show").length;
   const totalPending = allDemos.filter((d) => d.status === "pending").length;
-  const showRate = totalBookings > 0 ? totalShows / totalBookings : 0;
+  const showRate = (totalShows + totalNoShows) > 0 ? totalShows / (totalShows + totalNoShows) : 0;
   const totalConfirmed = totalShows + totalNoShows;
   const confirmedShowRate = totalConfirmed > 0 ? totalShows / totalConfirmed : 0;
 
@@ -121,7 +121,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     if (demo.status === "no_show") s.noShows++;
   }
   for (const s of setterMap.values()) {
-    s.showRate = s.bookings > 0 ? s.shows / s.bookings : 0;
+    s.showRate = (s.shows + s.noShows) > 0 ? s.shows / (s.shows + s.noShows) : 0;
   }
 
   // Closer stats

@@ -63,11 +63,11 @@ export async function GET(request: NextRequest) {
       tier: s.tier,
       week: {
         ...week,
-        showRate: week.bookings > 0 ? week.shows / week.bookings : 0,
+        showRate: (week.shows + week.noShows) > 0 ? week.shows / (week.shows + week.noShows) : 0,
       },
       allTime: {
         ...allTime,
-        showRate: allTime.bookings > 0 ? allTime.shows / allTime.bookings : 0,
+        showRate: (allTime.shows + allTime.noShows) > 0 ? allTime.shows / (allTime.shows + allTime.noShows) : 0,
       },
     };
   });
@@ -89,8 +89,8 @@ export async function GET(request: NextRequest) {
     showRateRep: showRateRep ? {
       id: showRateRep.id,
       name: showRateRep.name,
-      weekShowRate: weekTotal.bookings > 0 ? weekTotal.shows / weekTotal.bookings : 0,
-      allTimeShowRate: allTimeTotal.bookings > 0 ? allTimeTotal.shows / allTimeTotal.bookings : 0,
+      weekShowRate: (weekTotal.shows + weekTotal.noShows) > 0 ? weekTotal.shows / (weekTotal.shows + weekTotal.noShows) : 0,
+      allTimeShowRate: (allTimeTotal.shows + allTimeTotal.noShows) > 0 ? allTimeTotal.shows / (allTimeTotal.shows + allTimeTotal.noShows) : 0,
     } : null,
   });
 }

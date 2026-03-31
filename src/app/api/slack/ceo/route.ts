@@ -32,7 +32,10 @@ export async function POST() {
   const demos = await prisma.demo.findMany({ where: { weekId: week.id } });
   const booked = demos.length;
   const showed = demos.filter((d) => d.status === "showed").length;
-  const showRate = booked > 0 ? ((showed / booked) * 100).toFixed(1) : "0.0";
+  const noShows = demos.filter((d) => d.status === "no_show").length;
+  const pending = demos.filter((d) => d.status === "pending").length;
+  const confirmed = showed + noShows;
+  const showRate = confirmed > 0 ? ((showed / confirmed) * 100).toFixed(1) : "0.0";
 
   // Closes
   const deals = await prisma.deal.findMany({
@@ -79,7 +82,7 @@ export async function POST() {
     "",
     `*Revenue:* ${formatCents(totalRevenue)} (${formatCents(mrrRevenue)} MRR + ${formatCents(oneTimeRevenue)} one-time)`,
     `*New Revenue:* ${formatCents(newRevenue)} | *Returning:* ${formatCents(returningRevenue)}`,
-    `*Demos:* ${booked} booked, ${showed} showed (${showRate}% show rate)`,
+    `*Demos:* ${booked} booked, ${showed} showed (${showRate}% show rate)${pending > 0 ? ` (${pending} pending)` : ""}`,
     `*Closes:* ${closeCount} closed (${closeRate}% close rate)`,
     `*Cash/booking:* ${formatCents(cashPerBooking)}`,
   ];

@@ -25,7 +25,8 @@ export async function POST() {
   const showed = todayDemos.filter((d) => d.status === "showed").length;
   const noShow = todayDemos.filter((d) => d.status === "no_show").length;
   const pending = todayDemos.filter((d) => d.status === "pending").length;
-  const showRate = total > 0 ? ((showed / total) * 100).toFixed(1) : "0.0";
+  const confirmed = showed + noShow;
+  const showRate = confirmed > 0 ? ((showed / confirmed) * 100).toFixed(1) : "0.0";
 
   // Cash collected today
   const todayPayments = await prisma.payment.findMany({
@@ -61,7 +62,7 @@ export async function POST() {
     `📊 *Daily Recap — ${dayLabel}*`,
     "",
     `Today's demos: *${total}* booked, *${showed}* showed, *${noShow}* no-show, *${pending}* pending`,
-    `Show rate: *${showRate}%*`,
+    `Show rate: *${showRate}%*${pending > 0 ? ` (${pending} demos still pending)` : ""}`,
     `Cash collected today: *${formatCents(cashCents)}*`,
     `💵 New Revenue: *${formatCents(newRevenueCents)}* | Returning: *${formatCents(returningRevenueCents)}*`,
     `Tomorrow's preview: *${tomorrowCount}* demos scheduled`,

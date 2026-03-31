@@ -15,7 +15,7 @@ export async function POST() {
     where: { role: "setter", isActive: true },
   });
 
-  const stats: { name: string; bookings: number; shows: number; showRate: number }[] = [];
+  const stats: { name: string; bookings: number; shows: number; noShows: number; showRate: number }[] = [];
 
   for (const setter of setters) {
     const bookings = await prisma.booking.count({
@@ -28,11 +28,19 @@ export async function POST() {
         status: "showed",
       },
     });
+    const noShows = await prisma.demo.count({
+      where: {
+        weekId: week.id,
+        booking: { setterId: setter.id },
+        status: "no_show",
+      },
+    });
     stats.push({
       name: setter.name,
       bookings,
       shows,
-      showRate: bookings > 0 ? shows / bookings : 0,
+      noShows,
+      showRate: (shows + noShows) > 0 ? shows / (shows + noShows) : 0,
     });
   }
 
@@ -42,7 +50,8 @@ export async function POST() {
   // Get total team stats
   const totalBookings = stats.reduce((s, st) => s + st.bookings, 0);
   const totalShows = stats.reduce((s, st) => s + st.shows, 0);
-  const teamShowRate = totalBookings > 0 ? totalShows / totalBookings : 0;
+  const totalNoShows = stats.reduce((s, st) => s + st.noShows, 0);
+  const teamShowRate = (totalShows + totalNoShows) > 0 ? totalShows / (totalShows + totalNoShows) : 0;
 
   // Get day of week for context
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

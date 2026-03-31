@@ -81,7 +81,7 @@ export default function ScoreboardPage() {
   const maxWeekBookings = Math.max(...scoreboard.map((s) => s.week.bookings), 1);
   const maxAllTimeBookings = Math.max(...scoreboard.map((s) => s.allTime.bookings), 1);
 
-  const teamWeekShowRate = weekTotal.bookings > 0 ? weekTotal.shows / weekTotal.bookings : 0;
+  const teamWeekShowRate = (weekTotal.shows + weekTotal.noShows) > 0 ? weekTotal.shows / (weekTotal.shows + weekTotal.noShows) : 0;
 
   return (
     <div className="space-y-6">
@@ -105,7 +105,7 @@ export default function ScoreboardPage() {
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Showed</p>
             <p className="text-3xl font-bold text-green-600 mt-1">{weekTotal.shows}</p>
-            <p className="text-xs text-gray-500">of {weekTotal.bookings} booked</p>
+            <p className="text-xs text-gray-500">of {weekTotal.shows + weekTotal.noShows} confirmed{weekTotal.pending > 0 ? ` (${weekTotal.pending} pending)` : ""}</p>
           </CardContent>
         </Card>
         <Card>
@@ -131,7 +131,7 @@ export default function ScoreboardPage() {
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide">All-Time</p>
             <p className="text-3xl font-bold mt-1">{allTimeTotal.bookings}</p>
-            <p className="text-xs text-gray-500">{formatPercent(allTimeTotal.bookings > 0 ? allTimeTotal.shows / allTimeTotal.bookings : 0)} show rate</p>
+            <p className="text-xs text-gray-500">{formatPercent((allTimeTotal.shows + allTimeTotal.noShows) > 0 ? allTimeTotal.shows / (allTimeTotal.shows + allTimeTotal.noShows) : 0)} show rate</p>
           </CardContent>
         </Card>
       </div>
@@ -210,7 +210,7 @@ export default function ScoreboardPage() {
               </div>
               <div className="w-20 text-right flex-shrink-0">
                 <p className="text-xl font-bold text-yellow-600">
-                  {unattributed.week.bookings > 0 ? formatPercent(unattributed.week.shows / unattributed.week.bookings) : "—"}
+                  {(unattributed.week.shows + unattributed.week.noShows) > 0 ? formatPercent(unattributed.week.shows / (unattributed.week.shows + unattributed.week.noShows)) : "—"}
                 </p>
                 <p className="text-[10px] text-gray-500">show rate</p>
               </div>
@@ -271,7 +271,7 @@ export default function ScoreboardPage() {
                   <td className="p-3 text-right text-green-600">{unattributed.allTime.shows}</td>
                   <td className="p-3 text-right text-red-600">{unattributed.allTime.noShows}</td>
                   <td className="p-3 text-right text-yellow-600 font-bold">
-                    {formatPercent(unattributed.allTime.shows / unattributed.allTime.bookings)}
+                    {(unattributed.allTime.shows + unattributed.allTime.noShows) > 0 ? formatPercent(unattributed.allTime.shows / (unattributed.allTime.shows + unattributed.allTime.noShows)) : "—"}
                   </td>
                   <td className="p-3">
                     <StatBar value={unattributed.allTime.bookings} max={maxAllTimeBookings} color="bg-yellow-400" />
