@@ -218,15 +218,16 @@ export async function POST(request: NextRequest) {
           });
           bookingUpdates.weekId = newWeek.id;
 
-          // Update demo's weekId and reset status to pending if it was marked rescheduled
+          // Update demo's weekId and reset status to pending on any reschedule
+          // (no-show, rescheduled, cancelled → pending; showed stays showed)
           if (existing.demo) {
             await prisma.demo.update({
               where: { id: existing.demo.id },
               data: {
                 weekId: newWeek.id,
-                status: existing.demo.status === "rescheduled" ? "pending" : existing.demo.status,
-                confirmedBy: existing.demo.status === "rescheduled" ? null : existing.demo.confirmedBy,
-                confirmedAt: existing.demo.status === "rescheduled" ? null : existing.demo.confirmedAt,
+                status: existing.demo.status !== "showed" ? "pending" : existing.demo.status,
+                confirmedBy: existing.demo.status !== "showed" ? null : existing.demo.confirmedBy,
+                confirmedAt: existing.demo.status !== "showed" ? null : existing.demo.confirmedAt,
               },
             });
           }

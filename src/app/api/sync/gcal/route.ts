@@ -254,8 +254,9 @@ async function syncCalendar(
               where: { id: existing.demo.id },
               data: {
                 weekId: week.id,
-                // Reset rescheduled status back to pending
-                ...(existing.demo.status === "rescheduled" ? {
+                // Reset any non-showed status back to pending on reschedule
+                // (no-show, rescheduled, cancelled → pending; showed stays showed)
+                ...(existing.demo.status !== "showed" ? {
                   status: "pending",
                   confirmedBy: null,
                   confirmedAt: null,
@@ -299,7 +300,16 @@ async function syncCalendar(
             demoDate: { gte: windowStart, lte: windowEnd },
           },
         });
-        if (byEmail) continue; // Already exists from Calendly webhook
+        if (byEmail) {
+          // Link the GCal composite ID so future drag-reschedules are detectable
+          if (byEmail.calendarEventId !== compositeId) {
+            await prisma.booking.update({
+              where: { id: byEmail.id },
+              data: { calendarEventId: compositeId },
+            });
+          }
+          continue;
+        }
       }
 
       // Dedup: check by first name + date window
@@ -314,7 +324,62 @@ async function syncCalendar(
               demoDate: { gte: windowStart, lte: windowEnd },
             },
           });
-          if (byName) continue; // Already exists
+          if (byName) {
+            // Link the GCal composite ID for future reschedule detection
+            if (byName.calendarEventId !== compositeId) {
+              await prisma.booking.update({
+                where: { id: byName.id },
+                data: { calendarEventId: compositeId },
+              });
+            }
+            continue;
+          }
+        }
+      }
+
+      // Detect reschedule of a past no-show/rescheduled booking whose calendarEventId
+      // was in Calendly format (calendly_UUID) and couldn't be matched above.
+      // This handles: prospect no-showed → closer drags their GCal invite to new date.
+      if (prospectEmail) {
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        const pastNoShow = await prisma.booking.findFirst({
+          where: {
+            prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+            demoDate: { gte: sixtyDaysAgo, lt: eventStart },
+            demo: { status: { in: ["no_show", "rescheduled"] } },
+          },
+          orderBy: { demoDate: "desc" },
+          include: { demo: true },
+        });
+        if (pastNoShow) {
+          const { start, end } = getWeekRange(eventStart);
+          const reschedWeek = await prisma.week.upsert({
+            where: { weekStart: start },
+            create: { weekStart: start, weekEnd: end },
+            update: {},
+          });
+          await prisma.booking.update({
+            where: { id: pastNoShow.id },
+            data: { demoDate: eventStart, weekId: reschedWeek.id, calendarEventId: compositeId },
+          });
+          if (pastNoShow.demo) {
+            await prisma.demo.update({
+              where: { id: pastNoShow.demo.id },
+              data: { weekId: reschedWeek.id, status: "pending", confirmedBy: null, confirmedAt: null },
+            });
+          }
+          await prisma.auditLog.create({
+            data: {
+              entityType: "booking",
+              entityId: pastNoShow.id,
+              action: "gcal_sync_rescheduled",
+              oldValue: JSON.stringify({ demoDate: pastNoShow.demoDate }),
+              newValue: JSON.stringify({ demoDate: eventStart }),
+              performedBy: "gcal_sync",
+            },
+          });
+          results.updated++;
+          continue;
         }
       }
 
