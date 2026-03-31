@@ -61,6 +61,15 @@ DB: Neon PostgreSQL via Prisma ORM.
 4. **Pillar 6: Weekly Video Coaching** — aggregate Fireflies transcripts, AI coaching highlights. User wants it "SICK" with Tuff Pigeon Doctor moments at the end
 5. **Historical data import** — user will dump 2026 data "at the very end"
 
+## Backlog (lower priority improvements)
+- **Day-focused dashboard view** — main dashboard could have a "today" mode showing today's demos + cash instead of full week
+- **Deals page simplification** — feels redundant with demos page financial feed. Consider making it admin-only or merging
+- **Setter confirmation push** — daily Slack nudge for setters to confirm their bookings showed
+- **Closer confirmation push** — nudge closers to confirm show rate
+- **Booking feed vertical layout** — currently vertical list in right column, could be improved with more detail
+- **Booking feed closer assignment** — closer is shown but not always assigned at booking time
+- **30 old demos with null setter** — historical demos from before March 9 have no setter attribution, affects all-time scoreboard
+
 ## Key Architecture Notes
 - Import data in /src/app/api/import/route.ts has 133 static demos (historical)
 - /api/setup POST wipes + re-imports (use sparingly)

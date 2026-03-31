@@ -931,55 +931,39 @@ export default function DemosPage() {
             </div>
           </div>
 
-          {/* ===== BOOKINGS TODAY FEED ===== */}
-          {(() => {
-            if (todayBookings.length === 0) return null;
+          {/* ===== MAIN: SIDE-BY-SIDE DEMOS + FEEDS ===== */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Left: Demo Table (2/3 width) */}
+            <div className="lg:col-span-2">
+              {renderDemoTable(displayDemos, viewMode === "week")}
+            </div>
 
-            // Group by scheduled demo day
-            const byDay: Record<number, DemoRecord[]> = {};
-            for (const d of todayBookings) {
-              const day = getDayOfWeek(d.booking.demoDate);
-              if (!byDay[day]) byDay[day] = [];
-              byDay[day].push(d);
-            }
-            const sortedDays = Object.keys(byDay).map(Number).sort((a, b) => a - b);
-
-            return (
-              <div className="bg-white rounded-xl border overflow-hidden">
-                <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold flex items-center gap-2">
-                    Bookings Today
-                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
-                      {todayBookings.length}
-                    </span>
-                  </h3>
-                  <div className="flex gap-3 text-xs text-gray-500">
-                    {sortedDays.map((day) => (
-                      <span key={day}>
-                        <span className="font-medium text-gray-700">{DAY_NAMES[day]}</span>: {byDay[day].length}
+            {/* Right: Booking Feed + Financial Feed (1/3 width) */}
+            <div className="space-y-4">
+              {/* Bookings Today */}
+              {todayBookings.length > 0 && (
+                <div className="bg-white rounded-xl border overflow-hidden">
+                  <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      Bookings Today
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                        {todayBookings.length}
                       </span>
-                    ))}
+                    </h3>
                   </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <div className="flex gap-2 p-3 min-w-0">
+                  <div className="max-h-[300px] overflow-y-auto">
                     {todayBookings
                       .sort((a, b) => new Date(b.booking.createdAt).getTime() - new Date(a.booking.createdAt).getTime())
                       .map((d) => (
-                      <div
-                        key={d.id}
-                        className="flex-shrink-0 rounded-lg border bg-gray-50 px-3 py-2 text-xs w-52"
-                      >
+                      <div key={d.id} className="px-4 py-2.5 border-b last:border-0 text-xs hover:bg-gray-50">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-gray-800 truncate max-w-[120px]" title={d.booking.prospectName}>
-                            {shortName(d.booking.prospectName)}
-                          </span>
+                          <span className="font-semibold text-gray-800">{d.booking.prospectName}</span>
                           <span className="text-[10px] text-gray-400">
                             {new Date(d.booking.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-gray-500">
-                          <span>{d.booking.setter?.name ? shortName(d.booking.setter.name) : "No setter"}</span>
+                          <span>{d.booking.setter?.name || "—"} → {d.closer?.name || "TBD"}</span>
                           <span className="font-medium text-gray-600">
                             {DAY_NAMES[getDayOfWeek(d.booking.demoDate)]}{" "}
                             {new Date(d.booking.demoDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
@@ -989,19 +973,9 @@ export default function DemosPage() {
                     ))}
                   </div>
                 </div>
-              </div>
-            );
-          })()}
+              )}
 
-          {/* ===== MAIN: SIDE-BY-SIDE DEMOS + FINANCIALS ===== */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Left: Demo Table (2/3 width) */}
-            <div className="lg:col-span-2">
-              {renderDemoTable(displayDemos, viewMode === "week")}
-            </div>
-
-            {/* Right: Financial Feed (1/3 width) */}
-            <div>
+              {/* Financial Feed */}
               {renderFinancialFeed(displayPayments, viewMode === "week")}
             </div>
           </div>

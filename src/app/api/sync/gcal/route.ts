@@ -252,7 +252,15 @@ async function syncCalendar(
           if (existing.demo) {
             await prisma.demo.update({
               where: { id: existing.demo.id },
-              data: { weekId: week.id },
+              data: {
+                weekId: week.id,
+                // Reset rescheduled status back to pending
+                ...(existing.demo.status === "rescheduled" ? {
+                  status: "pending",
+                  confirmedBy: null,
+                  confirmedAt: null,
+                } : {}),
+              },
             });
           }
 
