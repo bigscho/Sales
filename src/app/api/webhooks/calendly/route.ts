@@ -47,6 +47,13 @@ export async function POST(request: NextRequest) {
           if (memberships.length > 0) {
             closerName = memberships[0].user_name?.split(" ")[0] || null;
           }
+
+          // Parse "Booked by" from Calendly event description (if present)
+          const eventDescription = resource.description || "";
+          const bookedByMatch = eventDescription.match(/Booked\s+[Bb]y:?\s*(\w+)/i);
+          if (bookedByMatch) {
+            setterFromDescription = bookedByMatch[1];
+          }
         }
 
         if (inviteeUri) {
@@ -61,11 +68,19 @@ export async function POST(request: NextRequest) {
             );
             if (phoneAnswer) phone = phoneAnswer.answer;
 
-            // Check for "Booked by" in text fields
-            const bookedByQ = qna.find((q: { question: string }) =>
-              q.question.toLowerCase().includes("booked by")
-            );
-            if (bookedByQ) setterFromDescription = bookedByQ.answer;
+            // Also check Q&A for "Booked by" as a custom question
+            if (!setterFromDescription) {
+              const bookedByQ = qna.find((q: { question: string }) =>
+                q.question.toLowerCase().includes("booked")
+              );
+              if (bookedByQ) setterFromDescription = bookedByQ.answer;
+            }
+
+            // Check tracking/UTM for setter name as last resort
+            const tracking2 = inviteeData.resource?.tracking || {};
+            if (!setterFromDescription) {
+              setterFromDescription = tracking2.utm_source || tracking2.utm_campaign || null;
+            }
           }
         }
       } catch {
