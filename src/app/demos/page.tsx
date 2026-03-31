@@ -88,6 +88,7 @@ export default function DemosPage() {
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
   const [demos, setDemos] = useState<DemoRecord[]>([]);
+  const [todayBookings, setTodayBookings] = useState<DemoRecord[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [dayLocks, setDayLocks] = useState<DayLockRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -108,8 +109,10 @@ export default function DemosPage() {
       fetch("/api/team").then((r) => r.json()),
       fetch(`/api/demos/lock?weekId=${weekId}`).then((r) => r.json()),
       fetch(`/api/deals?weekId=${weekId}`).then((r) => r.json()),
-    ]).then(([demoData, teamData, lockData, dealData]) => {
+      fetch("/api/demos/today").then((r) => r.json()),
+    ]).then(([demoData, teamData, lockData, dealData, todayData]) => {
       setDemos(demoData.demos || []);
+      setTodayBookings(todayData.demos || []);
       setTeam(teamData.members || []);
       setDayLocks(lockData.dayLocks || []);
       const allPayments: PaymentRecord[] = [];
@@ -930,8 +933,6 @@ export default function DemosPage() {
 
           {/* ===== BOOKINGS TODAY FEED ===== */}
           {(() => {
-            const todayKey = toDateKey(new Date().toISOString());
-            const todayBookings = demos.filter((d) => toDateKey(d.booking.createdAt) === todayKey);
             if (todayBookings.length === 0) return null;
 
             // Group by scheduled demo day
