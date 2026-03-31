@@ -340,17 +340,39 @@ async function syncCalendar(
       // Detect reschedule of a past no-show/rescheduled booking whose calendarEventId
       // was in Calendly format (calendly_UUID) and couldn't be matched above.
       // This handles: prospect no-showed → closer drags their GCal invite to new date.
-      if (prospectEmail) {
+      // Tries email first, then falls back to first name (handles missing attendee emails).
+      {
         const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-        const pastNoShow = await prisma.booking.findFirst({
-          where: {
-            prospectEmail: { equals: prospectEmail, mode: "insensitive" },
-            demoDate: { gte: sixtyDaysAgo, lt: eventStart },
-            demo: { status: { in: ["no_show", "rescheduled"] } },
-          },
-          orderBy: { demoDate: "desc" },
-          include: { demo: true },
-        });
+        let pastNoShow = null;
+
+        if (prospectEmail) {
+          pastNoShow = await prisma.booking.findFirst({
+            where: {
+              prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+              demoDate: { gte: sixtyDaysAgo, lt: eventStart },
+              demo: { status: { in: ["no_show", "rescheduled"] } },
+            },
+            orderBy: { demoDate: "desc" },
+            include: { demo: true },
+          });
+        }
+
+        // Name-based fallback (e.g. email not in GCal attendees)
+        if (!pastNoShow && prospectName) {
+          const firstName = prospectName.split(/\s+/)[0];
+          if (firstName && firstName.length > 2) {
+            pastNoShow = await prisma.booking.findFirst({
+              where: {
+                prospectName: { startsWith: firstName, mode: "insensitive" },
+                demoDate: { gte: sixtyDaysAgo, lt: eventStart },
+                demo: { status: { in: ["no_show", "rescheduled"] } },
+              },
+              orderBy: { demoDate: "desc" },
+              include: { demo: true },
+            });
+          }
+        }
+
         if (pastNoShow) {
           const { start, end } = getWeekRange(eventStart);
           const reschedWeek = await prisma.week.upsert({
