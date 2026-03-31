@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { getAllSetterScoresToday, formatSetterMention, getPipelineCount, isWeekday, PIGEON_GIFS } from "@/lib/setter-game";
+import { getAllSetterScoresToday, formatSetterMention, formatMention, getPipelineCount, isWeekday, PIGEON_GIFS, getSetterWeeklyShows, getTierForCount, getWeeklyShowStats } from "@/lib/setter-game";
 import { sendSlackSetter } from "@/lib/slack";
+import { prisma } from "@/lib/db";
+import { getWeekRange } from "@/lib/utils";
 
 export async function POST() {
   if (!isWeekday()) {
@@ -34,6 +36,23 @@ export async function POST() {
       gif = PIGEON_GIFS.sad_pigeon;
     }
 
+    // Personal show rate for this setter
+    const setterShowStats = await getSetterWeeklyShows(setter.setterId);
+    const { start: weekStart } = getWeekRange(new Date());
+    const setterWeek = await prisma.week.findFirst({ where: { weekStart } });
+    let setterNoShows = 0;
+    if (setterWeek) {
+      const setterDemos = await prisma.demo.findMany({
+        where: { weekId: setterWeek.id, booking: { setterId: setter.setterId } },
+      });
+      setterNoShows = setterDemos.filter(d => d.status === "no_show").length;
+    }
+    const setterConfirmed = setterShowStats.shows + setterNoShows;
+    const setterShowRate = setterConfirmed > 0 ? ((setterShowStats.shows / setterConfirmed) * 100).toFixed(0) : "—";
+
+    const showRateLine = `\nYour demos showed at ${setterShowRate}% this week (${setterShowStats.shows} showed, ${setterShowStats.pending} pending)`;
+    message += showRateLine;
+
     const blocks: unknown[] = [
       { type: "image", image_url: gif, alt_text: "pigeon" },
       { type: "section", text: { type: "mrkdwn", text: message } },
@@ -43,7 +62,6 @@ export async function POST() {
   }
 
   // Team show rate summary
-  const { getWeeklyShowStats } = await import("@/lib/setter-game");
   const { totalShows: wkShows, totalNoShows: wkNoShows, totalPending: wkPending } = await getWeeklyShowStats();
   const wkConfirmed = wkShows + wkNoShows;
   const wkShowRate = wkConfirmed > 0 ? ((wkShows / wkConfirmed) * 100).toFixed(0) : "—";
@@ -68,6 +86,62 @@ export async function POST() {
   pipelineBlocks.push({ type: "section", text: { type: "mrkdwn", text: pipelineMessage } });
 
   await sendSlackSetter(pipelineMessage, pipelineBlocks);
+
+  // Friday weekly leaderboard
+  const dayFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+  });
+  const todayDay = dayFormatter.format(new Date());
+
+  if (todayDay === "Friday") {
+    const { start: lbWeekStart } = getWeekRange(new Date());
+
+    // Get weekly bookings per setter
+    const activeSetters = await prisma.teamMember.findMany({
+      where: { role: "setter", isActive: true },
+    });
+
+    const weeklyResults: Array<{ setterId: string; name: string; slackUserId: string | null; bookings: number; tierLabel: string }> = [];
+    let teamTotal = 0;
+
+    for (const s of activeSetters) {
+      const bookings = await prisma.booking.count({
+        where: {
+          setterId: s.id,
+          createdAt: { gte: lbWeekStart },
+        },
+      });
+      const tier = getTierForCount(bookings);
+      weeklyResults.push({
+        setterId: s.id,
+        name: s.name,
+        slackUserId: s.slackUserId,
+        bookings,
+        tierLabel: tier.label.split(" — ")[0], // e.g. "RARE", "UNCOMMON", etc.
+      });
+      teamTotal += bookings;
+    }
+
+    // Sort descending by bookings
+    weeklyResults.sort((a, b) => b.bookings - a.bookings);
+
+    const medals = ["🥇", "🥈", "🥉"];
+    const leaderLines = weeklyResults.map((r, i) => {
+      const medal = i < 3 ? medals[i] : `${i + 1}.`;
+      const mention = formatMention({ id: r.setterId, name: r.name, slackUserId: r.slackUserId });
+      return `${medal} ${mention} — ${r.bookings} bookings (${r.tierLabel})`;
+    });
+
+    // Team show rate
+    const { totalShows: lbShows, totalNoShows: lbNoShows } = await getWeeklyShowStats();
+    const lbConfirmed = lbShows + lbNoShows;
+    const lbShowRate = lbConfirmed > 0 ? ((lbShows / lbConfirmed) * 100).toFixed(0) : "—";
+
+    const leaderboardMessage = `🏆 WEEKLY LEADERBOARD 🏆\n\n${leaderLines.join("\n")}\n\nTeam total: ${teamTotal} bookings | Show rate: ${lbShowRate}%`;
+
+    await sendSlackSetter(leaderboardMessage);
+  }
 
   return NextResponse.json({ success: true, scores: scores.length, pipeline: pipelineCount });
 }

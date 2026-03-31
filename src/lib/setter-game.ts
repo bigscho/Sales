@@ -266,12 +266,21 @@ export async function sendShowNotification(prospectName: string, setterId: strin
   const numEmojis = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
   const showEmoji = setterShows <= 10 ? numEmojis[setterShows] : `*${setterShows}*`;
 
+  // Look up closer by name for proper @mention
+  let closerMention = closerName || "Unknown closer";
+  if (closerName) {
+    const closer = await prisma.teamMember.findFirst({
+      where: { name: closerName, role: "closer" },
+    });
+    if (closer) closerMention = formatMention(closer);
+  }
+
   // Fireflies attribution
   const verifiedNote = confirmedBy === "fireflies_auto" || confirmedBy === "fireflies_webhook"
     ? "\n_Confirmed automatically by Fireflies transcript_"
     : "";
 
-  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} just showed to the demo${closerName ? ` with ${closerName}` : ""}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}* | *Show rate to date: ${showRatePct}%*${totalPending > 0 ? ` | *${totalPending} pending*` : ""}`;
+  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} just showed to the demo with ${closerMention}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}* | *Show rate to date: ${showRatePct}%*${totalPending > 0 ? ` | *${totalPending} pending*` : ""}`;
 
   await sendSlackShowRate(message);
 }

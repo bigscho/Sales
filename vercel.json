@@ -43,6 +43,10 @@
     {
       "path": "/api/slack/setter/eod",
       "schedule": "0 22 * * 1-5"
+    },
+    {
+      "path": "/api/slack/showrate/weekly",
+      "schedule": "0 22 * * 5"
     }
   ]
 }

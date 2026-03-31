@@ -167,9 +167,17 @@ export async function POST(request: NextRequest) {
       const existing = await findExistingBooking();
       if (existing && existing.demo) {
         if (rescheduled) {
-          await prisma.demo.updateMany({
-            where: { bookingId: existing.id },
-            data: { status: "rescheduled", confirmedBy: "calendly_webhook", confirmedAt: new Date() },
+          // Don't mark as rescheduled yet — the invitee.created webhook will fire
+          // next with the new time and update the booking's demoDate in place.
+          // Just log that we received the cancellation.
+          await prisma.auditLog.create({
+            data: {
+              entityType: "demo",
+              entityId: existing.demo.id,
+              action: "calendly_reschedule_pending",
+              oldValue: JSON.stringify({ demoDate: existing.demoDate }),
+              performedBy: "calendly_webhook",
+            },
           });
         } else {
           await prisma.demo.updateMany({
@@ -178,7 +186,7 @@ export async function POST(request: NextRequest) {
           });
         }
       }
-      return NextResponse.json({ received: true, action: rescheduled ? "rescheduled" : "canceled" });
+      return NextResponse.json({ received: true, action: rescheduled ? "reschedule_pending" : "canceled" });
     }
 
     // === HANDLE invitee.created ===
@@ -193,17 +201,52 @@ export async function POST(request: NextRequest) {
 
       const existing = await findExistingBooking();
       if (existing) {
-        // Already exists (created by GCal sync or previous webhook) — update if needed
-        const updates: Record<string, unknown> = {};
-        if (inviteeEmail && !existing.prospectEmail) updates.prospectEmail = inviteeEmail;
-        if (phone && !existing.prospectPhone) updates.prospectPhone = phone;
-        if (demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000) {
-          updates.demoDate = demoDate;
+        // Already exists — update date, enrich missing fields, handle reschedules
+        const bookingUpdates: Record<string, unknown> = {};
+        if (inviteeEmail && !existing.prospectEmail) bookingUpdates.prospectEmail = inviteeEmail;
+        if (phone && !existing.prospectPhone) bookingUpdates.prospectPhone = phone;
+
+        const isReschedule = demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
+        if (isReschedule && demoDate) {
+          // Demo was rescheduled — move to new date and week
+          bookingUpdates.demoDate = demoDate;
+          const { start, end } = getWeekRange(demoDate);
+          const newWeek = await prisma.week.upsert({
+            where: { weekStart: start },
+            create: { weekStart: start, weekEnd: end },
+            update: {},
+          });
+          bookingUpdates.weekId = newWeek.id;
+
+          // Update demo's weekId and reset status to pending if it was marked rescheduled
+          if (existing.demo) {
+            await prisma.demo.update({
+              where: { id: existing.demo.id },
+              data: {
+                weekId: newWeek.id,
+                status: existing.demo.status === "rescheduled" ? "pending" : existing.demo.status,
+                confirmedBy: existing.demo.status === "rescheduled" ? null : existing.demo.confirmedBy,
+                confirmedAt: existing.demo.status === "rescheduled" ? null : existing.demo.confirmedAt,
+              },
+            });
+          }
+
+          await prisma.auditLog.create({
+            data: {
+              entityType: "booking",
+              entityId: existing.id,
+              action: "calendly_rescheduled",
+              oldValue: JSON.stringify({ demoDate: existing.demoDate }),
+              newValue: JSON.stringify({ demoDate }),
+              performedBy: "calendly_webhook",
+            },
+          });
         }
-        if (Object.keys(updates).length > 0) {
-          await prisma.booking.update({ where: { id: existing.id }, data: updates });
+
+        if (Object.keys(bookingUpdates).length > 0) {
+          await prisma.booking.update({ where: { id: existing.id }, data: bookingUpdates });
         }
-        return NextResponse.json({ received: true, action: "duplicate_updated", bookingId: existing.id });
+        return NextResponse.json({ received: true, action: isReschedule ? "rescheduled_moved" : "duplicate_updated", bookingId: existing.id });
       }
 
       const effectiveDate = demoDate || new Date();
