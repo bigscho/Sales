@@ -473,7 +473,7 @@ export async function GET(request: NextRequest) {
     const timeMin = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString();
     const timeMax = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
 
-    const debugResults = [];
+    const debugResults: Record<string, unknown>[] = [];
     for (const cal of CALENDARS) {
       const params = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", showDeleted: "true", maxResults: "250" });
       const url = `${CALENDAR_API}/calendars/${encodeURIComponent(cal.email)}/events?${params}`;
