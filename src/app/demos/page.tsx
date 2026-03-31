@@ -47,6 +47,9 @@ interface PaymentRecord {
   paidAt: string;
   status: string;
   revenueType: string;
+  revenueTypeOverride: string | null;
+  customerStatus: string;
+  customerStatusOverride: string | null;
   matchStatus: string;
   isSubscription: boolean;
 }
@@ -490,15 +493,32 @@ export default function DemosPage() {
 
   // Helper to render the financial feed
   const renderFinancialFeed = (paymentsToShow: PaymentRecord[], isWeekView: boolean) => {
-    const mrrTotal = paymentsToShow
-      .filter((p) => p.revenueType === "mrr")
-      .reduce((s, p) => s + p.amountCents, 0);
-    const oneTimeTotal = paymentsToShow
-      .filter((p) => p.revenueType === "one_time")
-      .reduce((s, p) => s + p.amountCents, 0);
-    const miscTotal = paymentsToShow
-      .filter((p) => p.revenueType === "unknown")
-      .reduce((s, p) => s + p.amountCents, 0);
+    // Helper to get effective values (override takes priority)
+    const getType = (p: PaymentRecord) => p.revenueTypeOverride || p.revenueType;
+    const getStatus = (p: PaymentRecord) => p.customerStatusOverride || p.customerStatus;
+
+    // Totals by revenue type
+    const mrrTotal = paymentsToShow.filter((p) => getType(p) === "mrr").reduce((s, p) => s + p.amountCents, 0);
+    const oneTimeTotal = paymentsToShow.filter((p) => getType(p) === "one_time").reduce((s, p) => s + p.amountCents, 0);
+    const miscTotal = paymentsToShow.filter((p) => getType(p) === "misc" || getType(p) === "unknown").reduce((s, p) => s + p.amountCents, 0);
+
+    // New revenue = new MRR + new one-time (the sales KPI)
+    const newRevenue = paymentsToShow.filter((p) => getStatus(p) === "new").reduce((s, p) => s + p.amountCents, 0);
+    const returningRevenue = paymentsToShow.filter((p) => getStatus(p) === "returning").reduce((s, p) => s + p.amountCents, 0);
+
+    // Badge components
+    const typeBadge = (type: string) => {
+      if (type === "mrr") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">MRR</span>;
+      if (type === "one_time") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">One-time</span>;
+      if (type === "misc") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">Misc</span>;
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-100 text-yellow-600">Unknown</span>;
+    };
+
+    const statusBadge = (status: string) => {
+      if (status === "new") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">NEW</span>;
+      if (status === "returning") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600">RTN</span>;
+      return null;
+    };
 
     return (
       <div className="bg-white rounded-xl border overflow-hidden h-full">
@@ -541,13 +561,10 @@ export default function DemosPage() {
                       </span>
                     </td>
                     <td className="p-2">
-                      {p.revenueType === "mrr" ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">MRR</span>
-                      ) : p.revenueType === "one_time" ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">One-time</span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">Misc</span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {typeBadge(getType(p))}
+                        {statusBadge(getStatus(p))}
+                      </div>
                     </td>
                     <td className="p-2 pr-4 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
                   </tr>
@@ -555,30 +572,39 @@ export default function DemosPage() {
               </tbody>
             </table>
             {/* Summary totals */}
-            <div className="border-t bg-gray-50 px-4 py-3 space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">MRR</span>
-                  Total
-                </span>
-                <span className="font-semibold text-blue-700">{formatCents(mrrTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">One-time</span>
-                  Total
-                </span>
-                <span className="font-semibold text-orange-700">{formatCents(oneTimeTotal)}</span>
-              </div>
-              {miscTotal > 0 && (
-                <div className="flex items-center justify-between text-sm">
+            <div className="border-t bg-gray-50 px-4 py-3 space-y-2">
+              {/* New Revenue highlight */}
+              {newRevenue > 0 && (
+                <div className="flex items-center justify-between text-sm font-semibold">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">Misc</span>
-                    Total
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">NEW</span>
+                    New Revenue
                   </span>
-                  <span className="font-semibold text-gray-600">{formatCents(miscTotal)}</span>
+                  <span className="text-green-700">{formatCents(newRevenue)}</span>
                 </div>
               )}
+              {returningRevenue > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600">RTN</span>
+                    Returning Revenue
+                  </span>
+                  <span className="font-semibold text-blue-600">{formatCents(returningRevenue)}</span>
+                </div>
+              )}
+              <div className="border-t pt-2 space-y-1">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>MRR</span><span>{formatCents(mrrTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>One-time</span><span>{formatCents(oneTimeTotal)}</span>
+                </div>
+                {miscTotal > 0 && (
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>Misc</span><span>{formatCents(miscTotal)}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         ) : (

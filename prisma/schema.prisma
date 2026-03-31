@@ -118,8 +118,11 @@ model Payment {
   status                String   // succeeded | pending | failed
   paidAt                DateTime
   isMonth1              Boolean  @default(false)
-  isSubscription        Boolean  @default(false) // true = MRR, false = one-time
-  revenueType           String   @default("unknown") // mrr | one_time | unknown
+  isSubscription        Boolean  @default(false) // true = subscription, false = one-time
+  revenueType           String   @default("unknown") // mrr | one_time | misc | unknown
+  revenueTypeOverride   String?  // manual override for revenue type
+  customerStatus        String   @default("unknown") // new | returning | unknown
+  customerStatusOverride String? // manual override for customer status
   customerName          String?
   customerEmail         String?
   matchStatus           String   @default("unmatched") // matched | unmatched | needs_review

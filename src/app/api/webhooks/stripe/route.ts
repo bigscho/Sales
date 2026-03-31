@@ -3,26 +3,45 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchPaymentToDemo } from "@/lib/matching";
 
-// Classify revenue type from Stripe PaymentIntent data
-function classifyPayment(description: string | null, invoice: string | null): {
-  isSubscription: boolean;
-  revenueType: string;
-} {
+// Determine if payment is subscription-based
+function isSubscriptionPayment(description: string | null, invoice: string | null): boolean {
   const desc = (description || "").toLowerCase();
+  return !!(invoice || desc.includes("subscription"));
+}
 
-  // Subscription indicators
-  if (invoice || desc.includes("subscription")) {
-    return { isSubscription: true, revenueType: "mrr" };
+// Determine if payment is misc (not a real sale)
+function isMiscPayment(description: string | null): boolean {
+  const desc = (description || "").toLowerCase();
+  const miscPatterns = ["delay fee", "refund", "adjustment", "credit"];
+  return miscPatterns.some((p) => desc.includes(p));
+}
+
+// Check Stripe for prior payments from this customer to determine new vs returning
+async function classifyNewVsReturning(
+  customerId: string | null,
+  currentPiId: string,
+): Promise<"new" | "returning" | "unknown"> {
+  if (!customerId || !process.env.STRIPE_SECRET_KEY) return "unknown";
+
+  try {
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+    // Check for any prior succeeded payments from this customer
+    const priorPayments = await stripe.paymentIntents.list({
+      customer: customerId,
+      limit: 5,
+    });
+
+    // Filter to succeeded payments that aren't the current one
+    const priorSucceeded = priorPayments.data.filter(
+      (pi) => pi.id !== currentPiId && pi.status === "succeeded"
+    );
+
+    return priorSucceeded.length > 0 ? "returning" : "new";
+  } catch {
+    return "unknown";
   }
-
-  // Known one-time / misc patterns
-  const oneTimePatterns = ["contacts", "delay", "setup", "data", "one-time", "one time"];
-  if (oneTimePatterns.some((p) => desc.includes(p))) {
-    return { isSubscription: false, revenueType: "one_time" };
-  }
-
-  // Unknown — needs manual classification
-  return { isSubscription: false, revenueType: "unknown" };
 }
 
 // Assign a weekId based on payment date
@@ -136,8 +155,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ received: true, action: "duplicate_skipped" });
       }
 
-      // Classify revenue type
-      const classification = classifyPayment(description, invoice);
+      // Classify payment type
+      const isSub = isSubscriptionPayment(description, invoice);
+      const isMisc = isMiscPayment(description);
 
       // Get customer details
       let customerName: string | null = null;
@@ -157,10 +177,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Use description as fallback for customer name
+      // Use description as fallback for customer name (but not "Subscription creation" etc.)
       if (!customerName && description && !description.toLowerCase().includes("subscription")) {
         customerName = description;
       }
+
+      // Revenue type: what kind of payment
+      const revenueType = isMisc ? "misc" : isSub ? "mrr" : "one_time";
+
+      // Customer status: new vs returning (check Stripe payment history)
+      const customerStatus = isMisc ? "unknown" : await classifyNewVsReturning(customerId, piId);
 
       const paidAt = new Date(created * 1000);
 
@@ -178,8 +204,9 @@ export async function POST(request: NextRequest) {
           status: "succeeded",
           paidAt,
           isMonth1: true,
-          isSubscription: classification.isSubscription,
-          revenueType: classification.revenueType,
+          isSubscription: isSub,
+          revenueType,
+          customerStatus,
           customerName,
           customerEmail,
         },
@@ -200,7 +227,7 @@ export async function POST(request: NextRequest) {
           action: "stripe_webhook_created",
           newValue: JSON.stringify({
             piId, amount, customer: customerName,
-            revenueType: classification.revenueType,
+            revenueType, customerStatus, isSubscription: isSub,
             matched: matchResult.matched,
           }),
           performedBy: "stripe_webhook",
@@ -211,10 +238,10 @@ export async function POST(request: NextRequest) {
       try {
         const { sendSlackTeam } = await import("@/lib/slack");
         const amountStr = `$${(amount / 100).toFixed(2)}`;
-        const typeLabel = classification.revenueType === "mrr" ? "MRR" :
-          classification.revenueType === "one_time" ? "One-time" : "Payment";
-        const matchLabel = matchResult.matched ? ` → matched to deal` : "";
-        await sendSlackTeam(`💰 ${typeLabel}: ${amountStr} from ${customerName || customerEmail || "Unknown"}${matchLabel}`);
+        const typeLabel = revenueType === "mrr" ? "MRR" : revenueType === "one_time" ? "One-time" : "Misc";
+        const statusLabel = customerStatus === "new" ? "🆕 New" : customerStatus === "returning" ? "🔄 Returning" : "";
+        const matchLabel = matchResult.matched ? " → matched to deal" : "";
+        await sendSlackTeam(`💰 ${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || customerEmail || "Unknown"}${matchLabel}`);
       } catch {
         // Slack not configured, skip
       }
@@ -226,7 +253,9 @@ export async function POST(request: NextRequest) {
           id: payment.id,
           amount,
           customer: customerName,
-          revenueType: classification.revenueType,
+          revenueType,
+          customerStatus,
+          isSubscription: isSub,
           matched: matchResult.matched,
         },
       });
