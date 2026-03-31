@@ -278,6 +278,18 @@ async function syncCalendar(
           });
 
           results.updated++;
+        } else if (
+          existing.demo &&
+          ["no_show", "rescheduled"].includes(existing.demo.status) &&
+          eventStart.getTime() > Date.now()
+        ) {
+          // Date already matches (previous sync moved it) but status was never reset.
+          // A future-dated demo cannot be a no-show — reset it to pending.
+          await prisma.demo.update({
+            where: { id: existing.demo.id },
+            data: { status: "pending", confirmedBy: null, confirmedAt: null },
+          });
+          results.updated++;
         }
         continue;
       }
