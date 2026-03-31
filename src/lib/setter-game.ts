@@ -34,10 +34,12 @@ export const TIERS: PigeonTier[] = [
 export const TIER_CROSSINGS = [4, 9, 12];
 
 // === SLACK USER IDS ===
-const SETTER_SLACK_IDS: Record<string, string> = {
+const SLACK_IDS: Record<string, string> = {
   "setter-ming": "U0A1CD7BU9W",
   "setter-luke": "U0APNBM43S7",
   "setter-logan": "U0APD917S2K",
+  "closer-colin": "U09UH7YSPV1",
+  "closer-mark": "U0AKMP7A36H",
 };
 
 // === HELPERS ===
@@ -49,11 +51,14 @@ export function getTierForCount(count: number): PigeonTier {
   return TIERS[TIERS.length - 1]; // sad_pigeon fallback
 }
 
-export function formatSetterMention(setter: { id: string; name: string; slackUserId?: string | null }): string {
-  const slackId = setter.slackUserId || SETTER_SLACK_IDS[setter.id];
+export function formatMention(member: { id: string; name: string; slackUserId?: string | null }): string {
+  const slackId = member.slackUserId || SLACK_IDS[member.id];
   if (slackId) return `<@${slackId}>`;
-  return `*${setter.name}*`;
+  return `*${member.name}*`;
 }
+
+// Alias for backwards compatibility
+export const formatSetterMention = formatMention;
 
 export function getETDateBounds(): { start: Date; end: Date } {
   // Get current date in Eastern Time
@@ -237,4 +242,61 @@ export async function sendShowNotification(prospectName: string, setterId: strin
   const message = `+1 SHOW on the board for ${setterMention}\n\n${prospectName} showed to their demo${closerName ? ` with ${closerName}` : ""}\n\n*TOTAL Shows for the week so far: ${totalShows}*\n*TOTAL Demos pending ahead: ${pipeline}*`;
 
   await sendSlackShowRate(message);
+}
+
+// Get weekly closer stats
+export async function getWeeklyCloserStats(): Promise<{
+  totalNewRevenue: number;
+  totalReturningRevenue: number;
+  totalCloses: number;
+}> {
+  const { getWeekRange } = await import("./utils");
+  const { start } = getWeekRange(new Date());
+  const week = await prisma.week.findFirst({ where: { weekStart: start } });
+  if (!week) return { totalNewRevenue: 0, totalReturningRevenue: 0, totalCloses: 0 };
+
+  const payments = await prisma.payment.findMany({
+    where: { weekId: week.id, status: "succeeded" },
+  });
+
+  const totalNewRevenue = payments
+    .filter(p => (p.customerStatusOverride || p.customerStatus) === "new")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+  const totalReturningRevenue = payments
+    .filter(p => (p.customerStatusOverride || p.customerStatus) === "returning")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+
+  const deals = await prisma.deal.findMany({
+    where: { weekId: week.id, status: "closed_won" },
+  });
+
+  return { totalNewRevenue, totalReturningRevenue, totalCloses: deals.length };
+}
+
+// Send close notification to #closer-tpds
+export async function sendCloseNotification(
+  amountCents: number,
+  customerName: string | null,
+  closerId: string | null,
+  revenueType: string,
+  customerStatus: string,
+) {
+  const { sendSlackCloser } = await import("./slack");
+
+  let closerMention = "Unknown closer";
+  if (closerId) {
+    const closer = await prisma.teamMember.findUnique({ where: { id: closerId } });
+    if (closer) closerMention = formatMention(closer);
+  }
+
+  const amountStr = `$${(amountCents / 100).toFixed(2)}`;
+  const typeLabel = revenueType === "mrr" ? "MRR" : revenueType === "one_time" ? "One-time" : "Payment";
+  const statusLabel = customerStatus === "new" ? "🆕 New" : customerStatus === "returning" ? "🔄 Returning" : "";
+
+  const { totalNewRevenue, totalCloses } = await getWeeklyCloserStats();
+  const newRevStr = `$${(totalNewRevenue / 100).toFixed(2)}`;
+
+  const message = `+1 CLOSE for ${closerMention}\n\n${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || "Unknown"}\n\n*TOTAL closes this week: ${totalCloses}*\n*TOTAL new revenue this week: ${newRevStr}*`;
+
+  await sendSlackCloser(message);
 }

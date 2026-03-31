@@ -112,7 +112,7 @@ async function autoMatchAndLink(paymentId: string, payment: {
           matchReason: match.result.reason,
         },
       });
-      return { matched: true, dealId: deal.id, reason: match.result.reason };
+      return { matched: true, dealId: deal.id, closerId: deal.closerId, reason: match.result.reason };
     }
   }
 
@@ -124,7 +124,7 @@ async function autoMatchAndLink(paymentId: string, payment: {
       matchReason: match.result.reason,
     },
   });
-  return { matched: false, reason: match.result.reason };
+  return { matched: false, closerId: null, reason: match.result.reason };
 }
 
 export async function POST(request: NextRequest) {
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Send Slack notification
+      // Send Slack notifications
       try {
         const { sendSlackTeam } = await import("@/lib/slack");
         const amountStr = `$${(amount / 100).toFixed(2)}`;
@@ -242,9 +242,13 @@ export async function POST(request: NextRequest) {
         const statusLabel = customerStatus === "new" ? "🆕 New" : customerStatus === "returning" ? "🔄 Returning" : "";
         const matchLabel = matchResult.matched ? " → matched to deal" : "";
         await sendSlackTeam(`💰 ${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || customerEmail || "Unknown"}${matchLabel}`);
-      } catch {
-        // Slack not configured, skip
-      }
+      } catch { /* Slack not configured */ }
+
+      // Closer channel notification
+      try {
+        const { sendCloseNotification } = await import("@/lib/setter-game");
+        await sendCloseNotification(amount, customerName || customerEmail, matchResult.closerId, revenueType, customerStatus);
+      } catch { /* closer notification failed */ }
 
       return NextResponse.json({
         received: true,
