@@ -272,13 +272,43 @@ async function syncCalendar(
         continue;
       }
 
-      // New event -- create booking + demo
+      // New event — but first check if it already exists via a different calendarEventId
+      // (e.g., Calendly webhook created it with calendly_UUID format)
       const description = event.description || "";
       const summary = event.summary || "";
 
       const prospectName = parseProspectName(summary);
       const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
       const prospectPhone = parsePhone(description);
+
+      // Dedup: check by email + date window (catches Calendly webhook duplicates)
+      if (prospectEmail) {
+        const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
+        const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
+        const byEmail = await prisma.booking.findFirst({
+          where: {
+            prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+            demoDate: { gte: windowStart, lte: windowEnd },
+          },
+        });
+        if (byEmail) continue; // Already exists from Calendly webhook
+      }
+
+      // Dedup: check by first name + date window
+      if (prospectName) {
+        const firstName = prospectName.split(/\s+/)[0];
+        if (firstName && firstName.length > 2) {
+          const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
+          const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
+          const byName = await prisma.booking.findFirst({
+            where: {
+              prospectName: { startsWith: firstName, mode: "insensitive" },
+              demoDate: { gte: windowStart, lte: windowEnd },
+            },
+          });
+          if (byName) continue; // Already exists
+        }
+      }
 
       // Resolve setter
       let setterId: string | null = null;
