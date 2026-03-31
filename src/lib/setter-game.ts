@@ -267,7 +267,7 @@ export async function sendShowNotification(prospectName: string, setterId: strin
     ? "\n_Confirmed automatically by Fireflies transcript_"
     : "";
 
-  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} showed to their demo${closerName ? ` with ${closerName}` : ""}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}*`;
+  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} just showed to the demo${closerName ? ` with ${closerName}` : ""}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}*`;
 
   await sendSlackShowRate(message);
 }
