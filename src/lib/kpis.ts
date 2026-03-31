@@ -73,9 +73,16 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     .filter((d) => d.status === "closed_won")
     .reduce((sum, d) => sum + d.payments.reduce((s, p) => s + p.amountCents, 0), 0);
 
-  const avgCashPerClose = totalCloses > 0 ? Math.round(cashCollected / totalCloses) : 0;
-  const cashPerBooking = totalBookings > 0 ? Math.round(cashCollected / totalBookings) : 0;
-  const cashPerShow = totalShows > 0 ? Math.round(cashCollected / totalShows) : 0;
+  // Also include unlinked payments for this week (not tied to a deal but assigned to this week)
+  const unlinkedPayments = await prisma.payment.findMany({
+    where: { weekId, dealId: null, status: "succeeded" },
+  });
+  const unlinkedCash = unlinkedPayments.reduce((sum, p) => sum + p.amountCents, 0);
+  const totalCash = cashCollected + unlinkedCash;
+
+  const avgCashPerClose = totalCloses > 0 ? Math.round(totalCash / totalCloses) : 0;
+  const cashPerBooking = totalBookings > 0 ? Math.round(totalCash / totalBookings) : 0;
+  const cashPerShow = totalShows > 0 ? Math.round(totalCash / totalShows) : 0;
 
   // Setter stats
   const setterMap = new Map<string, SetterKPI>();
@@ -144,7 +151,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     totalHeld,
     totalLost,
     closeRate,
-    cashCollected,
+    cashCollected: totalCash,
     avgCashPerClose,
     cashPerBooking,
     cashPerShow,
