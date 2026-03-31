@@ -22,14 +22,14 @@ export async function POST() {
     let gif: string;
 
     if (count >= 12) {
-      message = `${mention} — ${count} demos booked and it's only noon.\nTUFFEST PIGEON before lunch.\nWhatever you're doing, don't stop.`;
+      message = `${mention} — ${count} demos booked and it's only noon.\n🟡 LEGENDARY — Tuffest Pigeon before lunch.\nWhatever you're doing, don't stop.`;
       gif = PIGEON_GIFS.tuffest_pigeon;
     } else if (count >= 9) {
-      message = `${mention} — ${count} demos booked before noon.\nTPD status at noon.\nClose out the day strong.`;
+      message = `${mention} — ${count} demos booked before noon.\n🔵 RARE — TPD status at noon.\nClose out the day strong.`;
       gif = PIGEON_GIFS.tpd;
     } else if (count >= 4) {
-      message = `${mention} — ${count} demos booked.\nLesbian Pigeon status at noon.\nOn pace. Not elite yet.`;
-      gif = PIGEON_GIFS.lesbian_pigeon;
+      message = `${mention} — ${count} demos booked.\n🟢 UNCOMMON — Common Pigeon status at noon.\nOn pace. Not elite yet.`;
+      gif = PIGEON_GIFS.common_pigeon;
     } else {
       message = `${mention} — ${count} demos booked.\nStill a Gay Pigeon.\nYou have an afternoon. Use it.`;
       gif = PIGEON_GIFS.gay_pigeon;

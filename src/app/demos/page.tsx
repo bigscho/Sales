@@ -22,6 +22,7 @@ interface DemoRecord {
     prospectEmail: string | null;
     prospectPhone: string | null;
     demoDate: string;
+    createdAt: string;
     source: string;
     setter: { id: string; name: string } | null;
   };
@@ -925,6 +926,70 @@ export default function DemosPage() {
               </button>
             </div>
           </div>
+
+          {/* ===== BOOKINGS TODAY FEED ===== */}
+          {(() => {
+            const todayKey = toDateKey(new Date().toISOString());
+            const todayBookings = demos.filter((d) => toDateKey(d.booking.createdAt) === todayKey);
+            if (todayBookings.length === 0) return null;
+
+            // Group by scheduled demo day
+            const byDay: Record<number, DemoRecord[]> = {};
+            for (const d of todayBookings) {
+              const day = getDayOfWeek(d.booking.demoDate);
+              if (!byDay[day]) byDay[day] = [];
+              byDay[day].push(d);
+            }
+            const sortedDays = Object.keys(byDay).map(Number).sort((a, b) => a - b);
+
+            return (
+              <div className="bg-white rounded-xl border overflow-hidden">
+                <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    Bookings Today
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                      {todayBookings.length}
+                    </span>
+                  </h3>
+                  <div className="flex gap-3 text-xs text-gray-500">
+                    {sortedDays.map((day) => (
+                      <span key={day}>
+                        <span className="font-medium text-gray-700">{DAY_NAMES[day]}</span>: {byDay[day].length}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <div className="flex gap-2 p-3 min-w-0">
+                    {todayBookings
+                      .sort((a, b) => new Date(b.booking.createdAt).getTime() - new Date(a.booking.createdAt).getTime())
+                      .map((d) => (
+                      <div
+                        key={d.id}
+                        className="flex-shrink-0 rounded-lg border bg-gray-50 px-3 py-2 text-xs w-52"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-semibold text-gray-800 truncate max-w-[120px]" title={d.booking.prospectName}>
+                            {shortName(d.booking.prospectName)}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(d.booking.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>{d.booking.setter?.name ? shortName(d.booking.setter.name) : "No setter"}</span>
+                          <span className="font-medium text-gray-600">
+                            {DAY_NAMES[getDayOfWeek(d.booking.demoDate)]}{" "}
+                            {new Date(d.booking.demoDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ===== MAIN: SIDE-BY-SIDE DEMOS + FINANCIALS ===== */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

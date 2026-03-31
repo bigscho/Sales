@@ -8,7 +8,7 @@ const GIF_BASE = "https://drive.google.com/thumbnail?sz=w400&id=";
 export const PIGEON_GIFS = {
   gay_pigeon: `${GIF_BASE}1qyRdod4YbVlp26mDJ8J4UG2Lxxk7rKHa`,
   sad_pigeon: `${GIF_BASE}1R-1-J3cTjt2woHoz5zTMDwFu5Jk90DbL`,
-  lesbian_pigeon: `${GIF_BASE}17jGtFiHb2JQtonjRPwGBNlwidFB2mwBW`,
+  common_pigeon: `${GIF_BASE}1H25beYC4R0LG6mh7BEpXBrIyt-He1yNU`,
   tpd: `${GIF_BASE}1UzOg97OFHm1nsfMUKZHj2MA3u2pjji6H`,
   tuffest_pigeon: `${GIF_BASE}1KE3RHV50WRk7u-k0VmW3FVHsDuiZfZ6C`,
   less_than_10: `${GIF_BASE}1v7Dbdq2C5fi0DqgltFmV3t0KFVXNeqzR`,
@@ -25,10 +25,10 @@ export interface PigeonTier {
 }
 
 export const TIERS: PigeonTier[] = [
-  { name: "tuffest_pigeon", label: "TUFFEST PIGEON", min: 12, points: 5, gif: PIGEON_GIFS.tuffest_pigeon },
-  { name: "tpd", label: "TPD", min: 9, points: 2, gif: PIGEON_GIFS.tpd },
-  { name: "lesbian_pigeon", label: "Lesbian Pigeon", min: 4, points: 1, gif: PIGEON_GIFS.lesbian_pigeon },
-  { name: "sad_pigeon", label: "Sad Pigeon", min: 0, points: 0, gif: PIGEON_GIFS.sad_pigeon },
+  { name: "tuffest_pigeon", label: "LEGENDARY — Tuffest Pigeon", min: 12, points: 5, gif: PIGEON_GIFS.tuffest_pigeon },
+  { name: "tpd", label: "RARE — Tuff Pigeon Doctor", min: 9, points: 2, gif: PIGEON_GIFS.tpd },
+  { name: "common_pigeon", label: "UNCOMMON — Common Pigeon", min: 4, points: 1, gif: PIGEON_GIFS.common_pigeon },
+  { name: "sad_pigeon", label: "COMMON — Sad Pigeon", min: 0, points: 0, gif: PIGEON_GIFS.sad_pigeon },
 ];
 
 export const TIER_CROSSINGS = [4, 9, 12];
@@ -151,11 +151,11 @@ export async function checkAndFireTierCrossing(setterId: string, newCount: numbe
   // Build message based on which crossing
   let text: string;
   if (newCount === 4) {
-    text = `${mention} just hit 4 demos booked today.\nLesbian Pigeon unlocked.\nDecent. Keep going.`;
+    text = `${mention} just hit 4 demos booked today.\n🟢 UNCOMMON — Common Pigeon unlocked.\nYou're on the board. Keep going.`;
   } else if (newCount === 9) {
-    text = `${mention} — 9 demos booked today.\nThe doctor has entered the building.\nDon't stop here.`;
+    text = `${mention} — 9 demos booked today.\n🔵 RARE — Tuff Pigeon Doctor unlocked.\nThe doctor has entered the building.\nDon't stop here.`;
   } else if (newCount === 12) {
-    text = `${mention} — 12 DEMOS TODAY.\nTUFFEST PIGEON STATUS.\nThe waiting room is full. The doctor is running back to back.\nEverybody else take notes.`;
+    text = `${mention} — 12 DEMOS TODAY.\n🟡 LEGENDARY — TUFFEST PIGEON UNLOCKED.\nThe waiting room is full. The doctor is running back to back.\nEverybody else take notes.`;
   } else {
     text = `${mention} — ${newCount} demos booked today. ${tier.label} status.`;
   }

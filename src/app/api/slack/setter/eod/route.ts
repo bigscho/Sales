@@ -21,16 +21,16 @@ export async function POST() {
     let gif: string;
 
     if (count >= 12) {
-      message = `${mention} — final count: ${count} demos booked.\nTUFFEST PIGEON OF THE DAY.\n+5 points logged. That's the ceiling.\nThe doctor is taking notes.`;
+      message = `${mention} — final count: ${count} demos booked.\n🟡 LEGENDARY — TUFFEST PIGEON OF THE DAY.\nThat's the ceiling. The doctor is taking notes.`;
       gif = PIGEON_GIFS.tuffest_pigeon;
     } else if (count >= 9) {
-      message = `${mention} — final count: ${count} demos booked.\nTPD. The doctor worked today.\n+2 points logged.`;
+      message = `${mention} — final count: ${count} demos booked.\n🔵 RARE — Tuff Pigeon Doctor. The doctor worked today.`;
       gif = PIGEON_GIFS.tpd;
     } else if (count >= 4) {
-      message = `${mention} — final count: ${count} demos booked.\nLesbian Pigeon.\nShowed up. Not elite.\n+1 point logged.`;
-      gif = PIGEON_GIFS.lesbian_pigeon;
+      message = `${mention} — final count: ${count} demos booked.\n🟢 UNCOMMON — Common Pigeon.\nShowed up. Not elite.`;
+      gif = PIGEON_GIFS.common_pigeon;
     } else {
-      message = `${mention} — final count: ${count} demos booked.\nSad Pigeon.\n0 points today.\nTomorrow the Gay Pigeon drops at 9AM and none of this counts anymore.\nCome back ready.`;
+      message = `${mention} — final count: ${count} demos booked.\n⚪ COMMON — Sad Pigeon.\nTomorrow the Gay Pigeon drops at 9AM and none of this counts anymore.\nCome back ready.`;
       gif = PIGEON_GIFS.sad_pigeon;
     }
 
