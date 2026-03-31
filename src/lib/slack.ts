@@ -27,6 +27,27 @@ export async function sendSlackCEO(text: string, blocks?: unknown[]) {
   await sendToWebhook(url, text, blocks);
 }
 
+// Send to #setter-tpds channel
+export async function sendSlackSetter(text: string, blocks?: unknown[]) {
+  const url = process.env.SLACK_SETTER_WEBHOOK_URL;
+  if (!url) return;
+  await sendToWebhook(url, text, blocks);
+}
+
+// Send to #show-rate-tpds channel
+export async function sendSlackShowRate(text: string, blocks?: unknown[]) {
+  const url = process.env.SLACK_SHOWRATE_WEBHOOK_URL;
+  if (!url) return;
+  await sendToWebhook(url, text, blocks);
+}
+
+// Send to #closer-tpds channel
+export async function sendSlackCloser(text: string, blocks?: unknown[]) {
+  const url = process.env.SLACK_CLOSER_WEBHOOK_URL;
+  if (!url) return;
+  await sendToWebhook(url, text, blocks);
+}
+
 // Legacy alias — sends to team channel
 export async function sendSlackMessage(text: string, blocks?: unknown[]) {
   return sendSlackTeam(text, blocks);

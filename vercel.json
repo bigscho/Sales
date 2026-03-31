@@ -31,6 +31,18 @@
     {
       "path": "/api/slack/ceo",
       "schedule": "0 15 * * 6"
+    },
+    {
+      "path": "/api/slack/setter/morning",
+      "schedule": "0 13 * * 1-5"
+    },
+    {
+      "path": "/api/slack/setter/midday",
+      "schedule": "0 16 * * 1-5"
+    },
+    {
+      "path": "/api/slack/setter/eod",
+      "schedule": "0 22 * * 1-5"
     }
   ]
 }

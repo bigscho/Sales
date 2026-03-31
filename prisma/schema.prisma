@@ -12,6 +12,7 @@ model TeamMember {
   name                    String
   role                    String   // setter | closer | show_rate_rep
   tier                    Int      @default(1) // 1-4 for setters
+  slackUserId             String?  // Slack member ID for @mentions (e.g. U0APNBM43S7)
   cumulativeShows         Int      @default(0)
   consecutive15PlusWeeks  Int      @default(0)
   isActive                Boolean  @default(true)
@@ -22,6 +23,7 @@ model TeamMember {
   demosAsCLoser  Demo[]          @relation("CloserDemos")
   deals          Deal[]
   payrollItems   PayrollLineItem[]
+  dailyScores    SetterDailyScore[]
 }
 
 model Week {
@@ -223,4 +225,20 @@ model DismissedEvent {
   calendarEventId String   @unique
   reason          String   @default("deleted")
   dismissedAt     DateTime @default(now())
+}
+
+model SetterDailyScore {
+  id            String   @id @default(cuid())
+  setterId      String
+  date          DateTime
+  bookings      Int      @default(0)
+  pigeonTier    String   @default("sad_pigeon")
+  points        Int      @default(0)
+  tierCrossings String   @default("") // CSV of thresholds already fired: "4,9,12"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  setter TeamMember @relation(fields: [setterId], references: [id])
+
+  @@unique([setterId, date])
 }

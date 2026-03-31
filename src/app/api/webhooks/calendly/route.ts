@@ -251,6 +251,30 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Setter pigeon game — real-time booking notification
+      if (setterId) {
+        try {
+          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday, formatSetterMention } = await import("@/lib/setter-game");
+          const { sendSlackSetter } = await import("@/lib/slack");
+
+          if (isWeekday()) {
+            const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
+            if (setter) {
+              const { count } = await getSetterTodayBookings(setterId);
+              const mention = formatSetterMention(setter);
+
+              // Check if this booking crossed a tier threshold (fires GIF message)
+              const tierCrossed = await checkAndFireTierCrossing(setterId, count);
+
+              // If no tier was crossed, send a simple count update
+              if (!tierCrossed) {
+                await sendSlackSetter(`${mention} is at ${count} today`);
+              }
+            }
+          }
+        } catch { /* setter game not configured */ }
+      }
+
       try {
         const { sendSlackTeam } = await import("@/lib/slack");
         const dateStr = effectiveDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
