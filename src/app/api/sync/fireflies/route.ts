@@ -160,7 +160,7 @@ export async function POST() {
         if (!wasAlreadyConfirmed) {
           try {
             const { sendShowNotification } = await import("@/lib/setter-game");
-            await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, demo.closer?.name || null);
+            await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, demo.closer?.name || null, "fireflies_auto");
           } catch { /* show rate notification failed */ }
         }
         results.showed++;

@@ -80,6 +80,7 @@ export async function PATCH(request: NextRequest) {
         demo.booking.prospectName,
         demo.booking.setter?.id || null,
         demo.closer?.name || null,
+        "admin",
       );
     } catch { /* show rate notification failed */ }
   }

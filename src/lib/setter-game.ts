@@ -226,20 +226,48 @@ export async function getWeeklyShowStats(): Promise<{ totalShows: number; totalP
   return { totalShows, totalPending };
 }
 
+// Get a setter's show stats for the current week
+export async function getSetterWeeklyShows(setterId: string): Promise<{ shows: number; pending: number }> {
+  const { getWeekRange } = await import("./utils");
+  const { start } = getWeekRange(new Date());
+  const week = await prisma.week.findFirst({ where: { weekStart: start } });
+  if (!week) return { shows: 0, pending: 0 };
+
+  const demos = await prisma.demo.findMany({
+    where: { weekId: week.id, booking: { setterId } },
+  });
+  const shows = demos.filter(d => d.status === "showed").length;
+  const pending = demos.filter(d => d.status === "pending").length;
+  return { shows, pending };
+}
+
 // Send show rate notification to #show-rate-tpds
-export async function sendShowNotification(prospectName: string, setterId: string | null, closerName: string | null) {
+export async function sendShowNotification(prospectName: string, setterId: string | null, closerName: string | null, confirmedBy?: string | null) {
   const { sendSlackShowRate } = await import("./slack");
 
   let setterMention = "Unknown setter";
+  let setterShows = 0;
+  let setterPending = 0;
   if (setterId) {
     const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
     if (setter) setterMention = formatSetterMention(setter);
+    const stats = await getSetterWeeklyShows(setterId);
+    setterShows = stats.shows;
+    setterPending = stats.pending;
   }
 
   const { totalShows } = await getWeeklyShowStats();
-  const pipeline = await getPipelineCount();
 
-  const message = `+1 SHOW on the board for ${setterMention}\n\n${prospectName} showed to their demo${closerName ? ` with ${closerName}` : ""}\n\n*TOTAL Shows for the week so far: ${totalShows}*\n*TOTAL Demos pending ahead: ${pipeline}*`;
+  // Number emoji for setter's show count
+  const numEmojis = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+  const showEmoji = setterShows <= 10 ? numEmojis[setterShows] : `*${setterShows}*`;
+
+  // Fireflies attribution
+  const verifiedNote = confirmedBy === "fireflies_auto" || confirmedBy === "fireflies_webhook"
+    ? "\n_Confirmed automatically by Fireflies transcript_"
+    : "";
+
+  const message = `${showEmoji}\n${setterMention} is at ${setterShows} shows this week${setterPending > 0 ? ` (${setterPending} still pending)` : ""}\n\n${prospectName} showed to their demo${closerName ? ` with ${closerName}` : ""}${verifiedNote}\n\n*TOTAL shows this week: ${totalShows}*`;
 
   await sendSlackShowRate(message);
 }

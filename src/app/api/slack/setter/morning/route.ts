@@ -13,7 +13,7 @@ export async function POST() {
   });
 
   const mentions = setters.map((s) => formatSetterMention(s)).join(" ");
-  const text = `You all ^ rn ${mentions}`;
+  const text = `${mentions}\n\nAll of your Gay Pigeon statuses have been renewed. You've booked 0 today.\nIt's up to you to ascend. Nobody cares what you did yesterday.`;
 
   await sendSlackSetter(text, [
     { type: "image", image_url: PIGEON_GIFS.gay_pigeon, alt_text: "Gay Pigeon" },
