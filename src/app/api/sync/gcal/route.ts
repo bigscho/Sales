@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import * as crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
@@ -455,11 +455,61 @@ async function syncCalendar(
 
 // --- Route handlers ---
 
-export async function GET() {
-  return POST();
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const debugName = searchParams.get("debug");
+
+  if (debugName) {
+    // Debug mode: return raw GCal events matching a name/keyword without processing them
+    const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+    const privateKeyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    if (!clientEmail || !privateKeyRaw) {
+      return NextResponse.json({ error: "Service account not configured" }, { status: 500 });
+    }
+    const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+    const accessToken = await getAccessToken(clientEmail, privateKey);
+
+    const now = new Date();
+    const timeMin = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString();
+    const timeMax = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    const debugResults = [];
+    for (const cal of CALENDARS) {
+      const params = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", showDeleted: "true", maxResults: "250" });
+      const url = `${CALENDAR_API}/calendars/${encodeURIComponent(cal.email)}/events?${params}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const data = await res.json();
+      const events: GCalEvent[] = data.items || [];
+
+      for (const event of events) {
+        const text = `${event.summary || ""} ${event.description || ""}`.toLowerCase();
+        if (!text.includes(debugName.toLowerCase())) continue;
+        const eventStart = getEventStart(event);
+        const compositeId = `${event.id}_${cal.closerName}`;
+        const existing = await prisma.booking.findUnique({ where: { calendarEventId: compositeId } });
+        debugResults.push({
+          calendar: cal.email,
+          eventId: event.id,
+          compositeId,
+          summary: event.summary,
+          status: event.status,
+          start: eventStart,
+          isCalendlyEvent: isCalendlyEvent(event),
+          descriptionSnippet: (event.description || "").slice(0, 200),
+          attendeeEmails: event.attendees?.map(a => a.email) || [],
+          existingBookingId: existing?.id || null,
+          existingBookingDate: existing?.demoDate || null,
+          existingCalendarEventId: existing?.calendarEventId || null,
+        });
+      }
+    }
+    return NextResponse.json({ debug: debugName, matches: debugResults });
+  }
+
+  return POST(request);
 }
 
-export async function POST() {
+export async function POST(_request?: NextRequest) {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKeyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 
