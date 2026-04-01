@@ -19,7 +19,53 @@ export async function GET() {
     const { clientEmail, privateKey } = getCredentials();
     const accessToken = await getGoogleAccessToken(clientEmail, privateKey, DRIVE_SCOPES);
 
+    // Try listing files in the folder
     const files = await listFilesInFolder(accessToken, FOLDER_ID);
+
+    // If no files found, try alternate queries for debugging
+    if (files.length === 0) {
+      // Debug: list ALL files the service account can see
+      const debugParams = new URLSearchParams({
+        pageSize: "10",
+        fields: "files(id, name, mimeType, parents)",
+        orderBy: "modifiedTime desc",
+      });
+      const debugRes = await fetch(`${DRIVE_API}/files?${debugParams}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const debugData = await debugRes.json();
+
+      // Debug: try to get the folder metadata directly
+      const folderRes = await fetch(`${DRIVE_API}/files/${FOLDER_ID}?fields=id,name,mimeType,shared`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const folderData = await folderRes.json();
+
+      // Debug: try with supportsAllDrives
+      const driveParams = new URLSearchParams({
+        q: `'${FOLDER_ID}' in parents`,
+        fields: "files(id, name, mimeType)",
+        pageSize: "10",
+        supportsAllDrives: "true",
+        includeItemsFromAllDrives: "true",
+      });
+      const driveRes = await fetch(`${DRIVE_API}/files?${driveParams}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const driveData = await driveRes.json();
+
+      return NextResponse.json({
+        folderId: FOLDER_ID,
+        totalFiles: 0,
+        files: [],
+        debug: {
+          folderMetadata: folderData,
+          recentFiles: debugData.files || [],
+          withAllDrives: driveData.files || [],
+          driveError: driveData.error || null,
+        },
+      });
+    }
 
     return NextResponse.json({
       folderId: FOLDER_ID,
