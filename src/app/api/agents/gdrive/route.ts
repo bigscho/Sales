@@ -269,17 +269,20 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
         return "";
       };
 
-      // Parse name
-      let firstName = "";
-      let lastName = "";
+      // Parse name — clean and normalize
+      let rawFirst = "";
+      let rawLast = "";
       const fullName = get(["agent_full_name", "full_name"]);
       if (fullName) {
         const parts = fullName.split(/\s+/);
-        firstName = parts[0] || "";
-        lastName = parts.slice(1).join(" ") || "";
+        rawFirst = parts[0] || "";
+        rawLast = parts.slice(1).join(" ") || "";
       }
-      if (!firstName) firstName = get(["first_name", "firstname"]);
-      if (!lastName) lastName = get(["last_name", "lastname"]);
+      if (!rawFirst) rawFirst = get(["first_name", "firstname"]);
+      if (!rawLast) rawLast = get(["last_name", "lastname"]);
+
+      const firstName = cleanFirstName(rawFirst);
+      const lastName = cleanLastName(rawLast);
 
       // Parse email — take first if comma-separated
       const emailRaw = get(["emails", "email"]);
@@ -287,12 +290,16 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
 
       // Must have email and valid email format
       if (!email || !email.includes("@")) { skipped++; continue; }
-      if (!firstName && !lastName) { skipped++; continue; }
+      if (!rawFirst && !rawLast) { skipped++; continue; }
 
       const phone = get(["agent_phone_number", "phone", "mobile"]) || null;
-      const stateVal = get(["state"]) || null;
-      const cityVal = get(["city"]) || null;
-      const brokerage = get(["agency_name", "brokerage", "company"]) || null;
+      const stateVal = get(["state"]);
+      const cityVal = get(["city"]);
+      const brokerage = get(["agency_name", "brokerage", "company"]);
+      const licenseNumber = get(["lisence_number", "license_number"]) || null;
+      const yearsExp = parseNumber(get(["years_experience", "experience"]));
+      const homeTypes = get(["home_types"]) || null;
+      const mlsNumber = get(["mls_number", "source"]) || null;
 
       const totalTransactions = parseNumber(get(["closed_sales", "transactions"]));
       const totalVolume = parseNumber(get(["total_value", "volume", "total_volume"]));
@@ -303,9 +310,13 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
         lastName,
         email,
         phone,
-        state: stateVal,
-        city: cityVal,
-        brokerage,
+        state: stateVal ? cleanState(stateVal) : null,
+        city: cityVal ? cleanCity(cityVal) : null,
+        brokerage: brokerage ? titleCase(brokerage) : null,
+        licenseNumber,
+        yearsExperience: yearsExp,
+        homeTypes,
+        mlsNumber,
         totalTransactions,
         totalVolumeCents,
         avgTransactions: totalTransactions ? Math.round(totalTransactions / 5) : null,
@@ -337,7 +348,68 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
   return { imported, updated, skipped };
 }
 
-// parseCSVLine and buildColumnMap removed — using sheet_to_json instead
+// --- Name cleaning ---
+
+// Title case: "JOHN SMITH" → "John Smith", "mcdonald" → "Mcdonald"
+// Handles hyphenated names: "REEVES-WITHERSPOON" → "Reeves-Witherspoon"
+// Handles O' names: "o'brien" → "O'Brien"
+function titleCase(str: string): string {
+  if (!str) return str;
+  return str
+    .toLowerCase()
+    .replace(/(?:^|[\s-])(\w)/g, (match) => match.toUpperCase())
+    .replace(/o'(\w)/gi, (_, c) => `O'${c.toUpperCase()}`);
+}
+
+// Detect non-first-names that should become "there" for "Hey there" in outreach
+// Returns true if the name looks like a real first name
+function isRealFirstName(name: string): boolean {
+  if (!name || name.length < 2) return false;
+  const lower = name.toLowerCase().trim();
+
+  // Single character or initials like "J" "J.R." "JR"
+  if (name.replace(/[.\s]/g, "").length <= 2) return false;
+
+  // Contains numbers
+  if (/\d/.test(name)) return false;
+
+  // Looks like a company/team name
+  const companyWords = ["team", "group", "realty", "real estate", "properties", "homes", "inc", "llc", "corp", "associates", "company", "broker", "office", "the"];
+  if (companyWords.some((w) => lower.includes(w))) return false;
+
+  // All consonants (probably an abbreviation)
+  if (/^[^aeiou]+$/i.test(name) && name.length <= 4) return false;
+
+  // Contains special chars that don't belong in names
+  if (/[&@#%+_=]/.test(name)) return false;
+
+  // Starts with a comma or period
+  if (/^[,.]/.test(name)) return false;
+
+  return true;
+}
+
+function cleanFirstName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!isRealFirstName(trimmed)) return "there";
+  return titleCase(trimmed);
+}
+
+function cleanLastName(raw: string): string {
+  return titleCase(raw.trim());
+}
+
+function cleanCity(raw: string): string {
+  return titleCase(raw.trim());
+}
+
+function cleanState(raw: string): string {
+  // If it's already a 2-letter abbreviation, uppercase it
+  const trimmed = raw.trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  // Otherwise title case the full state name
+  return titleCase(trimmed);
+}
 
 function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined || val === "") return null;

@@ -255,6 +255,10 @@ model Agent {
   city               String?
   zip                String?
   brokerage          String?
+  licenseNumber      String?
+  yearsExperience    Int?
+  homeTypes          String?   // comma-separated from homes.com
+  mlsNumber          String?
   totalTransactions  Int?      // 5-year total from homes.com
   totalVolumeCents   BigInt?   // 5-year total sales volume in cents
   avgTransactions    Int?      // calculated: totalTransactions / 5
