@@ -14,20 +14,25 @@ interface DriveFile {
 
 // GET: List all files in the Raw States folder (for verification)
 export async function GET() {
-  const { clientEmail, privateKey } = getCredentials();
-  const accessToken = await getGoogleAccessToken(clientEmail, privateKey, DRIVE_SCOPES);
+  try {
+    const { clientEmail, privateKey } = getCredentials();
+    const accessToken = await getGoogleAccessToken(clientEmail, privateKey, DRIVE_SCOPES);
 
-  const files = await listFilesInFolder(accessToken, FOLDER_ID);
+    const files = await listFilesInFolder(accessToken, FOLDER_ID);
 
-  return NextResponse.json({
-    folderId: FOLDER_ID,
-    totalFiles: files.length,
-    files: files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
-  });
+    return NextResponse.json({
+      folderId: FOLDER_ID,
+      totalFiles: files.length,
+      files: files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
+    });
+  } catch (e) {
+    return NextResponse.json({ error: String(e), stack: (e as Error).stack?.slice(0, 500) }, { status: 500 });
+  }
 }
 
 // POST: Import all CSV/Sheets files from the folder into the Agent database
 export async function POST(request: NextRequest) {
+  try {
   const body = await request.json().catch(() => ({}));
   const dryRun = body.dryRun === true;
   const fileFilter = body.fileName as string | undefined; // optional: import only one file
@@ -86,6 +91,9 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(results);
+  } catch (e) {
+    return NextResponse.json({ error: String(e), stack: (e as Error).stack?.slice(0, 500) }, { status: 500 });
+  }
 }
 
 // --- Helpers ---
