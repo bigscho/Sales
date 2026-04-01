@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { getGoogleAccessToken } from "@/lib/google-auth";
 import * as XLSX from "xlsx";
 
+// Vercel Pro allows up to 300s for serverless functions
+export const maxDuration = 300;
+
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_SCOPES = "https://www.googleapis.com/auth/drive.readonly";
 const FOLDER_ID = "1oUm4jzKSLpNKjr7qsntwSd8oApn1Wswa";
