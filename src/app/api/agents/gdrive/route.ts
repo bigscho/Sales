@@ -303,7 +303,8 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
 
       const totalTransactions = parseNumber(get(["closed_sales", "transactions"]));
       const totalVolume = parseNumber(get(["total_value", "volume", "total_volume"]));
-      const totalVolumeCents = totalVolume ? BigInt(Math.round(totalVolume * 100)) : null;
+      // Store volume in cents (multiply dollars by 100)
+      const totalVolumeCents = totalVolume ? BigInt(totalVolume) * BigInt(100) : null;
 
       const data = {
         firstName,
@@ -320,7 +321,7 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
         totalTransactions,
         totalVolumeCents,
         avgTransactions: totalTransactions ? Math.round(totalTransactions / 5) : null,
-        avgVolumeCents: totalVolumeCents ? BigInt(Number(totalVolumeCents) / 5) : null,
+        avgVolumeCents: totalVolumeCents ? totalVolumeCents / BigInt(5) : null,
         source: "google_drive" as const,
         importBatch: batchId,
       };
@@ -413,7 +414,18 @@ function cleanState(raw: string): string {
 
 function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined || val === "") return null;
-  const str = String(val).replace(/[$,\s]/g, "");
+  let str = String(val).replace(/[$,\s]/g, "");
+
+  // Handle suffixes like "1.2M" or "500K" or "1.5B"
+  const suffixMatch = str.match(/^([\d.]+)\s*([KkMmBb])$/);
+  if (suffixMatch) {
+    const num = parseFloat(suffixMatch[1]);
+    const suffix = suffixMatch[2].toUpperCase();
+    if (suffix === "K") return Math.round(num * 1_000);
+    if (suffix === "M") return Math.round(num * 1_000_000);
+    if (suffix === "B") return Math.round(num * 1_000_000_000);
+  }
+
   const num = parseFloat(str);
   return isNaN(num) ? null : Math.round(num);
 }

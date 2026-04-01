@@ -395,16 +395,18 @@ export default function AgentsPage() {
                   <th className="p-3 text-left">Phone</th>
                   <th className="p-3 text-left">Location</th>
                   <th className="p-3 text-left">Brokerage</th>
+                  <th className="p-3 text-right">Txns (5yr)</th>
                   <th className="p-3 text-right">Avg Txns/yr</th>
-                  <th className="p-3 text-right">Avg Volume/yr</th>
+                  <th className="p-3 text-right">Volume (5yr)</th>
+                  <th className="p-3 text-right">Avg Vol/yr</th>
                   <th className="p-3 text-center">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="p-8 text-center text-[var(--muted-foreground)]">Loading...</td></tr>
+                  <tr><td colSpan={11} className="p-8 text-center text-[var(--muted-foreground)]">Loading...</td></tr>
                 ) : data?.agents.length === 0 ? (
-                  <tr><td colSpan={9} className="p-8 text-center text-[var(--muted-foreground)]">
+                  <tr><td colSpan={11} className="p-8 text-center text-[var(--muted-foreground)]">
                     No agents found. Import a CSV to get started.
                   </td></tr>
                 ) : data?.agents.map((agent) => (
@@ -436,7 +438,13 @@ export default function AgentsPage() {
                       {agent.brokerage || "—"}
                     </td>
                     <td className="p-3 text-right font-mono">
+                      {agent.totalTransactions ?? "—"}
+                    </td>
+                    <td className="p-3 text-right font-mono">
                       {agent.avgTransactions ?? "—"}
+                    </td>
+                    <td className="p-3 text-right font-mono">
+                      {formatVolume(agent.totalVolumeCents)}
                     </td>
                     <td className="p-3 text-right font-mono">
                       {formatVolume(agent.avgVolumeCents)}
