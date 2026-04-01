@@ -163,6 +163,8 @@ async function listFilesInFolder(accessToken: string, folderId: string, recursiv
       q: `'${folderId}' in parents and trashed = false`,
       fields: "nextPageToken, files(id, name, mimeType)",
       pageSize: "100",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
     });
     if (pageToken) params.set("pageToken", pageToken);
 
@@ -198,7 +200,7 @@ async function listFilesInFolder(accessToken: string, folderId: string, recursiv
 async function downloadFileAsCSV(accessToken: string, file: DriveFile): Promise<string> {
   if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
     // Google Sheets — export as CSV directly
-    const url = `${DRIVE_API}/files/${file.id}/export?mimeType=text/csv`;
+    const url = `${DRIVE_API}/files/${file.id}/export?mimeType=text/csv&supportsAllDrives=true`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -210,7 +212,7 @@ async function downloadFileAsCSV(accessToken: string, file: DriveFile): Promise<
   }
 
   // Regular file (XLSX, CSV) — download as binary
-  const url = `${DRIVE_API}/files/${file.id}?alt=media`;
+  const url = `${DRIVE_API}/files/${file.id}?alt=media&supportsAllDrives=true`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
