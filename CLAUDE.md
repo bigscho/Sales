@@ -69,13 +69,22 @@ If using Enterprise Claude (without MCP tools), it needs:
 
 ## Outbound Console (In Progress)
 
-### What's Built (Phase 1 — on dev branch, NOT deployed)
+### What's Built (Phase 1 — DEPLOYED TO PRODUCTION)
 - **Prisma schema**: Agent, OutboundCampaign, OutboundPush, ScheduledPush models added
+- **Agent database**: 249,151 real estate agents imported from 48 state XLSX files via Google Drive
 - **`/api/agents`**: GET with pagination + filters (state, city, production range, contacted status, search), POST, PATCH
 - **`/api/agents/import`**: Bulk CSV import with upsert by email, handles homes.com column format
-- **`/agents` page**: Filterable table with checkboxes, CSV upload dialog, bulk action bar (push buttons placeholder)
+- **`/api/agents/gdrive`**: Google Drive auto-import using service account. Downloads XLSX files, parses with SheetJS, upserts by email. Supports batch import, single file, and wipe+reimport
+- **`/agents` page**: Filterable table with checkboxes, CSV upload dialog, Google Drive import button, bulk action bar (push buttons placeholder)
 - **Sidebar**: Agents + Outbound nav items added
-- **Column mapping**: Handles homes.com format (agent_full_name → first/last, emails, agent_phone_number, agency_name, closed_sales, total_value, city, state)
+- **Data cleaning on import**:
+  - Names: agent_full_name split into first/last, Title Case normalized, non-first-names (initials, company names) replaced with "there" for "Hey there" outreach
+  - Phones: normalized to +1XXXXXXXXXX format for GHL/SMS
+  - Emails: first email taken if comma-separated, validated (must contain @)
+  - Volumes: handles $1.2M / $500K suffixes, stored in cents
+  - Cities/states/brokerages: Title Case normalized
+- **Fields stored**: firstName, lastName, email, phone, city, state, brokerage, licenseNumber, yearsExperience, homeTypes, mlsNumber, totalTransactions, totalVolumeCents, avgTransactions, avgVolumeCents, contactCount, lastContactedAt, lastContactedChannel
+- **Google Drive setup**: Service account `calendar-tracking@grassfed-calendar-tracking.iam.gserviceaccount.com` has access to Shared Drive folder `1oUm4jzKSLpNKjr7qsntwSd8oApn1Wswa` (Raw States). Google Drive API enabled on project 957665194986
 
 ### API Keys Collected (in .env locally, need to add to Vercel)
 - `SMARTLEAD_API_KEY` — confirmed working, 180 campaigns visible
