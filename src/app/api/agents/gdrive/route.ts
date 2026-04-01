@@ -414,7 +414,7 @@ function cleanState(raw: string): string {
 
 function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined || val === "") return null;
-  let str = String(val).replace(/[$,\s]/g, "");
+  const str = String(val).replace(/[$,\s]/g, "");
 
   // Handle suffixes like "1.2M" or "500K" or "1.5B"
   const suffixMatch = str.match(/^([\d.]+)\s*([KkMmBb])$/);
