@@ -67,6 +67,55 @@ If using Enterprise Claude (without MCP tools), it needs:
 - SLACK_SHOWRATE_WEBHOOK_URL (#show-rate-tpds)
 - SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
 
+## Outbound Console (In Progress)
+
+### What's Built (Phase 1 — on dev branch, NOT deployed)
+- **Prisma schema**: Agent, OutboundCampaign, OutboundPush, ScheduledPush models added
+- **`/api/agents`**: GET with pagination + filters (state, city, production range, contacted status, search), POST, PATCH
+- **`/api/agents/import`**: Bulk CSV import with upsert by email, handles homes.com column format
+- **`/agents` page**: Filterable table with checkboxes, CSV upload dialog, bulk action bar (push buttons placeholder)
+- **Sidebar**: Agents + Outbound nav items added
+- **Column mapping**: Handles homes.com format (agent_full_name → first/last, emails, agent_phone_number, agency_name, closed_sales, total_value, city, state)
+
+### API Keys Collected (in .env locally, need to add to Vercel)
+- `SMARTLEAD_API_KEY` — confirmed working, 180 campaigns visible
+- `OMNI_VERIFIER_API_KEY` — for email validation before Smartlead push
+- `GHL_API_KEY_1` + `GHL_API_KEY_2` — Private Integration bearer tokens for 2 rented sub-accounts
+
+### What's Next (Phase 2)
+1. **Data import decision**: Manual CSV upload (already built) OR Google Drive auto-pull (needs Google Drive API setup). User deciding.
+2. **Deploy Phase 1**: Push dev branch to production, run Prisma migration, add env vars to Vercel
+3. **Smartlead push endpoint**: `/api/outbound/push` — format fields (Email, first_name, City case-sensitive), call Smartlead API
+4. **Email validation gate**: `/api/agents/verify` — call Omni Verifier before Smartlead push, cache results
+5. **GHL push endpoint**: Use Private Integration bearer tokens, create contacts + trigger workflow
+6. **Outbound page**: Campaign cards with analytics, push history
+7. **Slack #outbound-tpds**: Notifications when batches get pushed
+8. **Scheduled pushes**: Automated recurring pushes with filter criteria
+
+### Smartlead Field Mapping (for push)
+| Agent DB | Smartlead | Notes |
+|---|---|---|
+| email | Email | Case-sensitive, required |
+| firstName | first_name | Email copy variable |
+| city | City | Case-sensitive |
+| lastName | last_name | Lead details |
+| phone | phone | Lead details |
+| state | state | Lead details |
+| brokerage | company_name | Lead details |
+
+### GHL Integration Notes
+- Using Private Integration OAuth tokens (not legacy API keys)
+- Scopes: contacts.readonly, contacts.write, workflows.readonly, locations.readonly
+- workflows.write was not available — adding to workflow done via contacts API
+- 2 rented A2P-approved sub-accounts for SMS sequences
+
+### Data Source
+- 220K real estate agents from homes.com (scraped)
+- 50 Google Drive folders, one per state
+- Fields: agent_full_name, emails, agent_phone_number, agency_name, city, state, closed_sales, total_value, price_range, average_price, lisence_number, Years_Experience
+- Could grow to 2M with future data purchases
+- Refreshed lists from same provider — import updates existing records by email match
+
 ## Known Bugs to Fix
 1. **Calendly "Schofield" name** — webhook strips known closer last names but edge cases may remain with new closers
 2. **Andrea Reeves-Witherspoon invisible** — marked no_show, GCal invite dragged to next Thursday, sync returns 0 updated. She's not visible in UI on any date. Needs DB investigation via `/api/debug?name=andrea`. Likely causes: (a) calendarEventId format mismatch preventing lookup, (b) booking in DismissedEvent table, (c) weekId pointing to nonexistent/wrong week. Four code fixes already applied in gcal/route.ts but her specific record needs manual investigation.
