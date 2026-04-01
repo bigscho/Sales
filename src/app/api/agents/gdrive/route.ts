@@ -87,6 +87,14 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
   const body = await request.json().catch(() => ({}));
+
+  // Wipe all agents before re-importing (use when data is corrupt)
+  if (body.action === "wipe") {
+    await prisma.outboundPush.deleteMany({});
+    const deleted = await prisma.agent.deleteMany({});
+    return NextResponse.json({ wiped: true, deleted: deleted.count });
+  }
+
   const dryRun = body.dryRun === true;
   const fileFilter = body.fileName as string | undefined;
   const batchNum = body.batch as number | undefined; // 1-6
@@ -140,13 +148,13 @@ export async function POST(request: NextRequest) {
 
   for (const file of importableFiles) {
     try {
-      const csvText = await downloadFileAsCSV(accessToken, file);
-      if (!csvText || csvText.trim().length === 0) {
+      const rows = await downloadAndParseFile(accessToken, file);
+      if (!rows || rows.length === 0) {
         results.fileResults.push({ name: file.name, imported: 0, updated: 0, skipped: 0, error: "Empty file" });
         continue;
       }
 
-      const { imported, updated, skipped } = await importCSV(csvText, file.name);
+      const { imported, updated, skipped } = await importRows(rows, file.name);
       results.filesProcessed++;
       results.totalImported += imported;
       results.totalUpdated += updated;
@@ -217,91 +225,77 @@ async function listFilesInFolder(accessToken: string, folderId: string, recursiv
   return allFiles;
 }
 
-async function downloadFileAsCSV(accessToken: string, file: DriveFile): Promise<string> {
+async function downloadAndParseFile(accessToken: string, file: DriveFile): Promise<Record<string, unknown>[]> {
   if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
-    // Google Sheets — export as CSV directly
+    // Google Sheets — export as CSV, then parse
     const url = `${DRIVE_API}/files/${file.id}/export?mimeType=text/csv&supportsAllDrives=true`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Export failed for ${file.name} (${res.status}): ${text.slice(0, 200)}`);
-    }
-    return res.text();
-  }
-
-  // Regular file (XLSX, CSV) — download as binary
-  const url = `${DRIVE_API}/files/${file.id}?alt=media&supportsAllDrives=true`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  if (!res.ok) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new Error(`Export failed for ${file.name} (${res.status})`);
     const text = await res.text();
-    throw new Error(`Download failed for ${file.name} (${res.status}): ${text.slice(0, 200)}`);
-  }
-
-  // If it's an Excel file, parse with SheetJS and convert to CSV
-  if (
-    file.name.endsWith(".xlsx") || file.name.endsWith(".xls") ||
-    file.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    file.mimeType === "application/vnd.ms-excel"
-  ) {
-    const buffer = await res.arrayBuffer();
-    const workbook = XLSX.read(Buffer.from(buffer), { type: "buffer" });
+    const workbook = XLSX.read(text, { type: "string" });
     const firstSheet = workbook.SheetNames[0];
-    return XLSX.utils.sheet_to_csv(workbook.Sheets[firstSheet]);
+    return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: "" });
   }
 
-  // Plain CSV/text
-  return res.text();
+  // Download binary file
+  const url = `${DRIVE_API}/files/${file.id}?alt=media&supportsAllDrives=true`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new Error(`Download failed for ${file.name} (${res.status})`);
+
+  const buffer = await res.arrayBuffer();
+  const workbook = XLSX.read(Buffer.from(buffer), { type: "buffer" });
+  const firstSheet = workbook.SheetNames[0];
+  // sheet_to_json preserves column boundaries — no CSV comma issues
+  return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: "" });
 }
 
-async function importCSV(csvText: string, fileName: string) {
-  const lines = csvText.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return { imported: 0, updated: 0, skipped: 0 };
-
-  const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const colMap = buildColumnMap(headers);
-
+async function importRows(rows: Record<string, unknown>[], fileName: string) {
   let imported = 0;
   let updated = 0;
   let skipped = 0;
   const batchId = `gdrive_${fileName.replace(/\.[^.]+$/, "").replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
 
-  for (let i = 1; i < lines.length; i++) {
+  for (const row of rows) {
     try {
-      const cols = parseCSVLine(lines[i]);
-      if (cols.length < 3) { skipped++; continue; }
+      // Get values by column name (case-insensitive lookup)
+      const get = (keys: string[]): string => {
+        for (const k of keys) {
+          for (const [col, val] of Object.entries(row)) {
+            if (col.toLowerCase().includes(k.toLowerCase()) && val !== "" && val != null) {
+              return String(val).trim();
+            }
+          }
+        }
+        return "";
+      };
 
       // Parse name
       let firstName = "";
       let lastName = "";
-      if (colMap.fullName !== -1 && cols[colMap.fullName]) {
-        const parts = cols[colMap.fullName].trim().split(/\s+/);
+      const fullName = get(["agent_full_name", "full_name"]);
+      if (fullName) {
+        const parts = fullName.split(/\s+/);
         firstName = parts[0] || "";
         lastName = parts.slice(1).join(" ") || "";
       }
-      if (colMap.firstName !== -1 && cols[colMap.firstName]) firstName = cols[colMap.firstName].trim();
-      if (colMap.lastName !== -1 && cols[colMap.lastName]) lastName = cols[colMap.lastName].trim();
+      if (!firstName) firstName = get(["first_name", "firstname"]);
+      if (!lastName) lastName = get(["last_name", "lastname"]);
 
       // Parse email — take first if comma-separated
-      let email: string | null = null;
-      if (colMap.email !== -1 && cols[colMap.email]) {
-        email = cols[colMap.email].split(",")[0].trim().toLowerCase() || null;
-      }
+      const emailRaw = get(["emails", "email"]);
+      const email = emailRaw ? emailRaw.split(",")[0].trim().toLowerCase() : null;
 
-      if (!email) { skipped++; continue; }
+      // Must have email and valid email format
+      if (!email || !email.includes("@")) { skipped++; continue; }
       if (!firstName && !lastName) { skipped++; continue; }
 
-      const phone = colMap.phone !== -1 ? cols[colMap.phone]?.trim() || null : null;
-      const stateVal = colMap.state !== -1 ? cols[colMap.state]?.trim() || null : null;
-      const cityVal = colMap.city !== -1 ? cols[colMap.city]?.trim() || null : null;
-      const brokerage = colMap.brokerage !== -1 ? cols[colMap.brokerage]?.trim() || null : null;
+      const phone = get(["agent_phone_number", "phone", "mobile"]) || null;
+      const stateVal = get(["state"]) || null;
+      const cityVal = get(["city"]) || null;
+      const brokerage = get(["agency_name", "brokerage", "company"]) || null;
 
-      const totalTransactions = colMap.transactions !== -1 ? parseNumber(cols[colMap.transactions]) : null;
-      const totalVolume = colMap.volume !== -1 ? parseNumber(cols[colMap.volume]) : null;
+      const totalTransactions = parseNumber(get(["closed_sales", "transactions"]));
+      const totalVolume = parseNumber(get(["total_value", "volume", "total_volume"]));
       const totalVolumeCents = totalVolume ? BigInt(Math.round(totalVolume * 100)) : null;
 
       const data = {
@@ -343,53 +337,7 @@ async function importCSV(csvText: string, fileName: string) {
   return { imported, updated, skipped };
 }
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if ((char === "," || char === "\t") && !inQuotes) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
-}
-
-function buildColumnMap(headers: string[]) {
-  const find = (patterns: string[]) => {
-    for (const p of patterns) {
-      const idx = headers.findIndex((h) => h.includes(p));
-      if (idx !== -1) return idx;
-    }
-    return -1;
-  };
-
-  return {
-    fullName: find(["agent_full_name", "full_name", "full name", "agent name"]),
-    firstName: find(["first_name", "first name", "firstname"]),
-    lastName: find(["last_name", "last name", "lastname"]),
-    email: find(["emails", "email"]),
-    phone: find(["agent_phone_number", "phone", "mobile", "cell"]),
-    state: find(["state"]),
-    city: find(["city"]),
-    brokerage: find(["agency_name", "brokerage", "company", "office"]),
-    transactions: find(["closed_sales", "transaction", "closed_sale"]),
-    volume: find(["total_value", "volume", "total_volume", "sales volume"]),
-  };
-}
+// parseCSVLine and buildColumnMap removed — using sheet_to_json instead
 
 function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined || val === "") return null;
