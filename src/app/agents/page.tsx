@@ -111,7 +111,7 @@ export default function AgentsPage() {
 
     try {
       // First, list files to show what we found
-      const listRes = await fetch("/api/agents/import-drive");
+      const listRes = await fetch("/api/agents/gdrive");
       const listData = await listRes.json();
 
       if (!listRes.ok) {
@@ -123,7 +123,7 @@ export default function AgentsPage() {
       setImportResult(`Found ${listData.totalFiles} files in Google Drive. Importing...`);
 
       // Now actually import
-      const importRes = await fetch("/api/agents/import-drive", {
+      const importRes = await fetch("/api/agents/gdrive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
