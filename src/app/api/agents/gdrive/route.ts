@@ -81,11 +81,16 @@ export async function GET() {
 }
 
 // POST: Import all CSV/Sheets files from the folder into the Agent database
+// Supports: { fileName: "Massachusetts" } for single file
+//           { batch: 1 } for batch 1 of 6 (8 files per batch)
+//           {} for all files (may timeout)
 export async function POST(request: NextRequest) {
   try {
   const body = await request.json().catch(() => ({}));
   const dryRun = body.dryRun === true;
-  const fileFilter = body.fileName as string | undefined; // optional: import only one file
+  const fileFilter = body.fileName as string | undefined;
+  const batchNum = body.batch as number | undefined; // 1-6
+  const batchSize = 8;
 
   const { clientEmail, privateKey } = getCredentials();
   const accessToken = await getGoogleAccessToken(clientEmail, privateKey, DRIVE_SCOPES);
@@ -93,7 +98,7 @@ export async function POST(request: NextRequest) {
   const allFiles = await listFilesInFolder(accessToken, FOLDER_ID);
 
   // Filter to spreadsheet/CSV files only, and optionally by name
-  const importableFiles = allFiles.filter((f) => {
+  let importableFiles = allFiles.filter((f) => {
     const isSpreadsheet =
       f.mimeType === "application/vnd.google-apps.spreadsheet" ||
       f.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
@@ -105,15 +110,27 @@ export async function POST(request: NextRequest) {
     return true;
   });
 
+  // Sort alphabetically for consistent batching
+  importableFiles.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Apply batch slicing if requested
+  if (batchNum) {
+    const start = (batchNum - 1) * batchSize;
+    const end = start + batchSize;
+    importableFiles = importableFiles.slice(start, end);
+  }
+
   if (dryRun) {
     return NextResponse.json({
       dryRun: true,
       filesToImport: importableFiles.map((f) => f.name),
       totalFiles: importableFiles.length,
+      totalBatches: Math.ceil(allFiles.length / batchSize),
     });
   }
 
   const results = {
+    batch: batchNum || "all",
     filesProcessed: 0,
     totalImported: 0,
     totalUpdated: 0,
