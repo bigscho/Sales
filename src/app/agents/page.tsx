@@ -134,9 +134,22 @@ export default function AgentsPage() {
         if (cols.length < 2) continue;
 
         const row: Record<string, string> = {};
-        if (colMap.firstName !== -1) row.firstName = cols[colMap.firstName] || "";
-        if (colMap.lastName !== -1) row.lastName = cols[colMap.lastName] || "";
-        if (colMap.email !== -1) row.email = cols[colMap.email] || "";
+
+        // Handle full name (homes.com) vs separate first/last
+        if (colMap.fullName !== -1 && cols[colMap.fullName]) {
+          const parts = cols[colMap.fullName].trim().split(/\s+/);
+          row.firstName = parts[0] || "";
+          row.lastName = parts.slice(1).join(" ") || "";
+        }
+        if (colMap.firstName !== -1 && cols[colMap.firstName]) row.firstName = cols[colMap.firstName];
+        if (colMap.lastName !== -1 && cols[colMap.lastName]) row.lastName = cols[colMap.lastName];
+
+        // Handle multiple emails (homes.com sometimes has comma-separated)
+        if (colMap.email !== -1) {
+          const emailRaw = cols[colMap.email] || "";
+          row.email = emailRaw.split(",")[0].trim(); // take first email
+        }
+
         if (colMap.phone !== -1) row.phone = cols[colMap.phone] || "";
         if (colMap.state !== -1) row.state = cols[colMap.state] || "";
         if (colMap.city !== -1) row.city = cols[colMap.city] || "";
@@ -467,6 +480,7 @@ function parseCSVLine(line: string): string[] {
 }
 
 // Map CSV headers to our field names — handles various column naming conventions
+// homes.com format: agent_full_name, emails, agent_phone_number, city, state, closed_sales, total_value, agency_name, lisence_number
 function buildColumnMap(headers: string[]) {
   const find = (patterns: string[]) => {
     for (const p of patterns) {
@@ -477,15 +491,21 @@ function buildColumnMap(headers: string[]) {
   };
 
   return {
+    fullName: find(["agent_full_name", "full_name", "full name", "agent name"]),
     firstName: find(["first_name", "first name", "firstname", "fname"]),
     lastName: find(["last_name", "last name", "lastname", "lname"]),
-    email: find(["email", "e-mail", "email address"]),
-    phone: find(["phone", "mobile", "cell", "telephone"]),
+    email: find(["emails", "email", "e-mail", "email address"]),
+    phone: find(["agent_phone_number", "phone", "mobile", "cell", "telephone"]),
     state: find(["state", "st"]),
     city: find(["city"]),
     zip: find(["zip", "postal", "zipcode"]),
-    brokerage: find(["brokerage", "company", "office", "firm"]),
-    transactions: find(["transaction", "txn", "deals", "sales count", "total transactions"]),
-    volume: find(["volume", "sales volume", "total volume", "gci", "total sales"]),
+    brokerage: find(["agency_name", "brokerage", "company", "office", "firm"]),
+    transactions: find(["closed_sales", "transaction", "txn", "deals", "sales count", "total transactions"]),
+    volume: find(["total_value", "volume", "sales volume", "total volume", "gci", "total sales"]),
+    licenseNumber: find(["lisence_number", "license_number", "license"]),
+    profileLink: find(["agent_profile_link", "profile_link"]),
+    yearsExperience: find(["years_experience", "experience"]),
+    priceRange: find(["price_range"]),
+    averagePrice: find(["average_price"]),
   };
 }
