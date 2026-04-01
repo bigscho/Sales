@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getGoogleAccessToken } from "@/lib/google-auth";
+import * as XLSX from "xlsx";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_SCOPES = "https://www.googleapis.com/auth/drive.readonly";
@@ -107,7 +108,7 @@ function getCredentials() {
   return { clientEmail, privateKey: privateKeyRaw.replace(/\\n/g, "\n") };
 }
 
-async function listFilesInFolder(accessToken: string, folderId: string): Promise<DriveFile[]> {
+async function listFilesInFolder(accessToken: string, folderId: string, recursive = true): Promise<DriveFile[]> {
   const allFiles: DriveFile[] = [];
   let pageToken: string | undefined;
 
@@ -133,20 +134,37 @@ async function listFilesInFolder(accessToken: string, folderId: string): Promise
     pageToken = data.nextPageToken;
   } while (pageToken);
 
+  // If recursive, scan any subfolders too
+  if (recursive) {
+    const subfolders = allFiles.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+    for (const folder of subfolders) {
+      const subFiles = await listFilesInFolder(accessToken, folder.id, true);
+      allFiles.push(...subFiles);
+    }
+  }
+
+  // Return only non-folder files
+  return allFiles.filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
+
   return allFiles;
 }
 
 async function downloadFileAsCSV(accessToken: string, file: DriveFile): Promise<string> {
-  let url: string;
-
   if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
-    // Google Sheets — export as CSV
-    url = `${DRIVE_API}/files/${file.id}/export?mimeType=text/csv`;
-  } else {
-    // Regular file (CSV, XLSX) — download directly
-    url = `${DRIVE_API}/files/${file.id}?alt=media`;
+    // Google Sheets — export as CSV directly
+    const url = `${DRIVE_API}/files/${file.id}/export?mimeType=text/csv`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Export failed for ${file.name} (${res.status}): ${text.slice(0, 200)}`);
+    }
+    return res.text();
   }
 
+  // Regular file (XLSX, CSV) — download as binary
+  const url = `${DRIVE_API}/files/${file.id}?alt=media`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -156,6 +174,19 @@ async function downloadFileAsCSV(accessToken: string, file: DriveFile): Promise<
     throw new Error(`Download failed for ${file.name} (${res.status}): ${text.slice(0, 200)}`);
   }
 
+  // If it's an Excel file, parse with SheetJS and convert to CSV
+  if (
+    file.name.endsWith(".xlsx") || file.name.endsWith(".xls") ||
+    file.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    file.mimeType === "application/vnd.ms-excel"
+  ) {
+    const buffer = await res.arrayBuffer();
+    const workbook = XLSX.read(Buffer.from(buffer), { type: "buffer" });
+    const firstSheet = workbook.SheetNames[0];
+    return XLSX.utils.sheet_to_csv(workbook.Sheets[firstSheet]);
+  }
+
+  // Plain CSV/text
   return res.text();
 }
 
