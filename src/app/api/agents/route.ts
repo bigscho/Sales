@@ -58,8 +58,15 @@ export async function GET(request: NextRequest) {
     prisma.agent.count({ where }),
   ]);
 
+  // BigInt can't be serialized by JSON.stringify — convert to string
+  const serialized = agents.map((a) => ({
+    ...a,
+    totalVolumeCents: a.totalVolumeCents?.toString() || null,
+    avgVolumeCents: a.avgVolumeCents?.toString() || null,
+  }));
+
   return NextResponse.json({
-    agents,
+    agents: serialized,
     total,
     page,
     totalPages: Math.ceil(total / limit),
