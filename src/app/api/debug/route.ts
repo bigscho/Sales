@@ -184,6 +184,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ fixed, count: fixed.length });
   }
 
+  if (body.action === "fix_rescheduled_status") {
+    // Migrate all "rescheduled" demos: past → no_show, future → pending
+    const now = new Date();
+    const rescheduled = await prisma.demo.findMany({
+      where: { status: "rescheduled" },
+      include: { booking: true },
+    });
+
+    const fixed = [];
+    for (const demo of rescheduled) {
+      const isPast = demo.booking.demoDate.getTime() < now.getTime();
+      const newStatus = isPast ? "no_show" : "pending";
+      await prisma.demo.update({
+        where: { id: demo.id },
+        data: { status: newStatus, confirmedBy: "migration", confirmedAt: new Date() },
+      });
+      fixed.push({
+        prospectName: demo.booking.prospectName,
+        demoDate: demo.booking.demoDate,
+        oldStatus: "rescheduled",
+        newStatus,
+      });
+    }
+
+    return NextResponse.json({ fixed, count: fixed.length });
+  }
+
   if (body.action === "fix_dismissed_reschedule") {
     // Fix bookings whose GCal event was dismissed but the booking still exists
     // under a different calendarEventId (e.g. Calendly format).

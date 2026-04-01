@@ -60,7 +60,6 @@ const statusOptions = [
   { value: "showed", label: "Showed" },
   { value: "no_show", label: "No Show" },
   { value: "cancelled", label: "Cancelled" },
-  { value: "rescheduled", label: "Rescheduled" },
 ];
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
