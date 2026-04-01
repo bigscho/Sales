@@ -292,7 +292,8 @@ async function importRows(rows: Record<string, unknown>[], fileName: string) {
       if (!email || !email.includes("@")) { skipped++; continue; }
       if (!rawFirst && !rawLast) { skipped++; continue; }
 
-      const phone = get(["agent_phone_number", "phone", "mobile"]) || null;
+      const phoneRaw = get(["agent_phone_number", "phone", "mobile"]);
+      const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
       const stateVal = get(["state"]);
       const cityVal = get(["city"]);
       const brokerage = get(["agency_name", "brokerage", "company"]);
@@ -410,6 +411,16 @@ function cleanState(raw: string): string {
   if (trimmed.length === 2) return trimmed.toUpperCase();
   // Otherwise title case the full state name
   return titleCase(trimmed);
+}
+
+// Normalize phone to +1XXXXXXXXXX format for GHL/SMS
+function normalizePhone(raw: string): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  if (digits.length < 10) return null;
+  return `+${digits}`;
 }
 
 function parseNumber(val: unknown): number | null {
