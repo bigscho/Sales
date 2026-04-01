@@ -105,6 +105,50 @@ export default function AgentsPage() {
     setSelected(next);
   };
 
+  const handleDriveImport = async () => {
+    setImporting(true);
+    setImportResult("Connecting to Google Drive...");
+
+    try {
+      // First, list files to show what we found
+      const listRes = await fetch("/api/agents/import-drive");
+      const listData = await listRes.json();
+
+      if (!listRes.ok) {
+        setImportResult(`Error: ${listData.error || "Failed to connect to Google Drive"}`);
+        setImporting(false);
+        return;
+      }
+
+      setImportResult(`Found ${listData.totalFiles} files in Google Drive. Importing...`);
+
+      // Now actually import
+      const importRes = await fetch("/api/agents/import-drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const importData = await importRes.json();
+
+      const filesSummary = importData.fileResults
+        ?.map((f: { name: string; imported: number; updated: number; skipped: number; error?: string }) =>
+          f.error ? `${f.name}: ERROR — ${f.error}` : `${f.name}: ${f.imported} new, ${f.updated} updated`
+        )
+        .join("\n");
+
+      setImportResult(
+        `Done! ${importData.filesProcessed} files processed.\n` +
+        `${importData.totalImported} new agents, ${importData.totalUpdated} updated, ${importData.totalSkipped} skipped.\n\n` +
+        filesSummary
+      );
+      fetchAgents();
+    } catch (err) {
+      setImportResult(`Error: ${String(err)}`);
+    }
+
+    setImporting(false);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,11 +256,17 @@ export default function AgentsPage() {
             onChange={handleFileUpload}
           />
           <Button
+            onClick={handleDriveImport}
+            disabled={importing}
+          >
+            {importing ? "Importing..." : "Import from Google Drive"}
+          </Button>
+          <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
             variant="outline"
           >
-            {importing ? "Importing..." : "Import CSV"}
+            Upload CSV
           </Button>
         </div>
       </div>
@@ -224,7 +274,7 @@ export default function AgentsPage() {
       {importResult && (
         <Card className="mb-4">
           <CardContent className="py-3">
-            <p className="text-sm">{importResult}</p>
+            <pre className="text-sm whitespace-pre-wrap font-sans">{importResult}</pre>
           </CardContent>
         </Card>
       )}
