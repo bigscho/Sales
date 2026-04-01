@@ -242,3 +242,93 @@ model SetterDailyScore {
 
   @@unique([setterId, date])
 }
+
+// === OUTBOUND CONSOLE ===
+
+model Agent {
+  id                 String    @id @default(cuid())
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String?
+  state              String?
+  city               String?
+  zip                String?
+  brokerage          String?
+  totalTransactions  Int?      // 5-year total from homes.com
+  totalVolumeCents   BigInt?   // 5-year total sales volume in cents
+  avgTransactions    Int?      // calculated: totalTransactions / 5
+  avgVolumeCents     BigInt?   // calculated: totalVolumeCents / 5
+  source             String    @default("csv_import")
+  importBatch        String?   // tracks which import brought this record in
+  emailVerifyStatus  String?   // valid | invalid | risky | unknown
+  emailVerifiedAt    DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  outboundPushes     OutboundPush[]
+
+  @@unique([email])
+  @@index([state, city])
+  @@index([avgTransactions])
+  @@index([lastName, firstName])
+}
+
+model OutboundCampaign {
+  id                  String    @id @default(cuid())
+  name                String
+  channel             String    // smartlead | ghl
+  externalId          String?   // Smartlead campaign ID or GHL workflow ID
+  ghlSubAccountId     String?   // which GHL sub-account this uses
+  status              String    @default("active") // active | paused | completed
+  totalPushed         Int       @default(0)
+  totalSent           Int       @default(0)
+  totalOpened         Int       @default(0)
+  totalReplied        Int       @default(0)
+  openRate            Float?
+  replyRate           Float?
+  lastSyncedAt        DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  pushes              OutboundPush[]
+  scheduledPushes     ScheduledPush[]
+}
+
+model OutboundPush {
+  id           String   @id @default(cuid())
+  agentId      String
+  campaignId   String
+  channel      String   // smartlead | ghl
+  pushedAt     DateTime @default(now())
+  pushedBy     String?
+
+  agent        Agent            @relation(fields: [agentId], references: [id])
+  campaign     OutboundCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([agentId, campaignId])
+  @@index([campaignId])
+  @@index([agentId])
+}
+
+model ScheduledPush {
+  id              String    @id @default(cuid())
+  campaignId      String
+  name            String
+  filterState     String?
+  filterCity      String?
+  filterMinProd   Int?
+  filterMaxProd   Int?
+  batchSize       Int       @default(200)
+  frequency       String    // daily | weekly | one_time
+  dayOfWeek       Int?      // 0-6 for weekly
+  timeOfDay       String?   // "09:00" ET
+  nextRunAt       DateTime?
+  lastRunAt       DateTime?
+  isActive        Boolean   @default(true)
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  campaign        OutboundCampaign @relation(fields: [campaignId], references: [id])
+}

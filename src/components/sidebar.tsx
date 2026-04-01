@@ -9,6 +9,8 @@ const navItems = [
   { href: "/demos", label: "Demos", icon: "📞" },
   { href: "/deals", label: "Deals", icon: "💰" },
   { href: "/scoreboard", label: "Scoreboard", icon: "🏆" },
+  { href: "/agents", label: "Agents", icon: "🏠" },
+  { href: "/outbound", label: "Outbound", icon: "📤" },
   { href: "/payroll", label: "Payroll", icon: "💵" },
   { href: "/pnl", label: "P&L", icon: "📈" },
   { href: "/team", label: "Team", icon: "👥" },
