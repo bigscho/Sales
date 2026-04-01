@@ -111,11 +111,11 @@ function parsePhone(description: string): string | null {
 }
 
 function parseProspectName(summary: string): string {
-  // Summaries are typically "Grassfed Demo - John Smith" or "John Smith and Colin"
-  // Try to extract the prospect name (non-closer part)
+  // Summaries are typically "Grassfed Demo - John Smith" or "John Smith and Colin Schofield"
+  // Strip the closer's full name (first + last) from the summary
   const cleaned = summary
     .replace(/Grassfed Demo\s*[-:]\s*/i, "")
-    .replace(/\s+and\s+(Colin|Mark)\b/i, "")
+    .replace(/\s+and\s+(Colin|Mark)(\s+\w+)?\s*$/i, "")
     .trim();
   return cleaned || summary || "Unknown";
 }
@@ -312,6 +312,7 @@ async function syncCalendar(
             prospectEmail: { equals: prospectEmail, mode: "insensitive" },
             demoDate: { gte: windowStart, lte: windowEnd },
           },
+          include: { demo: true },
         });
         if (byEmail) {
           // Link the GCal composite ID so future drag-reschedules are detectable
@@ -320,6 +321,18 @@ async function syncCalendar(
               where: { id: byEmail.id },
               data: { calendarEventId: compositeId },
             });
+          }
+          // Reset stale no_show/rescheduled status on future-dated demos
+          if (
+            byEmail.demo &&
+            ["no_show", "rescheduled"].includes(byEmail.demo.status) &&
+            eventStart.getTime() > Date.now()
+          ) {
+            await prisma.demo.update({
+              where: { id: byEmail.demo.id },
+              data: { status: "pending", confirmedBy: null, confirmedAt: null },
+            });
+            results.updated++;
           }
           continue;
         }
@@ -336,6 +349,7 @@ async function syncCalendar(
               prospectName: { startsWith: firstName, mode: "insensitive" },
               demoDate: { gte: windowStart, lte: windowEnd },
             },
+            include: { demo: true },
           });
           if (byName) {
             // Link the GCal composite ID for future reschedule detection
@@ -344,6 +358,18 @@ async function syncCalendar(
                 where: { id: byName.id },
                 data: { calendarEventId: compositeId },
               });
+            }
+            // Reset stale no_show/rescheduled status on future-dated demos
+            if (
+              byName.demo &&
+              ["no_show", "rescheduled"].includes(byName.demo.status) &&
+              eventStart.getTime() > Date.now()
+            ) {
+              await prisma.demo.update({
+                where: { id: byName.demo.id },
+                data: { status: "pending", confirmedBy: null, confirmedAt: null },
+              });
+              results.updated++;
             }
             continue;
           }

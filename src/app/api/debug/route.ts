@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getWeekRange } from "@/lib/utils";
 
 // Debug endpoint to investigate booking/demo issues
-// Usage: GET /api/debug?name=andrea  or  ?email=andrea@...  or  ?all_dismissed=true
+// GET: ?name=andrea  or  ?email=andrea@...  or  ?all_dismissed=true
+// POST: { action: "fix_stale_noshows" } — reset future-dated no-shows to pending
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
   const email = request.nextUrl.searchParams.get("email");
@@ -132,4 +134,55 @@ export async function GET(request: NextRequest) {
   results.stats = stats;
 
   return NextResponse.json(results, { status: 200 });
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+
+  if (body.action === "fix_stale_noshows") {
+    // Find all demos with no_show/rescheduled status but a future demoDate
+    // These are bookings that were dragged to a new date but status was never reset
+    const now = new Date();
+    const stale = await prisma.demo.findMany({
+      where: {
+        status: { in: ["no_show", "rescheduled"] },
+        booking: { demoDate: { gt: now } },
+      },
+      include: { booking: { include: { week: true } } },
+    });
+
+    const fixed = [];
+    for (const demo of stale) {
+      const eventStart = demo.booking.demoDate;
+      const { start, end } = getWeekRange(eventStart);
+
+      // Make sure weekId is correct for the new date
+      const week = await prisma.week.upsert({
+        where: { weekStart: start },
+        create: { weekStart: start, weekEnd: end },
+        update: {},
+      });
+
+      await prisma.booking.update({
+        where: { id: demo.bookingId },
+        data: { weekId: week.id },
+      });
+
+      await prisma.demo.update({
+        where: { id: demo.id },
+        data: { weekId: week.id, status: "pending", confirmedBy: null, confirmedAt: null },
+      });
+
+      fixed.push({
+        prospectName: demo.booking.prospectName,
+        oldStatus: demo.status,
+        demoDate: demo.booking.demoDate,
+        weekId: week.id,
+      });
+    }
+
+    return NextResponse.json({ fixed, count: fixed.length });
+  }
+
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
