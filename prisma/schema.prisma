@@ -263,6 +263,9 @@ model Agent {
   totalVolumeCents   BigInt?   // 5-year total sales volume in cents
   avgTransactions    Int?      // calculated: totalTransactions / 5
   avgVolumeCents     BigInt?   // calculated: totalVolumeCents / 5
+  lastContactedAt      DateTime? // when last pushed to any campaign
+  lastContactedChannel String?   // smartlead | ghl
+  contactCount         Int       @default(0)
   source             String    @default("csv_import")
   importBatch        String?   // tracks which import brought this record in
   emailVerifyStatus  String?   // valid | invalid | risky | unknown
