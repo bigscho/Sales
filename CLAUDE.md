@@ -83,7 +83,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - `GHL_API_KEY_1` + `GHL_API_KEY_2` — Private Integration bearer tokens for 2 rented sub-accounts
 
 ### What's Next (Phase 2)
-1. **Data import decision**: Manual CSV upload (already built) OR Google Drive auto-pull (needs Google Drive API setup). User deciding.
+1. **Data import decision**: DECIDED — Google Drive auto-pull. Endpoint built at `/api/agents/import-drive`. User shared "Raw States" folder (folder ID: `1oUm4jzKSLpNKjr7qsntwSd8oApn1Wswa`) with the service account email. All 50 states in one folder. Google auth helpers extracted to `src/lib/google-auth.ts`.
 2. **Deploy Phase 1**: Push dev branch to production, run Prisma migration, add env vars to Vercel
 3. **Smartlead push endpoint**: `/api/outbound/push` — format fields (Email, first_name, City case-sensitive), call Smartlead API
 4. **Email validation gate**: `/api/agents/verify` — call Omni Verifier before Smartlead push, cache results
