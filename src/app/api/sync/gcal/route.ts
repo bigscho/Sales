@@ -198,10 +198,37 @@ async function syncCalendar(
       results.scanned++;
 
       // Skip dismissed events (manually deleted by user)
+      // But if the event has been rescheduled to a future date and an active booking
+      // exists for the same prospect email, un-dismiss it and let the sync process it.
       const dismissed = await prisma.dismissedEvent.findUnique({
         where: { calendarEventId: compositeId },
       });
-      if (dismissed) continue;
+      if (dismissed) {
+        const eventStart = getEventStart(event);
+        if (eventStart && eventStart.getTime() > Date.now() && event.status !== "cancelled") {
+          const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
+          if (prospectEmail) {
+            const activeBooking = await prisma.booking.findFirst({
+              where: {
+                prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+                demo: { status: { not: "cancelled" } },
+              },
+              include: { demo: true },
+            });
+            if (activeBooking) {
+              // Active booking exists — un-dismiss so the event can be processed
+              await prisma.dismissedEvent.delete({ where: { id: dismissed.id } });
+              // Fall through to normal processing below
+            } else {
+              continue;
+            }
+          } else {
+            continue;
+          }
+        } else {
+          continue;
+        }
+      }
 
       // Handle cancelled events
       if (event.status === "cancelled") {

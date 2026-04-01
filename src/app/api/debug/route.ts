@@ -184,5 +184,66 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ fixed, count: fixed.length });
   }
 
+  if (body.action === "fix_dismissed_reschedule") {
+    // Fix bookings whose GCal event was dismissed but the booking still exists
+    // under a different calendarEventId (e.g. Calendly format).
+    // Params: email (required), newDate (ISO string), compositeId (the dismissed GCal ID)
+    const { email, newDate, compositeId } = body;
+    if (!email) {
+      return NextResponse.json({ error: "email required" }, { status: 400 });
+    }
+
+    const booking = await prisma.booking.findFirst({
+      where: { prospectEmail: { equals: email, mode: "insensitive" } },
+      include: { demo: true },
+      orderBy: { demoDate: "desc" },
+    });
+    if (!booking) {
+      return NextResponse.json({ error: "No booking found for that email" }, { status: 404 });
+    }
+
+    const eventStart = newDate ? new Date(newDate) : booking.demoDate;
+    const { start, end } = getWeekRange(eventStart);
+    const week = await prisma.week.upsert({
+      where: { weekStart: start },
+      create: { weekStart: start, weekEnd: end },
+      update: {},
+    });
+
+    // Remove the dismissed event so GCal sync can process it
+    if (compositeId) {
+      await prisma.dismissedEvent.deleteMany({
+        where: { calendarEventId: compositeId },
+      });
+    }
+
+    // Update booking date, week, and link composite ID
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        demoDate: eventStart,
+        weekId: week.id,
+        ...(compositeId ? { calendarEventId: compositeId } : {}),
+      },
+    });
+
+    // Reset demo status and move to correct week
+    if (booking.demo) {
+      await prisma.demo.update({
+        where: { id: booking.demo.id },
+        data: { weekId: week.id, status: "pending", confirmedBy: null, confirmedAt: null },
+      });
+    }
+
+    return NextResponse.json({
+      fixed: true,
+      prospectName: booking.prospectName,
+      oldDate: booking.demoDate,
+      newDate: eventStart,
+      weekId: week.id,
+      dismissedRemoved: compositeId || null,
+    });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
