@@ -262,6 +262,13 @@ export default function VerifyAdminPage() {
                   ) : (
                     <Badge variant="secondary">Not Confirmed</Badge>
                   )}
+                  <a
+                    href={`/verify?weekId=${weekId}&setter=${setter.id}`}
+                    className="text-xs text-blue-500 hover:underline"
+                    target="_blank"
+                  >
+                    View as setter
+                  </a>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
                   <span>{setter.totalDemos} demos</span>
