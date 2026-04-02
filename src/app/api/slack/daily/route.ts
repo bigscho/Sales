@@ -51,13 +51,6 @@ export async function POST() {
     },
   });
 
-  const dayLabel = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    timeZone: "America/New_York",
-  });
-
   const dayName = now.toLocaleDateString("en-US", { weekday: "long", timeZone: "America/New_York" });
 
   const lines = [
