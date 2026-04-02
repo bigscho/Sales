@@ -1,25 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-interface Session {
-  memberId: string;
-  name: string;
-  role: string;
-  isAdmin: boolean;
-}
+import { useSession } from "@/components/app-shell";
 
 export function UserMenu() {
   const router = useRouter();
-  const [session, setSession] = useState<Session | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth")
-      .then(r => r.json())
-      .then(d => setSession(d.session))
-      .catch(() => {});
-  }, []);
+  const session = useSession();
 
   const handleLogout = async () => {
     await fetch("/api/auth", {

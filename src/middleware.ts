@@ -20,9 +20,14 @@ const SYSTEM_ROUTES = [
 // admin (isAdmin) can access everything
 // Routes not listed here are accessible to any authenticated user
 const ROLE_ROUTES: Record<string, string[]> = {
-  setter: ["/", "/verify", "/scoreboard", "/api/verify", "/api/scoreboard"],
+  setter: ["/", "/demos", "/verify", "/scoreboard", "/api/demos", "/api/verify", "/api/scoreboard"],
   closer: ["/", "/demos", "/deals", "/scoreboard", "/api/demos", "/api/deals", "/api/scoreboard", "/api/kpis"],
   show_rate_rep: ["/", "/scoreboard", "/demos", "/api/scoreboard", "/api/demos", "/api/kpis"],
+};
+
+// Default landing page per role (when they hit "/")
+const ROLE_DEFAULT: Record<string, string> = {
+  setter: "/demos",
 };
 
 export async function middleware(request: NextRequest) {
@@ -64,6 +69,11 @@ export async function middleware(request: NextRequest) {
     // Admins can access everything
     if (isAdmin) {
       return NextResponse.next();
+    }
+
+    // Redirect "/" to role-specific default page
+    if (pathname === "/" && ROLE_DEFAULT[role]) {
+      return NextResponse.redirect(new URL(ROLE_DEFAULT[role], request.url));
     }
 
     // Check role-based access

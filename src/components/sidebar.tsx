@@ -1,25 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/components/app-shell";
 
-const navItems = [
-  { href: "/", label: "Dashboard", icon: "📊" },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  roles?: string[]; // if set, only these roles + admin see it
+}
+
+const navItems: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: "📊", roles: ["admin"] },
   { href: "/demos", label: "Demos", icon: "📞" },
-  { href: "/deals", label: "Deals", icon: "💰" },
+  { href: "/deals", label: "Deals", icon: "💰", roles: ["closer", "admin"] },
   { href: "/scoreboard", label: "Scoreboard", icon: "🏆" },
-  { href: "/agents", label: "Agents", icon: "🏠" },
-  { href: "/outbound", label: "Outbound", icon: "📤" },
+  { href: "/agents", label: "Agents", icon: "🏠", roles: ["admin"] },
+  { href: "/outbound", label: "Outbound", icon: "📤", roles: ["admin"] },
   { href: "/verify/admin", label: "Verify", icon: "✅" },
-  { href: "/payroll", label: "Payroll", icon: "💵" },
-  { href: "/pnl", label: "P&L", icon: "📈" },
-  { href: "/team", label: "Team", icon: "👥" },
-  { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/payroll", label: "Payroll", icon: "💵", roles: ["admin"] },
+  { href: "/pnl", label: "P&L", icon: "📈", roles: ["admin"] },
+  { href: "/team", label: "Team", icon: "👥", roles: ["admin"] },
+  { href: "/settings", label: "Settings", icon: "⚙️", roles: ["admin"] },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const session = useSession();
+  const weekId = searchParams.get("weekId") || "";
+
+  const isAdmin = session?.isAdmin ?? false;
+  const role = session?.role || "";
+
+  // Filter nav items by role
+  const visibleItems = navItems.filter(item => {
+    if (!item.roles) return true; // visible to everyone
+    if (isAdmin) return true;
+    return item.roles.includes(role);
+  });
+
+  // For setters, the Verify link should go to their own verify page
+  const getHref = (item: NavItem): string => {
+    if (item.href === "/verify/admin" && role === "setter" && !isAdmin && session?.memberId) {
+      return `/verify?weekId=${weekId}&setter=${session.memberId}`;
+    }
+    return item.href;
+  };
 
   return (
     <aside className="w-56 bg-white border-r border-[var(--border)] min-h-screen flex flex-col">
@@ -28,12 +57,13 @@ export function Sidebar() {
         <p className="text-xs text-[var(--muted-foreground)]">Sales Tracker</p>
       </div>
       <nav className="flex-1 p-2">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
+          const href = getHref(item);
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={href}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
                 isActive
