@@ -13,7 +13,7 @@ interface SetterScore {
   tier: number;
   activity: { newBookings: number };
   results: { shows: number; noShows: number; pending: number; showRate: number };
-  ahead: number;
+  pendingTotal: number;
 }
 
 interface ScoreboardData {
@@ -21,12 +21,12 @@ interface ScoreboardData {
   teamTotals: {
     activity: { newBookings: number };
     results: { shows: number; noShows: number; pending: number; showRate: number };
-    ahead: number;
+    pendingTotal: number;
   };
   unattributed: {
     activity: { newBookings: number };
     results: { shows: number; noShows: number; pending: number; showRate: number };
-    ahead: number;
+    pendingTotal: number;
   };
   showRateRep: { id: string; name: string; showRate: number } | null;
   dimension: string;
@@ -146,15 +146,13 @@ export default function ScoreboardPage() {
             <p className="text-xs text-gray-500">on calendar {dimLabel.toLowerCase()}</p>
           </CardContent>
         </Card>
-        {dimension !== "all_time" && (
-          <Card>
-            <CardContent className="pt-4 pb-3 px-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Ahead</p>
-              <p className="text-3xl font-bold text-blue-600 mt-1">{teamTotals.ahead}</p>
-              <p className="text-xs text-gray-500">booked beyond {dimLabel.toLowerCase()}</p>
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Pending Total</p>
+            <p className="text-3xl font-bold text-blue-600 mt-1">{teamTotals.pendingTotal}</p>
+            <p className="text-xs text-gray-500">across all weeks</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Two Leaderboards Side by Side */}
@@ -235,8 +233,8 @@ export default function ScoreboardPage() {
                     {setter.results.pending > 0 && (
                       <span className="text-sm text-yellow-600">{setter.results.pending} pending</span>
                     )}
-                    {setter.ahead > 0 && (
-                      <span className="text-sm text-blue-600">{setter.ahead} ahead</span>
+                    {setter.pendingTotal > 0 && (
+                      <span className="text-sm text-blue-600">{setter.pendingTotal} pending total</span>
                     )}
                   </div>
                   <StatBar value={setter.results.shows} max={maxShows} color="bg-green-500" />

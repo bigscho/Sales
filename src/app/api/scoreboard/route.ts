@@ -74,30 +74,24 @@ export async function GET(request: NextRequest) {
     else if (demo.status === "pending") { resultsBySetterId[sid].pending++; resultsTotal.pending++; }
   }
 
-  // === AHEAD: demos scheduled beyond the current period (future pipeline) ===
-  const aheadBySetterId: Record<string, number> = {};
-  let aheadTotal = 0;
-  if (dateRange) {
-    const aheadCutoff = dimension === "weekly" ? new Date(dateRange.end.getTime() + 1) : dateRange.end;
-    const aheadDemos = await prisma.demo.findMany({
-      where: {
-        booking: { demoDate: { gte: aheadCutoff } },
-        status: "pending",
-      },
-      include: { booking: { select: { setterId: true } } },
-    });
-    for (const demo of aheadDemos) {
-      const sid = demo.booking.setterId || "unattributed";
-      aheadBySetterId[sid] = (aheadBySetterId[sid] || 0) + 1;
-      aheadTotal++;
-    }
+  // === PENDING TOTAL: all pending demos across all weeks ===
+  const pendingTotalBySetterId: Record<string, number> = {};
+  let pendingTotalAll = 0;
+  const allPendingDemos = await prisma.demo.findMany({
+    where: { status: "pending" },
+    include: { booking: { select: { setterId: true } } },
+  });
+  for (const demo of allPendingDemos) {
+    const sid = demo.booking.setterId || "unattributed";
+    pendingTotalBySetterId[sid] = (pendingTotalBySetterId[sid] || 0) + 1;
+    pendingTotalAll++;
   }
 
   // Build scoreboard entries
   const scoreboard = setters.map((s) => {
     const activity = activityBySetterId[s.id] || 0;
     const results = resultsBySetterId[s.id] || { shows: 0, noShows: 0, pending: 0 };
-    const ahead = aheadBySetterId[s.id] || 0;
+    const pendingTotal = pendingTotalBySetterId[s.id] || 0;
     const confirmed = results.shows + results.noShows;
     return {
       id: s.id,
@@ -108,7 +102,7 @@ export async function GET(request: NextRequest) {
         ...results,
         showRate: confirmed > 0 ? results.shows / confirmed : 0,
       },
-      ahead,
+      pendingTotal,
     };
   });
 
@@ -120,14 +114,14 @@ export async function GET(request: NextRequest) {
   const unattributedActivity = activityBySetterId["unattributed"] || 0;
   const unattributedResults = resultsBySetterId["unattributed"] || { shows: 0, noShows: 0, pending: 0 };
   const unattributedConfirmed = unattributedResults.shows + unattributedResults.noShows;
-  const unattributedAhead = aheadBySetterId["unattributed"] || 0;
+  const unattributedPendingTotal = pendingTotalBySetterId["unattributed"] || 0;
 
   return NextResponse.json({
     scoreboard,
     teamTotals: {
       activity: { newBookings: activityTotal },
       results: { ...resultsTotal, showRate: teamShowRate },
-      ahead: aheadTotal,
+      pendingTotal: pendingTotalAll,
     },
     unattributed: {
       activity: { newBookings: unattributedActivity },
@@ -135,7 +129,7 @@ export async function GET(request: NextRequest) {
         ...unattributedResults,
         showRate: unattributedConfirmed > 0 ? unattributedResults.shows / unattributedConfirmed : 0,
       },
-      ahead: unattributedAhead,
+      pendingTotal: unattributedPendingTotal,
     },
     showRateRep: showRateRep ? {
       id: showRateRep.id,
