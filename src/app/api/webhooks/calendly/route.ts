@@ -359,8 +359,9 @@ export async function POST(request: NextRequest) {
               }
 
               // Always send team total (all bookings, including excluded/CEO)
-              const teamTotal = await getTeamTotalToday();
-              await sendSlackSetter(`*TOTAL booked today so far: ${teamTotal}*`);
+              const { total, setterTotal } = await getTeamTotalToday();
+              const setterNote = total > setterTotal ? ` (${setterTotal} by setters)` : "";
+              await sendSlackSetter(`*TOTAL booked today so far: ${total}${setterNote}*`);
             }
           }
         } catch { /* setter game not configured */ }

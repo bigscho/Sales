@@ -202,12 +202,19 @@ export async function getAllSetterScoresToday(): Promise<Array<{
   return results;
 }
 
-// Get total bookings today across ALL setters (including excluded + unattributed)
-export async function getTeamTotalToday(): Promise<number> {
+// Get total bookings today — all bookings + setter-only count
+export async function getTeamTotalToday(): Promise<{ total: number; setterTotal: number }> {
   const { start, end } = getETDateBounds();
-  return prisma.booking.count({
-    where: { createdAt: { gte: start, lt: end } },
-  });
+  const setterIds = (await prisma.teamMember.findMany({
+    where: { role: "setter", isActive: true, excludeFromLeaderboard: { not: true } },
+    select: { id: true },
+  })).map(s => s.id);
+
+  const [total, setterTotal] = await Promise.all([
+    prisma.booking.count({ where: { createdAt: { gte: start, lt: end } } }),
+    prisma.booking.count({ where: { createdAt: { gte: start, lt: end }, setterId: { in: setterIds } } }),
+  ]);
+  return { total, setterTotal };
 }
 
 export async function getPipelineCount(): Promise<number> {

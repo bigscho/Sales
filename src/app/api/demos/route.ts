@@ -76,8 +76,9 @@ export async function PATCH(request: NextRequest) {
 
           if (isWeekday()) {
             const { count } = await getSetterTodayBookings(setterId);
-            const teamTotal = await getTeamTotalToday();
-            await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention} (now at ${count} today)\n\n*TOTAL booked today: ${teamTotal}*`);
+            const { total, setterTotal } = await getTeamTotalToday();
+            const setterNote = total > setterTotal ? ` (${setterTotal} by setters)` : "";
+            await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention} (now at ${count} today)\n\n*TOTAL booked today: ${total}${setterNote}*`);
           } else {
             await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention}`);
           }
@@ -261,8 +262,9 @@ export async function DELETE(request: NextRequest) {
         if (setter) {
           const { count } = await getSetterTodayBookings(demo.booking.setterId);
           const mention = formatMention(setter);
-          const teamTotal = await getTeamTotalToday();
-          await sendSlackSetter(`⚠️ Booking removed for ${demo.booking.prospectName}\n${mention} is now at ${count} today\n\n*TOTAL booked today: ${teamTotal}*`);
+          const { total, setterTotal } = await getTeamTotalToday();
+          const setterNote = total > setterTotal ? ` (${setterTotal} by setters)` : "";
+          await sendSlackSetter(`⚠️ Booking removed for ${demo.booking.prospectName}\n${mention} is now at ${count} today\n\n*TOTAL booked today: ${total}${setterNote}*`);
         }
       }
     } catch { /* setter correction failed */ }

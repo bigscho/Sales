@@ -125,6 +125,7 @@ export async function POST() {
     const teamTotal = await prisma.booking.count({
       where: { createdAt: { gte: lbWeekStart } },
     });
+    const setterTotal = weeklyResults.reduce((sum, r) => sum + r.bookings, 0);
 
     // Sort descending by bookings
     weeklyResults.sort((a, b) => b.bookings - a.bookings);
@@ -141,7 +142,8 @@ export async function POST() {
     const lbConfirmed = lbShows + lbNoShows;
     const lbShowRate = lbConfirmed > 0 ? ((lbShows / lbConfirmed) * 100).toFixed(0) : "—";
 
-    const leaderboardMessage = `🏆 WEEKLY LEADERBOARD 🏆\n\n${leaderLines.join("\n")}\n\nTeam total: ${teamTotal} bookings | Show rate: ${lbShowRate}%`;
+    const setterNote = teamTotal > setterTotal ? ` (${setterTotal} by setters)` : "";
+    const leaderboardMessage = `🏆 WEEKLY LEADERBOARD 🏆\n\n${leaderLines.join("\n")}\n\nTeam total: ${teamTotal} bookings${setterNote} | Show rate: ${lbShowRate}%`;
 
     await sendSlackSetter(leaderboardMessage);
   }
