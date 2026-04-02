@@ -12,6 +12,8 @@ model TeamMember {
   name                    String
   role                    String   // setter | closer | show_rate_rep
   tier                    Int      @default(1) // 1-4 for setters
+  pin                     String?  // 4-6 digit login PIN
+  isAdmin                 Boolean  @default(false)
   slackUserId             String?  // Slack member ID for @mentions (e.g. U0APNBM43S7)
   cumulativeShows         Int      @default(0)
   consecutive15PlusWeeks  Int      @default(0)

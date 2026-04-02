@@ -10,6 +10,8 @@ interface TeamMember {
   name: string;
   role: string;
   tier: number;
+  pin: string | null;
+  isAdmin: boolean;
   slackUserId: string | null;
   excludeFromLeaderboard: boolean;
   cumulativeShows: number;
@@ -129,6 +131,7 @@ export default function TeamPage() {
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Tier</th>
                     <th className="text-left p-3 font-medium">Slack ID</th>
+                    <th className="text-left p-3 font-medium">PIN</th>
                     <th className="text-center p-3 font-medium">Leaderboard</th>
                     <th className="text-right p-3 font-medium">Cumulative Shows</th>
                     <th className="text-right p-3 font-medium">Consec. 15+ Weeks</th>
@@ -162,6 +165,22 @@ export default function TeamPage() {
                           }}
                           onChange={(e) => {
                             setMembers(prev => prev.map(p => p.id === m.id ? { ...p, slackUserId: e.target.value } : p));
+                          }}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          value={m.pin || ""}
+                          placeholder="Set PIN"
+                          type="password"
+                          maxLength={6}
+                          className="border rounded px-2 py-1 text-xs w-20"
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== m.pin) updateMember(m.id, { pin: val });
+                          }}
+                          onChange={(e) => {
+                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, pin: e.target.value } : p));
                           }}
                         />
                       </td>
@@ -203,7 +222,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {setters.length === 0 && (
-                    <tr><td colSpan={8} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
+                    <tr><td colSpan={9} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
                   )}
                 </tbody>
               </table>
@@ -219,6 +238,8 @@ export default function TeamPage() {
                   <tr>
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Slack ID</th>
+                    <th className="text-left p-3 font-medium">PIN</th>
+                    <th className="text-center p-3 font-medium">Admin</th>
                     <th className="text-left p-3 font-medium">Status</th>
                     <th className="p-3 font-medium">Actions</th>
                   </tr>
@@ -242,6 +263,30 @@ export default function TeamPage() {
                         />
                       </td>
                       <td className="p-3">
+                        <input
+                          value={m.pin || ""}
+                          placeholder="Set PIN"
+                          type="password"
+                          maxLength={6}
+                          className="border rounded px-2 py-1 text-xs w-20"
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== m.pin) updateMember(m.id, { pin: val });
+                          }}
+                          onChange={(e) => {
+                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, pin: e.target.value } : p));
+                          }}
+                        />
+                      </td>
+                      <td className="p-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={m.isAdmin}
+                          onChange={() => updateMember(m.id, { isAdmin: !m.isAdmin })}
+                          className="rounded"
+                        />
+                      </td>
+                      <td className="p-3">
                         <Badge variant={m.isActive ? "success" : "secondary"}>
                           {m.isActive ? "Active" : "Inactive"}
                         </Badge>
@@ -254,7 +299,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {closers.length === 0 && (
-                    <tr><td colSpan={4} className="p-4 text-center text-gray-500">No closers added yet</td></tr>
+                    <tr><td colSpan={6} className="p-4 text-center text-gray-500">No closers added yet</td></tr>
                   )}
                 </tbody>
               </table>
