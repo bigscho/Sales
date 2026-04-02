@@ -26,7 +26,7 @@ interface KPIData {
   cashPerShow: number;
   newRevenue: number;
   returningRevenue: number;
-  setterStats: { setterId: string; setterName: string; bookings: number; shows: number; noShows: number; showRate: number }[];
+  setterStats: { setterId: string; setterName: string; newBookings: number; shows: number; noShows: number; pending: number; pendingTotal: number; showRate: number }[];
   closerStats: { closerId: string; closerName: string; shows: number; closes: number; held: number; lost: number; closeRate: number; cashCollected: number }[];
 }
 
@@ -200,20 +200,24 @@ export default function Dashboard() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left p-3 font-medium">Setter</th>
-                  <th className="text-right p-3 font-medium">On Calendar</th>
+                  <th className="text-right p-3 font-medium">New Bookings</th>
                   <th className="text-right p-3 font-medium">Shows</th>
                   <th className="text-right p-3 font-medium">No-Shows</th>
                   <th className="text-right p-3 font-medium">Show Rate</th>
+                  <th className="text-right p-3 font-medium">Pending</th>
+                  <th className="text-right p-3 font-medium">Pending Total</th>
                 </tr>
               </thead>
               <tbody>
                 {kpis.setterStats.map((s) => (
                   <tr key={s.setterId} className="border-b last:border-0">
                     <td className="p-3 font-medium">{s.setterName}</td>
-                    <td className="p-3 text-right">{s.bookings}</td>
-                    <td className="p-3 text-right">{s.shows}</td>
-                    <td className="p-3 text-right">{s.noShows}</td>
+                    <td className="p-3 text-right">{s.newBookings}</td>
+                    <td className="p-3 text-right text-green-600">{s.shows}</td>
+                    <td className="p-3 text-right text-red-600">{s.noShows}</td>
                     <td className="p-3 text-right font-medium">{formatPercent(s.showRate)}</td>
+                    <td className="p-3 text-right text-yellow-600">{s.pending}</td>
+                    <td className="p-3 text-right text-blue-600">{s.pendingTotal}</td>
                   </tr>
                 ))}
               </tbody>

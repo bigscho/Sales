@@ -29,9 +29,11 @@ export interface WeeklyKPIs {
 export interface SetterKPI {
   setterId: string;
   setterName: string;
-  bookings: number;
+  newBookings: number;
   shows: number;
   noShows: number;
+  pending: number;
+  pendingTotal: number;
   showRate: number;
 }
 
@@ -112,7 +114,32 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const cashPerBooking = totalBookings > 0 ? Math.round(totalCash / totalBookings) : 0;
   const cashPerShow = totalShows > 0 ? Math.round(totalCash / totalShows) : 0;
 
-  // Setter stats
+  // Setter stats — per-setter new bookings (activity by createdAt)
+  const setterNewBookings = await prisma.booking.findMany({
+    where: {
+      createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) },
+      source: { in: ["calendly_webhook", "manual"] },
+      setterId: { not: null },
+    },
+    select: { setterId: true },
+  });
+  const newBookingsBySetter: Record<string, number> = {};
+  for (const b of setterNewBookings) {
+    newBookingsBySetter[b.setterId!] = (newBookingsBySetter[b.setterId!] || 0) + 1;
+  }
+
+  // Setter stats — per-setter pending total (all pending across all weeks)
+  const setterPendingTotal = await prisma.demo.findMany({
+    where: { status: "pending", booking: { setterId: { not: null } } },
+    include: { booking: { select: { setterId: true } } },
+  });
+  const pendingTotalBySetter: Record<string, number> = {};
+  for (const d of setterPendingTotal) {
+    const sid = d.booking.setterId!;
+    pendingTotalBySetter[sid] = (pendingTotalBySetter[sid] || 0) + 1;
+  }
+
+  // Setter stats — results from calendar (demos scheduled this week)
   const setterMap = new Map<string, SetterKPI>();
   for (const demo of allDemos) {
     const setter = demo.booking?.setter;
@@ -121,16 +148,18 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
       setterMap.set(setter.id, {
         setterId: setter.id,
         setterName: setter.name,
-        bookings: 0,
+        newBookings: newBookingsBySetter[setter.id] || 0,
         shows: 0,
         noShows: 0,
+        pending: 0,
+        pendingTotal: pendingTotalBySetter[setter.id] || 0,
         showRate: 0,
       });
     }
     const s = setterMap.get(setter.id)!;
-    s.bookings++;
     if (demo.status === "showed") s.shows++;
-    if (demo.status === "no_show") s.noShows++;
+    else if (demo.status === "no_show") s.noShows++;
+    else if (demo.status === "pending") s.pending++;
   }
   for (const s of setterMap.values()) {
     s.showRate = (s.shows + s.noShows) > 0 ? s.shows / (s.shows + s.noShows) : 0;
