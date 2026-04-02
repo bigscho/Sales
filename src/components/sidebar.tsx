@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { href: "/agents", label: "Agents", icon: "🏠", roles: ["admin"] },
   { href: "/outbound", label: "Outbound", icon: "📤", roles: ["admin"] },
   { href: "/verify/admin", label: "Verify", icon: "✅" },
+  { href: "https://www.youtube.com/watch?v=zIG39WlSCsM", label: "Motivation", icon: "🔥" },
   { href: "/payroll", label: "Payroll", icon: "💵", roles: ["admin"] },
   { href: "/pnl", label: "P&L", icon: "📈", roles: ["admin"] },
   { href: "/team", label: "Team", icon: "👥", roles: ["admin"] },
@@ -59,7 +60,27 @@ export function Sidebar() {
       <nav className="flex-1 p-2">
         {visibleItems.map((item) => {
           const href = getHref(item);
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const isExternal = href.startsWith("http");
+          const isActive = !isExternal && (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href));
+
+          if (isExternal) {
+            return (
+              <a
+                key={item.href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
+                  "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                )}
+              >
+                <span className="text-base">{item.icon}</span>
+                {item.label}
+              </a>
+            );
+          }
+
           return (
             <Link
               key={item.href}
