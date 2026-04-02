@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,7 @@ function formatWeekRange(start: string, end: string) {
 }
 
 export default function VerifyPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
   const setterId = searchParams.get("setter") || "";
@@ -91,6 +92,13 @@ export default function VerifyPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // If no setter param, redirect to admin view
+  useEffect(() => {
+    if (weekId && !setterId) {
+      router.replace(`/verify/admin?weekId=${weekId}`);
+    }
+  }, [weekId, setterId, router]);
 
   // Track which demos the setter has checked off as correct
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
