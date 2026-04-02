@@ -58,6 +58,29 @@ export async function PATCH(request: NextRequest) {
         performedBy: "admin",
       },
     });
+
+    // Fire setter game notifications for reassignment
+    if (setterId && setterId !== oldSetterId) {
+      try {
+        const { getSetterTodayBookings, getAllSetterScoresToday, formatSetterMention, isWeekday } = await import("@/lib/setter-game");
+        const { sendSlackSetter } = await import("@/lib/slack");
+
+        const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
+        if (setter) {
+          const mention = formatSetterMention(setter);
+          const prospectName = existingDemo.booking.prospectName;
+
+          if (isWeekday()) {
+            const { count } = await getSetterTodayBookings(setterId);
+            const allScores = await getAllSetterScoresToday();
+            const teamTotal = allScores.reduce((sum, s) => sum + s.bookings, 0);
+            await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention} (now at ${count} today)\n\n*TOTAL booked today: ${teamTotal}*`);
+          } else {
+            await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention}`);
+          }
+        }
+      } catch { /* setter notification failed */ }
+    }
   }
 
   const updateData: Record<string, unknown> = {};
