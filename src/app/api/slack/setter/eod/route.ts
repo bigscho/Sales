@@ -99,7 +99,7 @@ export async function POST() {
 
     // Get weekly bookings per setter
     const activeSetters = await prisma.teamMember.findMany({
-      where: { role: "setter", isActive: true },
+      where: { role: "setter", isActive: true, excludeFromLeaderboard: { not: true } },
     });
 
     const weeklyResults: Array<{ setterId: string; name: string; slackUserId: string | null; bookings: number; tierLabel: string }> = [];

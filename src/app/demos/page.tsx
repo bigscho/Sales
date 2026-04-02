@@ -86,6 +86,7 @@ function toDateKey(dateStr: string): string {
 export default function DemosPage() {
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
+  const setterFilter = searchParams.get("setter") || "";
   const [demos, setDemos] = useState<DemoRecord[]>([]);
   const [todayBookings, setTodayBookings] = useState<DemoRecord[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
@@ -103,8 +104,10 @@ export default function DemosPage() {
     if (!weekId) return;
     // Only show skeleton on very first load — subsequent refreshes update silently
     if (initialLoad.current) setLoading(true);
+    const demoParams = new URLSearchParams({ weekId });
+    if (setterFilter) demoParams.set("setter", setterFilter);
     Promise.all([
-      fetch(`/api/demos?weekId=${weekId}`).then((r) => r.json()),
+      fetch(`/api/demos?${demoParams}`).then((r) => r.json()),
       fetch("/api/team").then((r) => r.json()),
       fetch(`/api/demos/lock?weekId=${weekId}`).then((r) => r.json()),
       fetch(`/api/deals?weekId=${weekId}`).then((r) => r.json()),
@@ -127,7 +130,7 @@ export default function DemosPage() {
       setLoading(false);
       initialLoad.current = false;
     });
-  }, [weekId]);
+  }, [weekId, setterFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -710,6 +713,11 @@ export default function DemosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Demo Management</h2>
+          {setterFilter && (
+            <p className="text-sm text-blue-600 mt-1">
+              Filtered by setter — <a href={`/demos?weekId=${weekId}`} className="underline">show all</a>
+            </p>
+          )}
         </div>
         <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>+ Add Demo</Button>
       </div>

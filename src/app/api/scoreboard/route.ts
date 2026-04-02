@@ -7,9 +7,9 @@ export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
   const dimension = (request.nextUrl.searchParams.get("dimension") as TimeDimension) || "weekly";
 
-  // Get all setters
+  // Get all setters (exclude non-setter bookers like CEO, guests)
   const setters = await prisma.teamMember.findMany({
-    where: { role: "setter", isActive: true },
+    where: { role: "setter", isActive: true, excludeFromLeaderboard: { not: true } },
     orderBy: { name: "asc" },
   });
 

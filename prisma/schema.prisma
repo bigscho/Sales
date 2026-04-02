@@ -15,6 +15,7 @@ model TeamMember {
   slackUserId             String?  // Slack member ID for @mentions (e.g. U0APNBM43S7)
   cumulativeShows         Int      @default(0)
   consecutive15PlusWeeks  Int      @default(0)
+  excludeFromLeaderboard  Boolean  @default(false)
   isActive                Boolean  @default(true)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

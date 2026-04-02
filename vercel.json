@@ -47,6 +47,10 @@
     {
       "path": "/api/slack/showrate/weekly",
       "schedule": "0 22 * * 5"
+    },
+    {
+      "path": "/api/slack/setter/confirm",
+      "schedule": "5 2 * * 2-6"
     }
   ]
 }

@@ -3,12 +3,16 @@ import { prisma } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
+  const setterId = request.nextUrl.searchParams.get("setter");
   if (!weekId) {
     return NextResponse.json({ error: "weekId required" }, { status: 400 });
   }
 
   const demos = await prisma.demo.findMany({
-    where: { weekId },
+    where: {
+      weekId,
+      ...(setterId ? { booking: { setterId } } : {}),
+    },
     include: {
       booking: { include: { setter: true } },
       closer: true,

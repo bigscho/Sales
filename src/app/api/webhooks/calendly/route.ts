@@ -28,8 +28,13 @@ export async function POST(request: NextRequest) {
     if (inviteeName) {
       // Remove "and [Closer Name]" pattern
       inviteeName = inviteeName.replace(/\s+and\s+.*$/i, "").trim();
-      // Remove known closer last names that get appended
-      const closerLastNames = ["Schofield", "Whittelsey"];
+      // Dynamic: pull closer last names from DB + known spelling variants
+      const closers = await prisma.teamMember.findMany({ where: { role: "closer" } });
+      const closerLastNames = closers.flatMap(c => c.name.split(/\s+/).slice(1));
+      const variants = ["Wittlesey", "Whittelsey", "Schofield"];
+      for (const v of variants) {
+        if (!closerLastNames.includes(v)) closerLastNames.push(v);
+      }
       for (const ln of closerLastNames) {
         if (inviteeName.endsWith(` ${ln}`)) {
           inviteeName = inviteeName.slice(0, -(ln.length + 1)).trim();
@@ -279,6 +284,14 @@ export async function POST(request: NextRequest) {
           where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
         });
         setterId = setter?.id || null;
+
+        // Auto-create non-setter bookers (CEO, guests) as excluded from leaderboard
+        if (!setterId) {
+          const newMember = await prisma.teamMember.create({
+            data: { name: setterName, role: "setter", excludeFromLeaderboard: true },
+          });
+          setterId = newMember.id;
+        }
       }
 
       // Resolve closer

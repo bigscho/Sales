@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
+import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
 import { Badge } from "@/components/ui/badge";
 import { formatCents, formatPercent } from "@/lib/utils";
 
@@ -37,11 +38,17 @@ interface DemoRecord {
   closer: { name: string } | null;
 }
 
+interface ScoreboardData {
+  scoreboard: { id: string; name: string; tier: number; activity: { newBookings: number }; results: { shows: number; noShows: number; pending: number; showRate: number }; pendingTotal: number }[];
+  unattributed: { activity: { newBookings: number }; results: { shows: number; noShows: number; pending: number; showRate: number }; pendingTotal: number };
+}
+
 export default function Dashboard() {
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
   const [kpis, setKpis] = useState<KPIData | null>(null);
   const [demos, setDemos] = useState<DemoRecord[]>([]);
+  const [scoreboardData, setScoreboardData] = useState<ScoreboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const initialLoad = useRef(true);
 
@@ -51,9 +58,11 @@ export default function Dashboard() {
     Promise.all([
       fetch(`/api/kpis?weekId=${weekId}`).then((r) => r.json()),
       fetch(`/api/demos?weekId=${weekId}`).then((r) => r.json()),
-    ]).then(([kpiData, demoData]) => {
+      fetch(`/api/scoreboard?weekId=${weekId}`).then((r) => r.json()),
+    ]).then(([kpiData, demoData, sbData]) => {
       setKpis(kpiData);
       setDemos(demoData.demos || []);
+      setScoreboardData(sbData);
       setLoading(false);
       initialLoad.current = false;
     });
@@ -191,38 +200,14 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Setter Performance */}
-      {kpis.setterStats.length > 0 && (
+      {/* Setter Leaderboards */}
+      {scoreboardData && scoreboardData.scoreboard.length > 0 && (
         <div>
           <h3 className="text-lg font-semibold mb-3">Setter Performance</h3>
-          <div className="bg-white rounded-xl border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left p-3 font-medium">Setter</th>
-                  <th className="text-right p-3 font-medium">New Bookings</th>
-                  <th className="text-right p-3 font-medium">Shows</th>
-                  <th className="text-right p-3 font-medium">No-Shows</th>
-                  <th className="text-right p-3 font-medium">Show Rate</th>
-                  <th className="text-right p-3 font-medium">Pending</th>
-                  <th className="text-right p-3 font-medium">Pending Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kpis.setterStats.map((s) => (
-                  <tr key={s.setterId} className="border-b last:border-0">
-                    <td className="p-3 font-medium">{s.setterName}</td>
-                    <td className="p-3 text-right">{s.newBookings}</td>
-                    <td className="p-3 text-right text-green-600">{s.shows}</td>
-                    <td className="p-3 text-right text-red-600">{s.noShows}</td>
-                    <td className="p-3 text-right font-medium">{formatPercent(s.showRate)}</td>
-                    <td className="p-3 text-right text-yellow-600">{s.pending}</td>
-                    <td className="p-3 text-right text-blue-600">{s.pendingTotal}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SetterLeaderboards
+            scoreboard={scoreboardData.scoreboard}
+            unattributed={scoreboardData.unattributed}
+          />
         </div>
       )}
 

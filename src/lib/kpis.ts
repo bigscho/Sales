@@ -147,6 +147,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   for (const demo of allDemos) {
     const setter = demo.booking?.setter;
     if (!setter) continue;
+    if (setter.excludeFromLeaderboard) continue;
     if (!setterMap.has(setter.id)) {
       setterMap.set(setter.id, {
         setterId: setter.id,

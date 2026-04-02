@@ -55,6 +55,13 @@ export async function sendSlackNoShow(text: string, blocks?: unknown[]) {
   await sendToWebhook(url, text, blocks);
 }
 
+// Send to #setter-daily-verify channel
+export async function sendSlackVerify(text: string, blocks?: unknown[]) {
+  const url = process.env.SLACK_VERIFY_WEBHOOK_URL;
+  if (!url) return;
+  await sendToWebhook(url, text, blocks);
+}
+
 // Legacy alias — sends to team channel
 export async function sendSlackMessage(text: string, blocks?: unknown[]) {
   return sendSlackTeam(text, blocks);

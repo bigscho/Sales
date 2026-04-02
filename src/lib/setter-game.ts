@@ -180,7 +180,7 @@ export async function getAllSetterScoresToday(): Promise<Array<{
   const { start, end } = getETDateBounds();
 
   const setters = await prisma.teamMember.findMany({
-    where: { role: "setter", isActive: true },
+    where: { role: "setter", isActive: true, excludeFromLeaderboard: { not: true } },
   });
 
   const results = [];
