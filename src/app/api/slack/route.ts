@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       "",
       "*Setters*",
       ...kpis.setterStats.map(
-        (s) => `  ${s.setterName}: ${s.bookings} booked, ${s.shows} showed (${formatPercent(s.showRate)})`
+        (s) => `  ${s.setterName}: ${s.newBookings} new, ${s.shows} showed, ${s.pending} pending (${formatPercent(s.showRate)})`
       ),
       "",
       "*Closers*",
