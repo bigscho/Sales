@@ -11,6 +11,7 @@ interface TeamMember {
   role: string;
   tier: number;
   slackUserId: string | null;
+  excludeFromLeaderboard: boolean;
   cumulativeShows: number;
   consecutive15PlusWeeks: number;
   isActive: boolean;
@@ -55,6 +56,7 @@ export default function TeamPage() {
         role: form.get("role"),
         tier: Number(form.get("tier")) || 1,
         slackUserId: form.get("slackUserId") || null,
+        excludeFromLeaderboard: form.get("excludeFromLeaderboard") === "on",
       }),
     });
     setShowAddForm(false);
@@ -99,6 +101,10 @@ export default function TeamPage() {
                 <option value="4">Tier 4 - Lead SDR</option>
               </select>
               <input name="slackUserId" placeholder="Slack ID (U0...)" className="border rounded-lg px-3 py-2 text-sm w-36" />
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+                <input type="checkbox" name="excludeFromLeaderboard" className="rounded" />
+                Exclude from leaderboard
+              </label>
               <Button type="submit" size="sm">Add</Button>
             </form>
           </CardContent>
@@ -123,6 +129,7 @@ export default function TeamPage() {
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Tier</th>
                     <th className="text-left p-3 font-medium">Slack ID</th>
+                    <th className="text-center p-3 font-medium">Leaderboard</th>
                     <th className="text-right p-3 font-medium">Cumulative Shows</th>
                     <th className="text-right p-3 font-medium">Consec. 15+ Weeks</th>
                     <th className="text-left p-3 font-medium">Status</th>
@@ -158,6 +165,25 @@ export default function TeamPage() {
                           }}
                         />
                       </td>
+                      <td className="p-3 text-center">
+                        {m.excludeFromLeaderboard ? (
+                          <button
+                            onClick={() => updateMember(m.id, { excludeFromLeaderboard: false })}
+                            className="text-xs text-gray-400 hover:text-green-600"
+                            title="Click to include in leaderboard"
+                          >
+                            Excluded
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => updateMember(m.id, { excludeFromLeaderboard: true })}
+                            className="text-xs text-green-600 hover:text-gray-400"
+                            title="Click to exclude from leaderboard"
+                          >
+                            Included
+                          </button>
+                        )}
+                      </td>
                       <td className="p-3 text-right">{m.cumulativeShows}</td>
                       <td className="p-3 text-right">{m.consecutive15PlusWeeks}</td>
                       <td className="p-3">
@@ -177,7 +203,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {setters.length === 0 && (
-                    <tr><td colSpan={7} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
+                    <tr><td colSpan={8} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
                   )}
                 </tbody>
               </table>

@@ -10,10 +10,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, role, tier, slackUserId } = body;
+  const { name, role, tier, slackUserId, excludeFromLeaderboard } = body;
 
   const member = await prisma.teamMember.create({
-    data: { name, role, tier: tier || 1, slackUserId: slackUserId || null },
+    data: {
+      name,
+      role,
+      tier: tier || 1,
+      slackUserId: slackUserId || null,
+      excludeFromLeaderboard: excludeFromLeaderboard || false,
+    },
   });
 
   return NextResponse.json({ member });
