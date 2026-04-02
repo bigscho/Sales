@@ -128,9 +128,12 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     newBookingsBySetter[b.setterId!] = (newBookingsBySetter[b.setterId!] || 0) + 1;
   }
 
-  // Setter stats — per-setter pending total (all pending across all weeks)
+  // Setter stats — per-setter pending total (this week forward only, not historical)
   const setterPendingTotal = await prisma.demo.findMany({
-    where: { status: "pending", booking: { setterId: { not: null } } },
+    where: {
+      status: "pending",
+      booking: { setterId: { not: null }, demoDate: { gte: week.weekStart } },
+    },
     include: { booking: { select: { setterId: true } } },
   });
   const pendingTotalBySetter: Record<string, number> = {};

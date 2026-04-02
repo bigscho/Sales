@@ -74,11 +74,15 @@ export async function GET(request: NextRequest) {
     else if (demo.status === "pending") { resultsBySetterId[sid].pending++; resultsTotal.pending++; }
   }
 
-  // === PENDING TOTAL: all pending demos across all weeks ===
+  // === PENDING TOTAL: pending demos from current period forward (not historical) ===
   const pendingTotalBySetterId: Record<string, number> = {};
   let pendingTotalAll = 0;
+  const pendingCutoff = dateRange ? dateRange.start : undefined;
   const allPendingDemos = await prisma.demo.findMany({
-    where: { status: "pending" },
+    where: {
+      status: "pending",
+      ...(pendingCutoff ? { booking: { demoDate: { gte: pendingCutoff } } } : {}),
+    },
     include: { booking: { select: { setterId: true } } },
   });
   for (const demo of allPendingDemos) {
