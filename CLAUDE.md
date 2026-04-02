@@ -60,6 +60,8 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Dashboard setter leaderboards**: medal-style leaderboard cards replace plain setter table (shared component with scoreboard)
 - **Demos setter filter**: `/demos?weekId=X&setter=Y` filters to specific setter's demos
 - **Setter verification system**: `/verify?weekId=X&setter=Y` read-only confirmation UI — setters confirm credit or flag issues, flags route to CEO DM, morning nudge for non-confirmers
+- **CEO verification dashboard**: `/verify/admin?weekId=X` — per-setter summary, resolve flags, add missing demos, Lock Week button
+- **Payroll gate**: payroll generation blocked until week is verified via Lock Week
 
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)

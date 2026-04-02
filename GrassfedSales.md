@@ -157,6 +157,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `/api/slack/setter/eod` | 6PM ET weekdays | #setter-tpds — final scores + points + pipeline |
 | `/api/slack/setter/confirm` | 10:05PM ET weekdays | #setter-daily-verify — per-setter WTD stats + verify link + CEO summary |
 | `/api/verify` | GET + POST | Setter verification — load demos/state, submit confirmations + flags → CEO DM |
+| `/api/verify/admin` | GET + POST | CEO verification — overview, resolve flags, add missing demos, lock week |
 | `/api/slack/daily` | 6PM ET daily | #sales-team — daily recap |
 | `/api/slack/ceo` | Sat 11AM ET | CEO DM — weekly P&L briefing |
 | `/api/slack` | Wed + Sat | #sales-team — midweek/weekly summary |
