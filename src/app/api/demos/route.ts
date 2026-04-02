@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest) {
     // Fire setter game notifications for reassignment
     if (setterId && setterId !== oldSetterId) {
       try {
-        const { getSetterTodayBookings, getAllSetterScoresToday, formatSetterMention, isWeekday } = await import("@/lib/setter-game");
+        const { getSetterTodayBookings, getTeamTotalToday, formatSetterMention, isWeekday } = await import("@/lib/setter-game");
         const { sendSlackSetter } = await import("@/lib/slack");
 
         const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
@@ -76,8 +76,7 @@ export async function PATCH(request: NextRequest) {
 
           if (isWeekday()) {
             const { count } = await getSetterTodayBookings(setterId);
-            const allScores = await getAllSetterScoresToday();
-            const teamTotal = allScores.reduce((sum, s) => sum + s.bookings, 0);
+            const teamTotal = await getTeamTotalToday();
             await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention} (now at ${count} today)\n\n*TOTAL booked today: ${teamTotal}*`);
           } else {
             await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention}`);
@@ -254,7 +253,7 @@ export async function DELETE(request: NextRequest) {
   // Setter channel correction — booking was deleted
   if (demo.booking.setterId) {
     try {
-      const { getSetterTodayBookings, getAllSetterScoresToday, formatMention, isWeekday } = await import("@/lib/setter-game");
+      const { getSetterTodayBookings, getTeamTotalToday, formatMention, isWeekday } = await import("@/lib/setter-game");
       const { sendSlackSetter } = await import("@/lib/slack");
 
       if (isWeekday()) {
@@ -262,8 +261,7 @@ export async function DELETE(request: NextRequest) {
         if (setter) {
           const { count } = await getSetterTodayBookings(demo.booking.setterId);
           const mention = formatMention(setter);
-          const allScores = await getAllSetterScoresToday();
-          const teamTotal = allScores.reduce((sum, s) => sum + s.bookings, 0);
+          const teamTotal = await getTeamTotalToday();
           await sendSlackSetter(`⚠️ Booking removed for ${demo.booking.prospectName}\n${mention} is now at ${count} today\n\n*TOTAL booked today: ${teamTotal}*`);
         }
       }

@@ -103,7 +103,6 @@ export async function POST() {
     });
 
     const weeklyResults: Array<{ setterId: string; name: string; slackUserId: string | null; bookings: number; tierLabel: string }> = [];
-    let teamTotal = 0;
 
     for (const s of activeSetters) {
       const bookings = await prisma.booking.count({
@@ -118,10 +117,14 @@ export async function POST() {
         name: s.name,
         slackUserId: s.slackUserId,
         bookings,
-        tierLabel: tier.label.split(" — ")[0], // e.g. "RARE", "UNCOMMON", etc.
+        tierLabel: tier.label.split(" — ")[0],
       });
-      teamTotal += bookings;
     }
+
+    // Team total includes ALL bookings (including CEO/excluded members)
+    const teamTotal = await prisma.booking.count({
+      where: { createdAt: { gte: lbWeekStart } },
+    });
 
     // Sort descending by bookings
     weeklyResults.sort((a, b) => b.bookings - a.bookings);

@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
       // Setter pigeon game — real-time booking notification
       if (setterId) {
         try {
-          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday, formatSetterMention, getAllSetterScoresToday } = await import("@/lib/setter-game");
+          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday, formatSetterMention, getTeamTotalToday } = await import("@/lib/setter-game");
           const { sendSlackSetter } = await import("@/lib/slack");
 
           if (isWeekday()) {
@@ -358,9 +358,8 @@ export async function POST(request: NextRequest) {
                 await sendSlackSetter(`${countEmoji}\n${mention} is at ${count} today`);
               }
 
-              // Always send team total
-              const allScores = await getAllSetterScoresToday();
-              const teamTotal = allScores.reduce((sum, s) => sum + s.bookings, 0);
+              // Always send team total (all bookings, including excluded/CEO)
+              const teamTotal = await getTeamTotalToday();
               await sendSlackSetter(`*TOTAL booked today so far: ${teamTotal}*`);
             }
           }

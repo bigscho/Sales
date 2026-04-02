@@ -202,6 +202,14 @@ export async function getAllSetterScoresToday(): Promise<Array<{
   return results;
 }
 
+// Get total bookings today across ALL setters (including excluded + unattributed)
+export async function getTeamTotalToday(): Promise<number> {
+  const { start, end } = getETDateBounds();
+  return prisma.booking.count({
+    where: { createdAt: { gte: start, lt: end } },
+  });
+}
+
 export async function getPipelineCount(): Promise<number> {
   const now = new Date();
   return prisma.demo.count({
