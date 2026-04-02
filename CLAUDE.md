@@ -62,6 +62,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Setter verification system**: `/verify?weekId=X&setter=Y` read-only confirmation UI — setters confirm credit or flag issues, flags route to CEO DM, morning nudge for non-confirmers
 - **CEO verification dashboard**: `/verify/admin?weekId=X` — per-setter summary, resolve flags, add missing demos, Lock Week button
 - **Payroll gate**: payroll generation blocked until week is verified via Lock Week
+- **Auth**: PIN-based login with role-based middleware — setters see verify+scoreboard, closers see demos+deals, admin sees everything
 
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)
@@ -75,6 +76,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - SLACK_SHOWRATE_WEBHOOK_URL (#show-rate-tpds)
 - SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
 - SLACK_VERIFY_WEBHOOK_URL (#setter-daily-verify)
+- SESSION_SECRET (random string for JWT signing)
 
 ## Outbound Console (In Progress)
 
