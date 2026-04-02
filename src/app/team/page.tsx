@@ -169,20 +169,7 @@ export default function TeamPage() {
                         />
                       </td>
                       <td className="p-3">
-                        <input
-                          value={m.pin || ""}
-                          placeholder="Set PIN"
-                          type="password"
-                          maxLength={6}
-                          className="border rounded px-2 py-1 text-xs w-20"
-                          onBlur={(e) => {
-                            const val = e.target.value.trim() || null;
-                            if (val !== m.pin) updateMember(m.id, { pin: val });
-                          }}
-                          onChange={(e) => {
-                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, pin: e.target.value } : p));
-                          }}
-                        />
+                        <PinCell member={m} onSave={(pin) => updateMember(m.id, { pin })} />
                       </td>
                       <td className="p-3 text-center">
                         {m.excludeFromLeaderboard ? (
@@ -263,20 +250,7 @@ export default function TeamPage() {
                         />
                       </td>
                       <td className="p-3">
-                        <input
-                          value={m.pin || ""}
-                          placeholder="Set PIN"
-                          type="password"
-                          maxLength={6}
-                          className="border rounded px-2 py-1 text-xs w-20"
-                          onBlur={(e) => {
-                            const val = e.target.value.trim() || null;
-                            if (val !== m.pin) updateMember(m.id, { pin: val });
-                          }}
-                          onChange={(e) => {
-                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, pin: e.target.value } : p));
-                          }}
-                        />
+                        <PinCell member={m} onSave={(pin) => updateMember(m.id, { pin })} />
                       </td>
                       <td className="p-3 text-center">
                         <input
@@ -371,6 +345,61 @@ export default function TeamPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// === PIN Cell Component ===
+function PinCell({ member, onSave }: { member: TeamMember; onSave: (pin: string | null) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+
+  if (member.pin && !editing) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Badge variant="success" className="text-[10px] px-1.5">PIN set</Badge>
+        <button
+          onClick={() => { setEditing(true); setValue(""); }}
+          className="text-[10px] text-gray-400 hover:text-blue-500"
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        value={value}
+        onChange={e => setValue(e.target.value.replace(/\D/g, ""))}
+        placeholder="4-6 digits"
+        type="text"
+        inputMode="numeric"
+        maxLength={6}
+        className="border rounded px-2 py-1 text-xs w-16"
+        autoFocus={editing}
+      />
+      <button
+        onClick={() => {
+          if (value.length >= 4) {
+            onSave(value);
+            setEditing(false);
+          }
+        }}
+        disabled={value.length < 4}
+        className="text-[10px] text-green-600 hover:text-green-800 disabled:text-gray-300"
+      >
+        Save
+      </button>
+      {editing && (
+        <button
+          onClick={() => setEditing(false)}
+          className="text-[10px] text-gray-400 hover:text-red-500"
+        >
+          Cancel
+        </button>
+      )}
     </div>
   );
 }
