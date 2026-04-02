@@ -70,13 +70,19 @@ export default function VerifyAdminPage() {
   const [resolving, setResolving] = useState<Set<string>>(new Set());
   const [resolveNotes, setResolveNotes] = useState<Record<string, string>>({});
 
+  const [error, setError] = useState<string | null>(null);
+
   const loadData = useCallback(() => {
     if (!weekId) return;
     setLoading(true);
+    setError(null);
     fetch(`/api/verify/admin?weekId=${weekId}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`); });
+        return r.json();
+      })
       .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(e => { setError(e.message); setLoading(false); });
   }, [weekId]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -145,7 +151,7 @@ export default function VerifyAdminPage() {
     );
   }
 
-  if (!data) return <p className="text-center mt-10 text-gray-500">Error loading data</p>;
+  if (!data) return <p className="text-center mt-10 text-gray-500">{error ? `Error: ${error}` : "Error loading data"}</p>;
 
   const { week, setters, pendingDemoCount, totalFlags, lockedDates, unattributedCount } = data;
   const isLocked = week.status === "confirmed";
