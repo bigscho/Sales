@@ -58,8 +58,10 @@ export async function POST() {
     timeZone: "America/New_York",
   });
 
+  const dayName = now.toLocaleDateString("en-US", { weekday: "long", timeZone: "America/New_York" });
+
   const lines = [
-    `📊 *Daily Recap — ${dayLabel}*`,
+    `📊 *UNOFFICIAL ${dayName} Stats (awaiting official admin confirmation):*`,
     "",
     `Today's demos: *${total}* booked, *${showed}* showed, *${noShow}* no-show, *${pending}* pending`,
     `Show rate: *${showRate}%*${pending > 0 ? ` (${pending} demos still pending)` : ""}`,

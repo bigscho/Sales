@@ -127,6 +127,57 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // No-show Slack blast to #noshow-tpds
+  if (noShowCount > 0) {
+    try {
+      const { sendSlackNoShow } = await import("@/lib/slack");
+      const { formatMention } = await import("@/lib/setter-game");
+
+      const noShowDemos = await prisma.demo.findMany({
+        where: {
+          weekId,
+          status: "no_show",
+          booking: { demoDate: { gte: lockDate, lt: nextDay } },
+        },
+        include: { booking: { include: { setter: true } }, closer: true },
+      });
+
+      const dayLabel = lockDate.toLocaleDateString("en-US", {
+        weekday: "long", month: "short", day: "numeric", timeZone: "UTC",
+      });
+
+      const lines = [`🚫 *No-Shows for ${dayLabel} (${noShowCount} total):*`, ""];
+      for (const ns of noShowDemos) {
+        const setterTag = ns.booking.setter ? formatMention(ns.booking.setter) : "Unknown setter";
+        const closerTag = ns.closer ? ns.closer.name : "TBD";
+        const time = new Date(ns.booking.demoDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+        lines.push(`• ${ns.booking.prospectName} (${time}) — set by ${setterTag}, closer: ${closerTag}`);
+      }
+
+      await sendSlackNoShow(lines.join("\n"));
+    } catch { /* no-show notification failed */ }
+  }
+
+  // Official daily stats to #sales-team on day lock
+  try {
+    const { sendSlackTeam } = await import("@/lib/slack");
+    const { formatCents } = await import("@/lib/utils");
+
+    const dayLabel = lockDate.toLocaleDateString("en-US", {
+      weekday: "long", month: "short", day: "numeric", timeZone: "UTC",
+    });
+    const showRateVal = (showCount + noShowCount) > 0
+      ? ((showCount / (showCount + noShowCount)) * 100).toFixed(1)
+      : "0.0";
+
+    await sendSlackTeam(
+      `📊 *OFFICIAL Daily Recap — ${dayLabel}* 🔒\n\n` +
+      `Demos: *${demoCount}* | Shows: *${showCount}* | No-shows: *${noShowCount}*\n` +
+      `Show rate: *${showRateVal}%*\n` +
+      `Cash collected: *${formatCents(cashCents + unlinkedCash)}*`
+    );
+  } catch { /* official stats failed */ }
+
   return NextResponse.json({ dayLock, weekConfirmed });
 }
 

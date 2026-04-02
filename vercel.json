@@ -26,7 +26,7 @@
     },
     {
       "path": "/api/slack/daily",
-      "schedule": "0 22 * * *"
+      "schedule": "0 23 * * *"
     },
     {
       "path": "/api/slack/ceo",

@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
     let closerName: string | null = null;
     let phone: string | null = null;
     let setterFromDescription: string | null = null;
+    let eventTypeName: string | null = null;
 
     const calendlyToken = process.env.CALENDLY_API_TOKEN;
     if (calendlyToken && eventUri) {
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
           const eventData = await eventRes.json();
           const resource = eventData.resource;
           demoDate = resource.start_time ? new Date(resource.start_time) : null;
+          eventTypeName = resource.name || null;
 
           const memberships = resource.event_memberships || [];
           if (memberships.length > 0) {
@@ -64,9 +66,9 @@ export async function POST(request: NextRequest) {
 
           // Parse "Booked by" from Calendly event description (if present)
           const eventDescription = resource.description || "";
-          const bookedByMatch = eventDescription.match(/Booked\s+[Bb]y:?\s*(\w+)/i);
+          const bookedByMatch = eventDescription.match(/Booked\s+[Bb]y:?\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)/i);
           if (bookedByMatch) {
-            setterFromDescription = bookedByMatch[1];
+            setterFromDescription = bookedByMatch[1].trim();
           }
         }
 
@@ -87,7 +89,7 @@ export async function POST(request: NextRequest) {
               const bookedByQ = qna.find((q: { question: string }) =>
                 q.question.toLowerCase().includes("booked")
               );
-              if (bookedByQ) setterFromDescription = bookedByQ.answer;
+              if (bookedByQ) setterFromDescription = bookedByQ.answer?.trim() || null;
             }
 
             // Check tracking/UTM for setter name as last resort
@@ -99,6 +101,16 @@ export async function POST(request: NextRequest) {
         }
       } catch {
         // API call failed, continue with what we have
+      }
+    }
+
+    // Filter: only process demo event types (skip launch calls, quick calls, etc.)
+    // Known demo types: "Grassfed Demo" (Mark), "Grassfed E-Mailers Setup" (Colin)
+    if (eventTypeName && event === "invitee.created") {
+      const nameLower = eventTypeName.toLowerCase();
+      const isDemoEvent = nameLower.includes("demo") || nameLower.includes("e-mailers") || nameLower.includes("setup");
+      if (!isDemoEvent) {
+        return NextResponse.json({ received: true, action: "non_demo_skipped", eventType: eventTypeName });
       }
     }
 
@@ -259,12 +271,12 @@ export async function POST(request: NextRequest) {
         update: {},
       });
 
-      // Resolve setter
+      // Resolve setter — use contains matching to handle whitespace/special chars in Q&A answers
       const setterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
       let setterId: string | null = null;
       if (setterName) {
         const setter = await prisma.teamMember.findFirst({
-          where: { name: { equals: setterName, mode: "insensitive" }, role: "setter" },
+          where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
         });
         setterId = setter?.id || null;
       }

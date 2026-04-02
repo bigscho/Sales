@@ -236,19 +236,27 @@ export async function POST(request: NextRequest) {
 
       // Send Slack notifications
       try {
-        const { sendSlackTeam } = await import("@/lib/slack");
+        const { sendSlackTeam, sendSlackCEO } = await import("@/lib/slack");
         const amountStr = `$${(amount / 100).toFixed(2)}`;
         const typeLabel = revenueType === "mrr" ? "MRR" : revenueType === "one_time" ? "One-time" : "Misc";
         const statusLabel = customerStatus === "new" ? "🆕 New" : customerStatus === "returning" ? "🔄 Returning" : "";
         const matchLabel = matchResult.matched ? " → matched to deal" : "";
-        await sendSlackTeam(`💰 ${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || customerEmail || "Unknown"}${matchLabel}`);
+        const message = `💰 ${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || customerEmail || "Unknown"}${matchLabel}`;
+
+        // #sales-team gets everything
+        await sendSlackTeam(message);
+
+        // CEO gets all revenue notifications
+        await sendSlackCEO(message);
       } catch { /* Slack not configured */ }
 
-      // Closer channel notification
-      try {
-        const { sendCloseNotification } = await import("@/lib/setter-game");
-        await sendCloseNotification(amount, customerName || customerEmail, matchResult.closerId, revenueType, customerStatus);
-      } catch { /* closer notification failed */ }
+      // Closer channel — only new revenue (not returning)
+      if (customerStatus === "new") {
+        try {
+          const { sendCloseNotification } = await import("@/lib/setter-game");
+          await sendCloseNotification(amount, customerName || customerEmail, matchResult.closerId, revenueType, customerStatus);
+        } catch { /* closer notification failed */ }
+      }
 
       return NextResponse.json({
         received: true,

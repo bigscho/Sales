@@ -48,6 +48,13 @@ export async function sendSlackCloser(text: string, blocks?: unknown[]) {
   await sendToWebhook(url, text, blocks);
 }
 
+// Send to #noshow-tpds channel
+export async function sendSlackNoShow(text: string, blocks?: unknown[]) {
+  const url = process.env.SLACK_NOSHOW_WEBHOOK_URL;
+  if (!url) return;
+  await sendToWebhook(url, text, blocks);
+}
+
 // Legacy alias — sends to team channel
 export async function sendSlackMessage(text: string, blocks?: unknown[]) {
   return sendSlackTeam(text, blocks);

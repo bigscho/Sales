@@ -408,7 +408,17 @@ export default function DemosPage() {
                     hour: "numeric", minute: "2-digit", hour12: true,
                   })}
                 </td>
-                <td className="p-3">{demo.booking.setter?.name || "—"}</td>
+                <td className="p-3">
+                  <select
+                    value={demo.booking.setter?.id || ""}
+                    onChange={(e) => updateDemo(demo.id, { setterId: e.target.value || null })}
+                    disabled={!!dayLock}
+                    className={`border rounded px-2 py-1 text-xs ${dayLock ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <option value="">—</option>
+                    {setters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </td>
                 <td className="p-3">{demo.closer?.name || "—"}</td>
                 <td className="p-3">
                   <select

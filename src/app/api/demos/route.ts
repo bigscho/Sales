@@ -22,14 +22,14 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { demoId, status, closerId, notes } = body;
+  const { demoId, status, closerId, setterId, notes } = body;
 
   // Check if demo's day is locked
   const existingDemo = await prisma.demo.findUnique({
     where: { id: demoId },
-    include: { booking: true },
+    include: { booking: { include: { setter: true } } },
   });
-  if (existingDemo && status) {
+  if (existingDemo && (status || setterId !== undefined)) {
     const demoDate = new Date(existingDemo.booking.demoDate);
     const dayStart = new Date(Date.UTC(demoDate.getUTCFullYear(), demoDate.getUTCMonth(), demoDate.getUTCDate()));
     const lock = await prisma.dayLock.findUnique({
@@ -38,6 +38,26 @@ export async function PATCH(request: NextRequest) {
     if (lock) {
       return NextResponse.json({ error: "Cannot update: day is locked" }, { status: 403 });
     }
+  }
+
+  // Handle setter reassignment (setterId lives on booking, not demo)
+  if (setterId !== undefined && existingDemo) {
+    const oldSetterId = existingDemo.booking.setterId;
+    await prisma.booking.update({
+      where: { id: existingDemo.booking.id },
+      data: { setterId: setterId || null },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        entityType: "booking",
+        entityId: existingDemo.booking.id,
+        action: "setter_reassigned",
+        oldValue: JSON.stringify({ setterId: oldSetterId }),
+        newValue: JSON.stringify({ setterId }),
+        performedBy: "admin",
+      },
+    });
   }
 
   const updateData: Record<string, unknown> = {};
