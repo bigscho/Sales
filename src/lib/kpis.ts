@@ -61,9 +61,11 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const totalBookings = allDemos.length;
 
   // Activity metric: bookings CREATED during this week (regardless of demo date)
+  // Excludes bulk-imported historical data (source: "auto") — only real-time activity
   const newBookings = await prisma.booking.count({
     where: {
       createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) },
+      source: { not: "auto" },
     },
   });
 

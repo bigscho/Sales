@@ -38,9 +38,11 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   // === ACTIVITY: bookings by createdAt in range ===
+  // Excludes bulk-imported historical data (source: "auto") — only real-time activity
   const activityBookings = await prisma.booking.findMany({
     where: {
       ...(dateFilter ? { createdAt: dateFilter } : {}),
+      source: { not: "auto" },
     },
     select: { setterId: true },
   });
