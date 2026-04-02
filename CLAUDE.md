@@ -58,7 +58,8 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Dynamic closer name stripping**: pulls closer last names from DB + known variants (no more hardcoded list)
 - **Self-booking attribution**: non-setter bookers auto-created as excludeFromLeaderboard TeamMembers (real name, excluded from leaderboards)
 - **Dashboard setter leaderboards**: medal-style leaderboard cards replace plain setter table (shared component with scoreboard)
-- **Demos setter filter**: `/demos?weekId=X&setter=Y` filters to specific setter's demos (used by verification links)
+- **Demos setter filter**: `/demos?weekId=X&setter=Y` filters to specific setter's demos
+- **Setter verification system**: `/verify?weekId=X&setter=Y` read-only confirmation UI — setters confirm credit or flag issues, flags route to CEO DM, morning nudge for non-confirmers
 
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)
