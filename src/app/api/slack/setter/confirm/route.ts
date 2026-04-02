@@ -48,18 +48,27 @@ export async function POST() {
     const confirmed = shows + noShows;
     const showRate = confirmed > 0 ? ((shows / confirmed) * 100).toFixed(0) : "--";
 
-    const reviewLink = `${BASE_URL}/demos?weekId=${week.id}&setter=${setter.id}`;
+    const reviewLink = `${BASE_URL}/verify?weekId=${week.id}&setter=${setter.id}`;
+
+    // Check if they've already confirmed today
+    const existingVerification = await prisma.setterVerification.findUnique({
+      where: { setterId_weekId: { setterId: setter.id, weekId: week.id } },
+    });
+    const confirmStatus = existingVerification
+      ? existingVerification.status === "confirmed" ? " ✅ Confirmed" : " 🚩 Has flags"
+      : "";
 
     const message = [
-      `${mention}`,
+      `${mention}${confirmStatus}`,
       `*Week-to-date:* ${newBookings} booked | ${shows} showed | ${noShows} no-show | ${pending} pending`,
       `*Show rate:* ${showRate}%`,
-      `<${reviewLink}|Review & Confirm Your Demos>`,
+      existingVerification ? `<${reviewLink}|Update Verification>` : `<${reviewLink}|Review & Confirm Your Demos>`,
     ].join("\n");
 
     await sendSlackVerify(message);
 
-    setterSummaries.push(`${setter.name}: ${newBookings} booked, ${shows}/${confirmed} showed (${showRate}%), ${pending} pending`);
+    const statusLabel = existingVerification ? ` [${existingVerification.status}]` : " [not confirmed]";
+    setterSummaries.push(`${setter.name}: ${newBookings} booked, ${shows}/${confirmed} showed (${showRate}%), ${pending} pending${statusLabel}`);
   }
 
   // Team totals for CEO summary

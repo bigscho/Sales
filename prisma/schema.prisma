@@ -25,6 +25,7 @@ model TeamMember {
   deals          Deal[]
   payrollItems   PayrollLineItem[]
   dailyScores    SetterDailyScore[]
+  verifications  SetterVerification[]
 }
 
 model Week {
@@ -37,13 +38,14 @@ model Week {
   notes       String?
   createdAt   DateTime  @default(now())
 
-  bookings    Booking[]
-  demos       Demo[]
-  deals       Deal[]
-  payments    Payment[]
-  payrollRuns PayrollRun[]
-  expenses    Expense[]
-  dayLocks    DayLock[]
+  bookings       Booking[]
+  demos          Demo[]
+  deals          Deal[]
+  payments       Payment[]
+  payrollRuns    PayrollRun[]
+  expenses       Expense[]
+  dayLocks       DayLock[]
+  verifications  SetterVerification[]
 
   @@unique([weekStart])
 }
@@ -85,6 +87,7 @@ model Demo {
   week    Week       @relation(fields: [weekId], references: [id])
   closer  TeamMember? @relation("CloserDemos", fields: [closerId], references: [id])
   deal    Deal?
+  flags   SetterFlag[]
 }
 
 model Deal {
@@ -242,6 +245,43 @@ model SetterDailyScore {
   setter TeamMember @relation(fields: [setterId], references: [id])
 
   @@unique([setterId, date])
+}
+
+// === SETTER VERIFICATION ===
+
+model SetterVerification {
+  id          String    @id @default(cuid())
+  setterId    String
+  weekId      String
+  status      String    @default("pending") // pending | confirmed | has_flags
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  setter TeamMember       @relation(fields: [setterId], references: [id])
+  week   Week             @relation(fields: [weekId], references: [id])
+  flags  SetterFlag[]
+
+  @@unique([setterId, weekId])
+}
+
+model SetterFlag {
+  id              String   @id @default(cuid())
+  verificationId  String
+  demoId          String?  // null for "missing demo" flags
+  flagType        String   // wrong_status | not_mine | missing_demo
+  note            String?
+  // For missing_demo flags
+  missingProspectName  String?
+  missingProspectEmail String?
+  missingDemoDate      String?  // approximate date as text
+  ceoAction       String   @default("pending") // pending | approved | rejected
+  ceoNote         String?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  verification SetterVerification @relation(fields: [verificationId], references: [id])
+  demo         Demo?              @relation(fields: [demoId], references: [id])
 }
 
 // === OUTBOUND CONSOLE ===
