@@ -26,21 +26,42 @@ interface PayrollRun {
   lineItems: PayrollLineItem[];
 }
 
+interface WeekVerifyStatus {
+  weekStatus: string;
+  confirmedBy: string | null;
+  settersConfirmed: number;
+  settersTotal: number;
+  openFlags: number;
+  pendingDemos: number;
+}
+
 export default function PayrollPage() {
   const searchParams = useSearchParams();
   const weekId = searchParams.get("weekId") || "";
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
+  const [verifyStatus, setVerifyStatus] = useState<WeekVerifyStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(() => {
     if (!weekId) return;
     setLoading(true);
-    fetch(`/api/payroll?weekId=${weekId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setPayrollRun(data.payrollRun);
-        setLoading(false);
-      });
+    Promise.all([
+      fetch(`/api/payroll?weekId=${weekId}`).then(r => r.json()),
+      fetch(`/api/verify/admin?weekId=${weekId}`).then(r => r.json()).catch(() => null),
+    ]).then(([payrollData, verifyData]) => {
+      setPayrollRun(payrollData.payrollRun);
+      if (verifyData && verifyData.week) {
+        setVerifyStatus({
+          weekStatus: verifyData.week.status,
+          confirmedBy: verifyData.week.confirmedBy,
+          settersConfirmed: verifyData.setters.filter((s: { verification: unknown }) => s.verification !== null).length,
+          settersTotal: verifyData.setters.length,
+          openFlags: verifyData.totalFlags,
+          pendingDemos: verifyData.pendingDemoCount,
+        });
+      }
+      setLoading(false);
+    });
   }, [weekId]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -113,6 +134,8 @@ export default function PayrollPage() {
   }
 
   const grandTotal = payrollRun?.lineItems.reduce((s, i) => s + i.amountCents, 0) || 0;
+  const weekVerified = verifyStatus?.weekStatus === "confirmed";
+  const hasBlockers = verifyStatus && (verifyStatus.openFlags > 0 || verifyStatus.pendingDemos > 0);
 
   return (
     <div className="space-y-6">
@@ -134,7 +157,7 @@ export default function PayrollPage() {
           )}
         </div>
         <div className="flex gap-2">
-          <Button size="sm" onClick={generatePayroll}>
+          <Button size="sm" onClick={generatePayroll} disabled={!weekVerified}>
             {payrollRun ? "Regenerate" : "Generate"} Payroll
           </Button>
           {payrollRun?.status === "draft" && (
@@ -149,6 +172,33 @@ export default function PayrollPage() {
         </div>
       </div>
 
+      {/* Verification Status Banner */}
+      {verifyStatus && !loading && (
+        weekVerified ? (
+          <div className="rounded-lg p-3 bg-green-50 border border-green-200 flex items-center justify-between">
+            <p className="text-sm text-green-800 font-medium">
+              Week verified — {verifyStatus.settersConfirmed}/{verifyStatus.settersTotal} setters confirmed, {verifyStatus.openFlags} open flags
+            </p>
+            <Badge variant="success">Ready for Payroll</Badge>
+          </div>
+        ) : (
+          <div className="rounded-lg p-3 bg-yellow-50 border border-yellow-200 flex items-center justify-between">
+            <div className="text-sm text-yellow-800">
+              <p className="font-medium">Week not verified yet</p>
+              <p className="text-xs mt-1">
+                {verifyStatus.settersConfirmed}/{verifyStatus.settersTotal} setters confirmed
+                {hasBlockers && ` · ${verifyStatus.pendingDemos} pending demos · ${verifyStatus.openFlags} open flags`}
+              </p>
+            </div>
+            <a href={`/verify/admin?weekId=${weekId}`}>
+              <Button size="sm" variant="outline" className="border-yellow-300 text-yellow-700 hover:bg-yellow-100">
+                Verify Week
+              </Button>
+            </a>
+          </div>
+        )
+      )}
+
       {loading && (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -160,10 +210,23 @@ export default function PayrollPage() {
       {!loading && !payrollRun && (
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-[var(--muted-foreground)] mb-4">
-              No payroll generated for this week yet. Make sure demos are confirmed first.
-            </p>
-            <Button onClick={generatePayroll}>Generate Payroll</Button>
+            {weekVerified ? (
+              <>
+                <p className="text-[var(--muted-foreground)] mb-4">
+                  Week verified. Ready to generate payroll.
+                </p>
+                <Button onClick={generatePayroll}>Generate Payroll</Button>
+              </>
+            ) : (
+              <>
+                <p className="text-[var(--muted-foreground)] mb-4">
+                  Verify the week before generating payroll.
+                </p>
+                <a href={`/verify/admin?weekId=${weekId}`}>
+                  <Button>Go to Week Verification</Button>
+                </a>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
