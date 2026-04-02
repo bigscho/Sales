@@ -9,6 +9,7 @@ import { formatCents, formatPercent } from "@/lib/utils";
 interface KPIData {
   weekId: string;
   totalBookings: number;
+  newBookings: number;
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
@@ -100,11 +101,16 @@ export default function Dashboard() {
       </div>
 
       {/* Top-level KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <KPICard
-          title="Total Bookings"
+          title="New Bookings"
+          value={String(kpis.newBookings)}
+          subtitle="booked this week"
+        />
+        <KPICard
+          title="Demos on Calendar"
           value={String(kpis.totalBookings)}
-          subtitle={`${kpis.totalPending} pending`}
+          subtitle={`${kpis.totalShows} showed, ${kpis.totalNoShows} no-show, ${kpis.totalPending} pending`}
           detail={
             <div className="space-y-1">
               {demos.map((d) => (
@@ -194,7 +200,7 @@ export default function Dashboard() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left p-3 font-medium">Setter</th>
-                  <th className="text-right p-3 font-medium">Bookings</th>
+                  <th className="text-right p-3 font-medium">On Calendar</th>
                   <th className="text-right p-3 font-medium">Shows</th>
                   <th className="text-right p-3 font-medium">No-Shows</th>
                   <th className="text-right p-3 font-medium">Show Rate</th>

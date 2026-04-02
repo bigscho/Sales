@@ -836,22 +836,14 @@ export default function DemosPage() {
         <div className="bg-white rounded-xl border p-4">
           <div className="flex items-center justify-between">
             <div className="flex gap-6">
+              {/* Confirmed Results */}
               <div>
-                <p className="text-xs text-gray-500">{viewMode === "week" ? "Week" : DAY_NAMES[selectedDay]}</p>
-                <p className="text-xl font-bold">{displayTotal}</p>
-                <p className="text-[10px] text-gray-400">booked</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Shows</p>
+                <p className="text-xs text-green-600 font-medium">Shows</p>
                 <p className="text-xl font-bold text-green-600">{displayShowed}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">No Shows</p>
+                <p className="text-xs text-red-600 font-medium">No Shows</p>
                 <p className="text-xl font-bold text-red-600">{displayNoShow}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Closes</p>
-                <p className="text-xl font-bold text-blue-600">{displayCloses}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Show Rate</p>
@@ -861,14 +853,39 @@ export default function DemosPage() {
                 {displayPending > 0 && <p className="text-[10px] text-yellow-600">({displayPending} pending)</p>}
               </div>
               <div>
+                <p className="text-xs text-gray-500">Closes</p>
+                <p className="text-xl font-bold text-blue-600">{displayCloses}</p>
+              </div>
+              <div>
                 <p className="text-xs text-gray-500">Cash</p>
                 <p className="text-xl font-bold text-green-600">{formatCents(displayCash)}</p>
               </div>
-              {viewMode === "week" && (
+
+              {/* Divider */}
+              <div className="w-px bg-gray-200 self-stretch" />
+
+              {/* Pipeline */}
+              <div>
+                <p className="text-xs text-gray-500">On Calendar</p>
+                <p className="text-xl font-bold">{displayTotal}</p>
+              </div>
+              {displayPending > 0 && (
                 <div>
-                  <p className="text-xs text-gray-500">Days Locked</p>
-                  <p className="text-xl font-bold">{dayLocks.length}/7</p>
+                  <p className="text-xs text-yellow-600 font-medium">Pending</p>
+                  <p className="text-xl font-bold text-yellow-600">{displayPending}</p>
                 </div>
+              )}
+              {viewMode === "week" && (
+                <>
+                  <div>
+                    <p className="text-xs text-gray-500">New Bookings Today</p>
+                    <p className="text-xl font-bold">{todayBookings.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Days Locked</p>
+                    <p className="text-xl font-bold">{dayLocks.length}/7</p>
+                  </div>
+                </>
               )}
             </div>
             <div className="flex gap-2">

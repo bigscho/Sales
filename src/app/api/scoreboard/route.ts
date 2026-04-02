@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { type TimeDimension, getDateRange } from "@/lib/time-range";
+import { getWeekRange } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
+  const dimension = (request.nextUrl.searchParams.get("dimension") as TimeDimension) || "weekly";
 
   // Get all setters
   const setters = await prisma.teamMember.findMany({
@@ -15,82 +18,104 @@ export async function GET(request: NextRequest) {
     where: { role: "show_rate_rep", isActive: true },
   });
 
-  // Current week stats
-  const weekStats: Record<string, { bookings: number; shows: number; noShows: number; pending: number }> = {};
-  const weekTotal = { bookings: 0, shows: 0, noShows: 0, pending: 0 };
-
-  if (weekId) {
-    const demos = await prisma.demo.findMany({
-      where: { weekId },
-      include: { booking: { select: { setterId: true } } },
-    });
-
-    for (const demo of demos) {
-      const sid = demo.booking.setterId || "unattributed";
-      if (!weekStats[sid]) weekStats[sid] = { bookings: 0, shows: 0, noShows: 0, pending: 0 };
-      weekStats[sid].bookings++;
-      weekTotal.bookings++;
-      if (demo.status === "showed") { weekStats[sid].shows++; weekTotal.shows++; }
-      else if (demo.status === "no_show") { weekStats[sid].noShows++; weekTotal.noShows++; }
-      else if (demo.status === "pending") { weekStats[sid].pending++; weekTotal.pending++; }
+  // Compute date range based on dimension
+  let dateRange: { start: Date; end: Date } | null = null;
+  if (dimension === "weekly" && weekId) {
+    // Use the selected week's boundaries
+    const week = await prisma.week.findUnique({ where: { id: weekId } });
+    if (week) {
+      dateRange = { start: week.weekStart, end: week.weekEnd };
+    } else {
+      dateRange = getWeekRange(new Date());
     }
+  } else {
+    dateRange = getDateRange(dimension);
   }
 
-  // All-time stats (across all weeks in DB)
-  const allDemos = await prisma.demo.findMany({
+  // Build date filter for queries
+  const dateFilter = dateRange
+    ? { gte: dateRange.start, lt: dimension === "weekly" ? new Date(dateRange.end.getTime() + 1) : dateRange.end }
+    : undefined;
+
+  // === ACTIVITY: bookings by createdAt in range ===
+  const activityBookings = await prisma.booking.findMany({
+    where: {
+      ...(dateFilter ? { createdAt: dateFilter } : {}),
+    },
+    select: { setterId: true },
+  });
+
+  const activityBySetterId: Record<string, number> = {};
+  let activityTotal = 0;
+  for (const b of activityBookings) {
+    const sid = b.setterId || "unattributed";
+    activityBySetterId[sid] = (activityBySetterId[sid] || 0) + 1;
+    activityTotal++;
+  }
+
+  // === RESULTS: demos by demoDate in range ===
+  const resultsDemos = await prisma.demo.findMany({
+    where: {
+      ...(dateFilter ? { booking: { demoDate: dateFilter } } : {}),
+    },
     include: { booking: { select: { setterId: true } } },
   });
 
-  const allTimeStats: Record<string, { bookings: number; shows: number; noShows: number }> = {};
-  const allTimeTotal = { bookings: 0, shows: 0, noShows: 0 };
+  const resultsBySetterId: Record<string, { shows: number; noShows: number; pending: number }> = {};
+  const resultsTotal = { shows: 0, noShows: 0, pending: 0 };
 
-  for (const demo of allDemos) {
+  for (const demo of resultsDemos) {
     const sid = demo.booking.setterId || "unattributed";
-    if (!allTimeStats[sid]) allTimeStats[sid] = { bookings: 0, shows: 0, noShows: 0 };
-    allTimeStats[sid].bookings++;
-    allTimeTotal.bookings++;
-    if (demo.status === "showed") { allTimeStats[sid].shows++; allTimeTotal.shows++; }
-    else if (demo.status === "no_show") { allTimeStats[sid].noShows++; allTimeTotal.noShows++; }
+    if (!resultsBySetterId[sid]) resultsBySetterId[sid] = { shows: 0, noShows: 0, pending: 0 };
+    if (demo.status === "showed") { resultsBySetterId[sid].shows++; resultsTotal.shows++; }
+    else if (demo.status === "no_show") { resultsBySetterId[sid].noShows++; resultsTotal.noShows++; }
+    else if (demo.status === "pending") { resultsBySetterId[sid].pending++; resultsTotal.pending++; }
   }
 
-  // Build scoreboard entries sorted by bookings desc
+  // Build scoreboard entries
   const scoreboard = setters.map((s) => {
-    const week = weekStats[s.id] || { bookings: 0, shows: 0, noShows: 0, pending: 0 };
-    const allTime = allTimeStats[s.id] || { bookings: 0, shows: 0, noShows: 0 };
+    const activity = activityBySetterId[s.id] || 0;
+    const results = resultsBySetterId[s.id] || { shows: 0, noShows: 0, pending: 0 };
+    const confirmed = results.shows + results.noShows;
     return {
       id: s.id,
       name: s.name,
       tier: s.tier,
-      week: {
-        ...week,
-        showRate: (week.shows + week.noShows) > 0 ? week.shows / (week.shows + week.noShows) : 0,
-      },
-      allTime: {
-        ...allTime,
-        showRate: (allTime.shows + allTime.noShows) > 0 ? allTime.shows / (allTime.shows + allTime.noShows) : 0,
+      activity: { newBookings: activity },
+      results: {
+        ...results,
+        showRate: confirmed > 0 ? results.shows / confirmed : 0,
       },
     };
   });
 
-  // Sort by this week's bookings desc, then all-time
-  scoreboard.sort((a, b) => b.week.bookings - a.week.bookings || b.allTime.bookings - a.allTime.bookings);
+  const teamShowRate = (resultsTotal.shows + resultsTotal.noShows) > 0
+    ? resultsTotal.shows / (resultsTotal.shows + resultsTotal.noShows)
+    : 0;
 
-  // Unattributed stats
-  const unattributed = {
-    week: weekStats["unattributed"] || { bookings: 0, shows: 0, noShows: 0, pending: 0 },
-    allTime: allTimeStats["unattributed"] || { bookings: 0, shows: 0, noShows: 0 },
-  };
+  // Unattributed
+  const unattributedActivity = activityBySetterId["unattributed"] || 0;
+  const unattributedResults = resultsBySetterId["unattributed"] || { shows: 0, noShows: 0, pending: 0 };
+  const unattributedConfirmed = unattributedResults.shows + unattributedResults.noShows;
 
   return NextResponse.json({
     scoreboard,
-    weekTotal,
-    allTimeTotal,
-    unattributed,
+    teamTotals: {
+      activity: { newBookings: activityTotal },
+      results: { ...resultsTotal, showRate: teamShowRate },
+    },
+    unattributed: {
+      activity: { newBookings: unattributedActivity },
+      results: {
+        ...unattributedResults,
+        showRate: unattributedConfirmed > 0 ? unattributedResults.shows / unattributedConfirmed : 0,
+      },
+    },
     showRateRep: showRateRep ? {
       id: showRateRep.id,
       name: showRateRep.name,
-      weekShowRate: (weekTotal.shows + weekTotal.noShows) > 0 ? weekTotal.shows / (weekTotal.shows + weekTotal.noShows) : 0,
-      allTimeShowRate: (allTimeTotal.shows + allTimeTotal.noShows) > 0 ? allTimeTotal.shows / (allTimeTotal.shows + allTimeTotal.noShows) : 0,
+      showRate: teamShowRate,
     } : null,
+    dimension,
   });
 }

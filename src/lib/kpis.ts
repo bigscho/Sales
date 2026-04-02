@@ -5,6 +5,7 @@ export interface WeeklyKPIs {
   weekStart: string;
   weekEnd: string;
   totalBookings: number;
+  newBookings: number; // bookings created in this week (activity metric)
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
@@ -58,6 +59,14 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   });
 
   const totalBookings = allDemos.length;
+
+  // Activity metric: bookings CREATED during this week (regardless of demo date)
+  const newBookings = await prisma.booking.count({
+    where: {
+      createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) },
+    },
+  });
+
   const totalShows = allDemos.filter((d) => d.status === "showed").length;
   const totalNoShows = allDemos.filter((d) => d.status === "no_show").length;
   const totalPending = allDemos.filter((d) => d.status === "pending").length;
@@ -159,6 +168,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     weekStart: week.weekStart.toISOString(),
     weekEnd: week.weekEnd.toISOString(),
     totalBookings,
+    newBookings,
     totalShows,
     totalNoShows,
     totalPending,
