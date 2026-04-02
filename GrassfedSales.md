@@ -45,7 +45,8 @@ Dashboard ──60s auto-refresh──→ /api/demos, /api/kpis ──→ UI
 ### TeamMember
 ```
 id, name, role (setter|closer|show_rate_rep), tier (1-4),
-slackUserId?, cumulativeShows, consecutive15PlusWeeks, isActive
+slackUserId?, cumulativeShows, consecutive15PlusWeeks,
+excludeFromLeaderboard (default false), isActive
 ```
 
 ### Week
@@ -127,10 +128,11 @@ id, calendarEventId (unique), reason, dismissedAt
 | `SLACK_SETTER_WEBHOOK_URL` | #setter-tpds channel webhook |
 | `SLACK_SHOWRATE_WEBHOOK_URL` | #show-rate-tpds channel webhook |
 | `SLACK_CLOSER_WEBHOOK_URL` | #closer-tpds channel webhook |
+| `SLACK_VERIFY_WEBHOOK_URL` | #setter-daily-verify channel webhook |
 
 ---
 
-## API Routes (29 endpoints)
+## API Routes (30 endpoints)
 
 ### Webhooks (instant, event-driven)
 | Route | Purpose |
@@ -153,6 +155,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `/api/slack/setter/morning` | 9AM ET weekdays | #setter-tpds — Gay Pigeon + tag all setters |
 | `/api/slack/setter/midday` | 12PM ET weekdays | #setter-tpds — per-setter status + pigeon tier |
 | `/api/slack/setter/eod` | 6PM ET weekdays | #setter-tpds — final scores + points + pipeline |
+| `/api/slack/setter/confirm` | 10:05PM ET weekdays | #setter-daily-verify — per-setter WTD stats + review link + CEO summary |
 | `/api/slack/daily` | 6PM ET daily | #sales-team — daily recap |
 | `/api/slack/ceo` | Sat 11AM ET | CEO DM — weekly P&L briefing |
 | `/api/slack` | Wed + Sat | #sales-team — midweek/weekly summary |

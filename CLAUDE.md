@@ -44,6 +44,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Dismissed events** (deleted demos stay deleted)
 - **Slack #sales-team**: real-time alerts (bookings, shows, payments) + daily recap (6pm ET)
 - **Slack #setter-tpds**: pigeon gamification (9AM/12PM/6PM + real-time tier crossings)
+- **Slack #setter-daily-verify**: daily verification (10:05 PM ET weekdays) — per-setter WTD stats + review link + CEO summary
 - **Slack #show-rate-tpds**: show notifications tagging setter + closer + weekly totals + Friday report
 - **Slack #closer-tpds**: close/payment notifications tagging closer + revenue totals
 - **Reschedule handling**: Calendly reschedules update booking date in-place (not mark+recreate)
@@ -54,6 +55,10 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Slack CEO DM**: weekly briefing (Sat 11am ET)
 - **Dashboard**: New Revenue as headline KPI
 - **Setter pigeon gamification**: daily score tracking, tier crossings (4/9/12), points system
+- **Dynamic closer name stripping**: pulls closer last names from DB + known variants (no more hardcoded list)
+- **Self-booking attribution**: non-setter bookers auto-created as excludeFromLeaderboard TeamMembers (real name, excluded from leaderboards)
+- **Dashboard setter leaderboards**: medal-style leaderboard cards replace plain setter table (shared component with scoreboard)
+- **Demos setter filter**: `/demos?weekId=X&setter=Y` filters to specific setter's demos (used by verification links)
 
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)
@@ -66,6 +71,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - SLACK_SETTER_WEBHOOK_URL (#setter-tpds)
 - SLACK_SHOWRATE_WEBHOOK_URL (#show-rate-tpds)
 - SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
+- SLACK_VERIFY_WEBHOOK_URL (#setter-daily-verify)
 
 ## Outbound Console (In Progress)
 
@@ -126,7 +132,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - Refreshed lists from same provider — import updates existing records by email match
 
 ## Known Bugs to Fix
-1. **Calendly "Schofield" name** — webhook strips known closer last names but edge cases may remain with new closers
+1. **Calendly closer name stripping** — FIXED: now dynamic from DB + known variants. No longer hardcoded
 2. **Andrea Reeves-Witherspoon invisible** — marked no_show, GCal invite dragged to next Thursday, sync returns 0 updated. She's not visible in UI on any date. Needs DB investigation via `/api/debug?name=andrea`. Likely causes: (a) calendarEventId format mismatch preventing lookup, (b) booking in DismissedEvent table, (c) weekId pointing to nonexistent/wrong week. Four code fixes already applied in gcal/route.ts but her specific record needs manual investigation.
 
 ## Remaining Pillars (in order)
