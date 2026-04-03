@@ -14,13 +14,15 @@ const SYSTEM_ROUTES = [
   "/api/debug",
   "/api/setup",
   "/api/seed",
+  "/api/credits/award",
+  "/api/blasts/process",
 ];
 
 // Role-based route access
 // admin (isAdmin) can access everything
 // Routes not listed here are accessible to any authenticated user
 const ROLE_ROUTES: Record<string, string[]> = {
-  setter: ["/", "/demos", "/verify", "/scoreboard", "/api/demos", "/api/verify", "/api/scoreboard"],
+  setter: ["/", "/demos", "/verify", "/scoreboard", "/blasts", "/api/demos", "/api/verify", "/api/scoreboard", "/api/credits", "/api/blasts"],
   closer: ["/", "/demos", "/deals", "/scoreboard", "/api/demos", "/api/deals", "/api/scoreboard", "/api/kpis"],
   show_rate_rep: ["/", "/scoreboard", "/demos", "/api/scoreboard", "/api/demos", "/api/kpis"],
 };

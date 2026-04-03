@@ -51,6 +51,14 @@
     {
       "path": "/api/slack/setter/confirm",
       "schedule": "5 2 * * 2-6"
+    },
+    {
+      "path": "/api/credits/award",
+      "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/blasts/process",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

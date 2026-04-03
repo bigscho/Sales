@@ -8,6 +8,7 @@ import { SyncButton } from "@/components/sync-button";
 import { UserMenu } from "@/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Suspense } from "react";
+import { CreditBadge } from "@/components/credit-badge";
 
 export interface Session {
   memberId: string;
@@ -48,6 +49,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <WeekSelector />
             </Suspense>
             <div className="flex items-center gap-3">
+              {session?.role === "setter" && (
+                <a href="/blasts"><CreditBadge setterId={session.memberId} /></a>
+              )}
               <SyncButton />
               <ThemeToggle />
               <UserMenu />

@@ -334,6 +334,23 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Blast attribution — check if prospect was SMS-blasted in last 14 days
+      try {
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        const matchConditions = [];
+        if (phone) matchConditions.push({ phone, lastContactedChannel: "ghl", lastContactedAt: { gte: fourteenDaysAgo } });
+        if (inviteeEmail) matchConditions.push({ email: inviteeEmail.toLowerCase(), lastContactedChannel: "ghl", lastContactedAt: { gte: fourteenDaysAgo } });
+
+        if (matchConditions.length > 0) {
+          const blastMatch = await prisma.agent.findFirst({ where: { OR: matchConditions } });
+          if (blastMatch) {
+            await prisma.booking.update({ where: { id: booking.id }, data: { blastSourced: true } });
+          }
+        }
+      } catch (err) {
+        console.error("Blast attribution check failed:", err);
+      }
+
       // Setter pigeon game — real-time booking notification
       if (setterId) {
         try {

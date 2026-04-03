@@ -19,15 +19,19 @@ model TeamMember {
   consecutive15PlusWeeks  Int      @default(0)
   excludeFromLeaderboard  Boolean  @default(false)
   isActive                Boolean  @default(true)
+  creditBalance           Int      @default(0) // cached text blast credit balance
+  blastZones              String?  // JSON: [{"state":"TX","cities":["Austin"],"minProd":5,"maxProd":50}]
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  bookings       Booking[]
-  demosAsCLoser  Demo[]          @relation("CloserDemos")
-  deals          Deal[]
-  payrollItems   PayrollLineItem[]
-  dailyScores    SetterDailyScore[]
-  verifications  SetterVerification[]
+  bookings           Booking[]
+  demosAsCLoser      Demo[]               @relation("CloserDemos")
+  deals              Deal[]
+  payrollItems       PayrollLineItem[]
+  dailyScores        SetterDailyScore[]
+  verifications      SetterVerification[]
+  creditTransactions CreditTransaction[]
+  textBlasts         TextBlast[]
 }
 
 model Week {
@@ -40,14 +44,15 @@ model Week {
   notes       String?
   createdAt   DateTime  @default(now())
 
-  bookings       Booking[]
-  demos          Demo[]
-  deals          Deal[]
-  payments       Payment[]
-  payrollRuns    PayrollRun[]
-  expenses       Expense[]
-  dayLocks       DayLock[]
-  verifications  SetterVerification[]
+  bookings           Booking[]
+  demos              Demo[]
+  deals              Deal[]
+  payments           Payment[]
+  payrollRuns        PayrollRun[]
+  expenses           Expense[]
+  dayLocks           DayLock[]
+  verifications      SetterVerification[]
+  creditTransactions CreditTransaction[]
 
   @@unique([weekStart])
 }
@@ -64,6 +69,7 @@ model Booking {
   calendarEventId  String?  @unique
   airtableRecordId String?
   source           String   @default("auto") // auto | manual
+  blastSourced     Boolean  @default(false) // true if prospect was SMS-blasted within 14 days
   createdAt        DateTime @default(now())
 
   week   Week        @relation(fields: [weekId], references: [id])
@@ -343,6 +349,7 @@ model OutboundCampaign {
 
   pushes              OutboundPush[]
   scheduledPushes     ScheduledPush[]
+  blasts              TextBlast[]
 }
 
 model OutboundPush {
@@ -350,15 +357,18 @@ model OutboundPush {
   agentId      String
   campaignId   String
   channel      String   // smartlead | ghl
+  blastId      String?  // links to TextBlast if sent via credit system
   pushedAt     DateTime @default(now())
   pushedBy     String?
 
   agent        Agent            @relation(fields: [agentId], references: [id])
   campaign     OutboundCampaign @relation(fields: [campaignId], references: [id])
+  blast        TextBlast?       @relation(fields: [blastId], references: [id])
 
   @@unique([agentId, campaignId])
   @@index([campaignId])
   @@index([agentId])
+  @@index([blastId])
 }
 
 model ScheduledPush {
@@ -381,4 +391,66 @@ model ScheduledPush {
   updatedAt       DateTime  @updatedAt
 
   campaign        OutboundCampaign @relation(fields: [campaignId], references: [id])
+}
+
+// === TEXT BLAST CREDITS ===
+
+model CreditTransaction {
+  id          String   @id @default(cuid())
+  setterId    String
+  amount      Int      // positive = earned, negative = spent
+  balance     Int      // running balance after this transaction
+  type        String   // weekly_award | verification_bonus | pigeon_bonus | blast_spend | admin_adjust | refund
+  description String   // human-readable: "Week of Mar 30: 22 bookings, 68% show rate"
+  weekId      String?  // which week this award is for (nullable for adjustments)
+  blastId     String?  // links to TextBlast if type = blast_spend
+  createdAt   DateTime @default(now())
+
+  setter      TeamMember @relation(fields: [setterId], references: [id])
+  week        Week?      @relation(fields: [weekId], references: [id])
+  blast       TextBlast? @relation(fields: [blastId], references: [id])
+
+  @@index([setterId, createdAt])
+  @@index([weekId])
+}
+
+model TextBlast {
+  id              String    @id @default(cuid())
+  setterId        String
+  creditsSpent    Int       // 1 credit = 1 SMS contact
+  status          String    @default("pending") // pending | processing | completed | failed | scheduled
+  scheduledFor    DateTime? // null = send immediately
+  filterState     String?
+  filterCity      String?
+  filterMinProd   Int?
+  filterMaxProd   Int?
+  campaignId      String?   // links to OutboundCampaign used
+  totalPushed     Int       @default(0) // actual contacts pushed to GHL
+  totalFailed     Int       @default(0)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  setter          TeamMember         @relation(fields: [setterId], references: [id])
+  campaign        OutboundCampaign?  @relation(fields: [campaignId], references: [id])
+  creditTx        CreditTransaction[]
+  pushes          OutboundPush[]
+
+  @@index([setterId])
+  @@index([status])
+  @@index([scheduledFor])
+}
+
+model GhlWarmupTracker {
+  id              String   @id @default(cuid())
+  subAccountId    String   // "1" or "2" — maps to GHL_API_KEY_1, GHL_API_KEY_2
+  date            DateTime // date (day granularity)
+  sentCount       Int      @default(0)
+  dailyLimit      Int      // the allowed max for this day
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([subAccountId, date])
 }

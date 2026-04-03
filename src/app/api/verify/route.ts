@@ -140,6 +140,16 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Award verification bonus credits if confirmed (no flags)
+  if (!hasFlags) {
+    try {
+      const { awardVerificationBonus } = await import("@/lib/credits");
+      await awardVerificationBonus(setterId, weekId);
+    } catch (err) {
+      console.error("Failed to award verification bonus:", err);
+    }
+  }
+
   // Create flag records
   const createdFlags = [];
   if (flags && flags.length > 0) {

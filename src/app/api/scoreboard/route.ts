@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
       id: s.id,
       name: s.name,
       tier: s.tier,
+      creditBalance: s.creditBalance || 0,
       activity: { newBookings: activity },
       results: {
         ...results,

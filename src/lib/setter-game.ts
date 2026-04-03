@@ -160,6 +160,18 @@ export async function checkAndFireTierCrossing(setterId: string, newCount: numbe
     text = `${mention} — ${newCount} demos booked today. ${tier.label} status.`;
   }
 
+  // Award pigeon tier bonus credits
+  try {
+    const { awardPigeonBonus } = await import("./credits");
+    const bonus = await awardPigeonBonus(setterId, tier.name);
+    if (bonus !== null) {
+      const bonusAmount = { tuffest_pigeon: 100, tpd: 50, common_pigeon: 10 }[tier.name] || 0;
+      if (bonusAmount > 0) text += `\n_+${bonusAmount} text blast credits!_`;
+    }
+  } catch (err) {
+    console.error("Failed to award pigeon bonus credits:", err);
+  }
+
   // Send with GIF using Slack Block Kit
   await sendSlackSetter(text, [
     { type: "image", image_url: tier.gif, alt_text: tier.label },
