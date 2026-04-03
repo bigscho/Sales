@@ -750,7 +750,7 @@ export default function DemosPage() {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-2 px-2">
-          <div className="grid grid-cols-7 gap-2" style={{ minWidth: "1100px" }}>
+          <div className="grid grid-cols-7 gap-2">
             {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => {
               const dayDemos = demosByDay[dayIndex];
               const isToday = new Date().getDay() === dayIndex;
@@ -764,7 +764,7 @@ export default function DemosPage() {
                 <div
                   key={dayIndex}
                   onClick={() => { setSelectedDay(dayIndex); setViewMode("day"); }}
-                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[160px] max-h-[280px] cursor-pointer transition-all relative ${
+                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[120px] max-h-[220px] cursor-pointer transition-all relative ${
                     isSelected ? "ring-2 ring-[var(--primary)] shadow-md" :
                     isToday ? "border-[var(--primary)]" :
                     "border-[var(--border)] hover:shadow-sm"

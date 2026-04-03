@@ -38,11 +38,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionContext.Provider value={session}>
-      <div className="flex min-h-screen">
-        <Suspense fallback={<aside className="w-56 bg-[var(--navbar)] border-r min-h-screen" />}>
+      <div className="flex min-h-screen max-w-[100vw] overflow-hidden">
+        <Suspense fallback={<aside className="w-56 flex-shrink-0 bg-[var(--navbar)] border-r min-h-screen" />}>
           <Sidebar />
         </Suspense>
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col min-w-0">
           <header className="h-16 border-b border-[var(--border)] bg-[var(--card)] flex items-center justify-between px-6">
             <Suspense fallback={<div className="h-10 w-56 bg-[var(--muted)] animate-pulse rounded-lg" />}>
               <WeekSelector />
@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <UserMenu />
             </div>
           </header>
-          <div className="flex-1 p-6">
+          <div className="flex-1 p-6 overflow-x-hidden">
             <Suspense fallback={<div className="animate-pulse">Loading...</div>}>
               {children}
             </Suspense>

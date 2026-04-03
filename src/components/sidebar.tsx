@@ -53,9 +53,9 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-56 bg-[var(--navbar)] border-r border-[var(--border)] min-h-screen flex flex-col">
-      <div className="p-4 border-b border-white/10 flex items-center gap-3">
-        <Image src="/logos/logo-light.png" alt="Grassfed" width={100} height={32} className="h-8 w-auto" />
+    <aside className="w-56 flex-shrink-0 bg-[var(--navbar)] border-r border-[var(--border)] min-h-screen flex flex-col">
+      <div className="h-16 border-b border-white/10 flex items-center justify-center px-4">
+        <Image src="/logos/logo-light.png" alt="Grassfed" width={180} height={48} className="h-10 w-auto" />
       </div>
       <nav className="flex-1 p-2">
         {visibleItems.map((item) => {
