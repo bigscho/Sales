@@ -347,10 +347,11 @@ export default function DemosPage() {
           </div>
         </div>
       )}
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+      <table className="w-full text-sm" style={{ minWidth: "800px" }}>
         <thead className="bg-[var(--muted)] border-b">
           <tr>
-            <th className="p-3 w-10">
+            <th className="p-2 pl-3 w-8">
               <input
                 type="checkbox"
                 checked={demosToShow.length > 0 && demosToShow.every((d) => selectedIds.has(d.id))}
@@ -358,14 +359,14 @@ export default function DemosPage() {
                 className="rounded"
               />
             </th>
-            {isWeekView && <th className="text-left p-3 font-medium w-16">Day</th>}
-            <th className="text-left p-3 font-medium">Prospect</th>
-            <th className="text-left p-3 font-medium">Time</th>
-            <th className="text-left p-3 font-medium">Setter</th>
-            <th className="text-left p-3 font-medium">Closer</th>
-            <th className="text-left p-3 font-medium">Status</th>
-            <th className="text-left p-3 font-medium">Confirmed By</th>
-            <th className="p-3 w-10"></th>
+            {isWeekView && <th className="text-left p-2 font-medium w-12 text-xs">Day</th>}
+            <th className="text-left p-2 font-medium">Prospect</th>
+            <th className="text-left p-2 font-medium w-16">Time</th>
+            <th className="text-left p-2 font-medium w-24">Setter</th>
+            <th className="text-left p-2 font-medium w-16">Closer</th>
+            <th className="text-left p-2 font-medium w-20">Status</th>
+            <th className="text-left p-2 font-medium whitespace-nowrap">Confirmed By</th>
+            <th className="p-2 w-8"></th>
           </tr>
         </thead>
         <tbody>
@@ -379,7 +380,7 @@ export default function DemosPage() {
                 demo.status === "no_show" ? "bg-red-50/30" :
                 demo.status === "pending" ? "bg-yellow-50/30" : ""
               }`}>
-                <td className="p-3">
+                <td className="p-2 pl-3">
                   <input
                     type="checkbox"
                     checked={selectedIds.has(demo.id)}
@@ -388,25 +389,22 @@ export default function DemosPage() {
                   />
                 </td>
                 {isWeekView && (
-                  <td className="p-3 text-xs font-medium text-[var(--muted-foreground)]">
+                  <td className="p-2 text-xs font-medium text-[var(--muted-foreground)]">
                     {DAY_NAMES[demoDay]}
                   </td>
                 )}
-                <td className="p-3 max-w-[180px]">
-                  <div className="font-medium truncate">{demo.booking.prospectName}</div>
+                <td className="p-2">
+                  <div className="font-medium truncate max-w-[160px]">{demo.booking.prospectName}</div>
                   {demo.booking.prospectEmail && (
-                    <div className="text-xs text-[var(--muted-foreground)]">{demo.booking.prospectEmail}</div>
-                  )}
-                  {demo.booking.prospectPhone && (
-                    <div className="text-xs text-[var(--muted-foreground)]/70">{demo.booking.prospectPhone}</div>
+                    <div className="text-xs text-[var(--muted-foreground)] truncate max-w-[160px]">{demo.booking.prospectEmail}</div>
                   )}
                 </td>
-                <td className="p-3 text-[var(--muted-foreground)]">
+                <td className="p-2 text-[var(--muted-foreground)] whitespace-nowrap">
                   {new Date(demo.booking.demoDate).toLocaleTimeString("en-US", {
                     hour: "numeric", minute: "2-digit", hour12: true,
                   })}
                 </td>
-                <td className="p-3">
+                <td className="p-2">
                   <select
                     value={demo.booking.setter?.id || ""}
                     onChange={(e) => updateDemo(demo.id, { setterId: e.target.value || null })}
@@ -417,8 +415,8 @@ export default function DemosPage() {
                     {setters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </td>
-                <td className="p-3">{demo.closer?.name || "—"}</td>
-                <td className="p-3">
+                <td className="p-2">{demo.closer?.name || "—"}</td>
+                <td className="p-2">
                   <select
                     value={demo.status}
                     onChange={(e) => updateDemo(demo.id, { status: e.target.value })}
@@ -437,7 +435,7 @@ export default function DemosPage() {
                     ))}
                   </select>
                 </td>
-                <td className="p-3">
+                <td className="p-2 whitespace-nowrap">
                   <div className="flex items-center gap-2">
                     {demo.confirmedBy && (
                       <span className={`text-xs font-medium inline-flex items-center gap-1 ${
@@ -477,7 +475,7 @@ export default function DemosPage() {
                     )}
                   </div>
                 </td>
-                <td className="p-3">
+                <td className="p-2">
                   {!dayLock && (
                     <button
                       onClick={() => deleteDemo(demo.id, demo.booking.prospectName)}
@@ -503,6 +501,7 @@ export default function DemosPage() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 
