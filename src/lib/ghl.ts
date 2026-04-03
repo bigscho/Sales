@@ -17,7 +17,10 @@ const GHL_LOCATIONS: Record<string, string | undefined> = {
   "2": process.env.GHL_LOCATION_ID_2,
 };
 
-const GHL_WORKFLOW_ID = process.env.GHL_WORKFLOW_ID;
+const GHL_WORKFLOWS: Record<string, string | undefined> = {
+  "1": process.env.GHL_WORKFLOW_ID_1,
+  "2": process.env.GHL_WORKFLOW_ID_2,
+};
 
 // Default warm-up schedule: days since first send → daily limit
 const WARMUP_SCHEDULE = [
@@ -161,9 +164,10 @@ export async function createGhlContact(
  * Add a contact to a GHL workflow (triggers the SMS sequence).
  */
 export async function triggerGhlWorkflow(subAccountId: string, contactId: string): Promise<void> {
-  if (!GHL_WORKFLOW_ID) throw new Error("GHL_WORKFLOW_ID not configured");
+  const workflowId = GHL_WORKFLOWS[subAccountId];
+  if (!workflowId) throw new Error(`GHL_WORKFLOW_ID_${subAccountId} not configured`);
 
-  const res = await ghlFetch(subAccountId, `/contacts/${contactId}/workflow/${GHL_WORKFLOW_ID}`, {
+  const res = await ghlFetch(subAccountId, `/contacts/${contactId}/workflow/${workflowId}`, {
     method: "POST",
     body: JSON.stringify({}),
   });
