@@ -5,6 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Grassfed Sales Tracker",
   description: "Weekly KPIs, Payroll & P&L Dashboard",
+  icons: { icon: "/logos/g-icon.png" },
 };
 
 export default function RootLayout({

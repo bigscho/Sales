@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/components/app-shell";
@@ -53,9 +54,8 @@ export function Sidebar() {
 
   return (
     <aside className="w-56 bg-[var(--navbar)] border-r border-[var(--border)] min-h-screen flex flex-col">
-      <div className="p-4 border-b border-white/10">
-        <h1 className="text-xl font-bold text-[var(--accent)]">Grassfed</h1>
-        <p className="text-xs text-white/50">Sales Tracker</p>
+      <div className="p-4 border-b border-white/10 flex items-center gap-3">
+        <Image src="/logos/logo-light.png" alt="Grassfed" width={100} height={32} className="h-8 w-auto" />
       </div>
       <nav className="flex-1 p-2">
         {visibleItems.map((item) => {
