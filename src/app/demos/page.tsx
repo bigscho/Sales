@@ -764,8 +764,8 @@ export default function DemosPage() {
                 <div
                   key={dayIndex}
                   onClick={() => { setSelectedDay(dayIndex); setViewMode("day"); }}
-                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[120px] max-h-[220px] cursor-pointer transition-all relative ${
-                    isSelected ? "ring-2 ring-[var(--primary)] shadow-md" :
+                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[100px] max-h-[180px] cursor-pointer transition-all relative ${
+                    isSelected ? "ring-2 ring-[var(--primary)] ring-inset shadow-md" :
                     isToday ? "border-[var(--primary)]" :
                     "border-[var(--border)] hover:shadow-sm"
                   }`}

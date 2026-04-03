@@ -13,6 +13,25 @@ interface WeekOption {
 
 const STORAGE_KEY = "grassfed_weekId";
 
+function findCurrentWeek(weeks: WeekOption[]): WeekOption | undefined {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return weeks.find((w) => {
+    const start = new Date(w.weekStart).getTime();
+    const end = new Date(w.weekEnd).getTime();
+    return today >= start && today <= end;
+  });
+}
+
+function formatToday(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function WeekSelector() {
   const router = useRouter();
   const pathname = usePathname();
@@ -28,21 +47,28 @@ export function WeekSelector() {
         setWeeks(data.weeks || []);
         setLoading(false);
 
-        // Restore from localStorage or auto-select current week
-        const savedWeekId = localStorage.getItem(STORAGE_KEY);
         const paramWeekId = new URLSearchParams(window.location.search).get("weekId");
 
         if (paramWeekId) {
           // URL already has a weekId — save it
           localStorage.setItem(STORAGE_KEY, paramWeekId);
-        } else if (savedWeekId && data.weeks?.some((w: WeekOption) => w.id === savedWeekId)) {
-          // Restore saved week
-          router.replace(`${pathname}?weekId=${savedWeekId}`);
-        } else if (data.weeks?.length > 0) {
-          // Default to most recent week
-          const defaultId = data.weeks[0].id;
-          localStorage.setItem(STORAGE_KEY, defaultId);
-          router.replace(`${pathname}?weekId=${defaultId}`);
+        } else {
+          // Try to find the week that contains today
+          const currentWeek = findCurrentWeek(data.weeks || []);
+          if (currentWeek) {
+            localStorage.setItem(STORAGE_KEY, currentWeek.id);
+            router.replace(`${pathname}?weekId=${currentWeek.id}`);
+          } else {
+            // Fall back to saved week, then most recent
+            const savedWeekId = localStorage.getItem(STORAGE_KEY);
+            if (savedWeekId && data.weeks?.some((w: WeekOption) => w.id === savedWeekId)) {
+              router.replace(`${pathname}?weekId=${savedWeekId}`);
+            } else if (data.weeks?.length > 0) {
+              const defaultId = data.weeks[0].id;
+              localStorage.setItem(STORAGE_KEY, defaultId);
+              router.replace(`${pathname}?weekId=${defaultId}`);
+            }
+          }
         }
       })
       .catch(() => setLoading(false));
@@ -75,6 +101,7 @@ export function WeekSelector() {
           </option>
         ))}
       </select>
+      <span className="text-sm text-[var(--muted-foreground)] hidden md:inline">{formatToday()}</span>
     </div>
   );
 }
