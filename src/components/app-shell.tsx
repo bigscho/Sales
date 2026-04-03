@@ -39,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SessionContext.Provider value={session}>
       <div className="flex min-h-screen">
-        <Suspense fallback={<aside className="w-56 bg-white border-r min-h-screen" />}>
+        <Suspense fallback={<aside className="w-56 bg-[var(--navbar)] border-r min-h-screen" />}>
           <Sidebar />
         </Suspense>
         <main className="flex-1 flex flex-col">

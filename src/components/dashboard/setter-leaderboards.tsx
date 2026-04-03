@@ -66,7 +66,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
               </div>
               <div className="w-20 flex-shrink-0">
                 <p className="font-bold text-sm">{setter.name}</p>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TIER_COLORS[setter.tier] || TIER_COLORS[1]}`}>
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${TIER_COLORS[setter.tier] || TIER_COLORS[1]}`}>
                   {TIER_LABELS[setter.tier] || `Tier ${setter.tier}`}
                 </span>
               </div>
@@ -113,19 +113,16 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
               </div>
               <div className="w-20 flex-shrink-0">
                 <p className="font-bold text-sm">{setter.name}</p>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TIER_COLORS[setter.tier] || TIER_COLORS[1]}`}>
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${TIER_COLORS[setter.tier] || TIER_COLORS[1]}`}>
                   {TIER_LABELS[setter.tier] || `Tier ${setter.tier}`}
                 </span>
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm text-green-600">{setter.results.shows} showed</span>
-                  <span className="text-sm text-red-600">{setter.results.noShows} no-show</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
+                  <span className="text-xs text-green-600 whitespace-nowrap">{setter.results.shows} showed</span>
+                  <span className="text-xs text-red-600 whitespace-nowrap">{setter.results.noShows} no-show</span>
                   {setter.results.pending > 0 && (
-                    <span className="text-sm text-yellow-600">{setter.results.pending} pending</span>
-                  )}
-                  {setter.pendingTotal > 0 && (
-                    <span className="text-sm text-blue-600">{setter.pendingTotal} pending total</span>
+                    <span className="text-xs text-yellow-600 whitespace-nowrap">{setter.results.pending} pend</span>
                   )}
                 </div>
                 <StatBar value={setter.results.shows} max={maxShows} color="bg-green-500" />
@@ -148,9 +145,9 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm text-green-600">{unattributed.results.shows} showed</span>
-                  <span className="text-sm text-red-600">{unattributed.results.noShows} no-show</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
+                  <span className="text-xs text-green-600 whitespace-nowrap">{unattributed.results.shows} showed</span>
+                  <span className="text-xs text-red-600 whitespace-nowrap">{unattributed.results.noShows} no-show</span>
                 </div>
                 <StatBar value={unattributed.results.shows} max={maxShows} color="bg-yellow-400" />
               </div>

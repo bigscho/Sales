@@ -397,8 +397,8 @@ export default function DemosPage() {
                     {DAY_NAMES[demoDay]}
                   </td>
                 )}
-                <td className="p-3">
-                  <div className="font-medium">{demo.booking.prospectName}</div>
+                <td className="p-3 max-w-[180px]">
+                  <div className="font-medium truncate">{demo.booking.prospectName}</div>
                   {demo.booking.prospectEmail && (
                     <div className="text-xs text-[var(--muted-foreground)]">{demo.booking.prospectEmail}</div>
                   )}
@@ -541,7 +541,7 @@ export default function DemosPage() {
           body: JSON.stringify({ paymentId: p.id, revenueTypeOverride: nextType })
         }).then(() => loadData());
       };
-      const base = "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-opacity hover:opacity-70";
+      const base = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-opacity hover:opacity-70";
       if (type === "mrr") return <span onClick={handleClick} title={`Click to change to One-time`} className={`${base} bg-blue-100 text-blue-700`}>MRR</span>;
       if (type === "one_time") return <span onClick={handleClick} title={`Click to change to Misc`} className={`${base} bg-orange-100 text-orange-700`}>One-time</span>;
       if (type === "misc") return <span onClick={handleClick} title={`Click to change to MRR`} className={`${base} bg-[var(--muted)] text-[var(--muted-foreground)]`}>Misc</span>;
@@ -559,7 +559,7 @@ export default function DemosPage() {
           body: JSON.stringify({ paymentId: p.id, customerStatusOverride: nextStatus })
         }).then(() => loadData());
       };
-      const base = "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-pointer transition-opacity hover:opacity-70";
+      const base = "inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold cursor-pointer transition-opacity hover:opacity-70";
       if (status === "new") return <span onClick={handleClick} title="Click to change to Returning" className={`${base} bg-green-100 text-green-700`}>NEW</span>;
       if (status === "returning") return <span onClick={handleClick} title="Click to change to New" className={`${base} bg-blue-50 text-blue-600`}>RTN</span>;
       return null;
@@ -668,7 +668,7 @@ export default function DemosPage() {
               {newRevenue > 0 && (
                 <div className="flex items-center justify-between text-sm font-semibold">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">NEW</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">NEW</span>
                     New Revenue
                   </span>
                   <span className="text-green-700">{formatCents(newRevenue)}</span>
@@ -677,7 +677,7 @@ export default function DemosPage() {
               {returningRevenue > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600">RTN</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-600">RTN</span>
                     Returning Revenue
                   </span>
                   <span className="font-semibold text-blue-600">{formatCents(returningRevenue)}</span>
@@ -782,7 +782,7 @@ export default function DemosPage() {
                       <span className={`text-sm font-semibold ${isSelected || isToday ? "text-[var(--primary)]" : ""}`}>
                         {DAY_NAMES[dayIndex]}
                       </span>
-                      {dateLabel && <span className="text-[10px] text-[var(--muted-foreground)] ml-1">{dateLabel}</span>}
+                      {dateLabel && <span className="text-xs text-[var(--muted-foreground)] ml-1">{dateLabel}</span>}
                     </div>
                     <div className="flex items-center gap-1">
                       {dayTotal > 0 && <span className="text-xs font-medium text-[var(--muted-foreground)]">{dayTotal}</span>}
@@ -805,12 +805,12 @@ export default function DemosPage() {
 
                   <div className="flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[200px]">
                     {dayDemos.length === 0 && (
-                      <p className="text-[10px] text-[var(--muted-foreground)]/70 text-center py-3">No demos</p>
+                      <p className="text-xs text-[var(--muted-foreground)]/70 text-center py-3">No demos</p>
                     )}
                     {dayDemos.map((demo) => (
                       <div
                         key={demo.id}
-                        className={`rounded px-2 py-1 text-[11px] ${
+                        className={`rounded px-2 py-1 text-xs ${
                           demo.status === "showed" ? "bg-green-50 text-green-800" :
                           demo.status === "no_show" ? "bg-red-50 text-red-800" :
                           demo.status === "cancelled" ? "bg-[var(--muted)] text-[var(--muted-foreground)]/70 line-through" :
@@ -828,7 +828,7 @@ export default function DemosPage() {
                   </div>
 
                   {dayTotal > 0 && !lock && (
-                    <div className="px-2 py-1 border-t text-[10px] text-[var(--muted-foreground)] flex justify-between">
+                    <div className="px-2 py-1 border-t text-xs text-[var(--muted-foreground)] flex justify-between">
                       <span>{dayShowed}✓ {dayTotal - dayShowed - dayDemos.filter(d => d.status === "cancelled").length}?</span>
                     </div>
                   )}
@@ -842,61 +842,57 @@ export default function DemosPage() {
       {/* ===== STATS BAR (right under calendar) ===== */}
       {!loading && (
         <div className="bg-[var(--card)] rounded-xl border p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex gap-6">
-              {/* Confirmed Results */}
-              <div>
-                <p className="text-xs text-green-600 font-medium">Shows</p>
-                <p className="text-xl font-bold text-green-600">{displayShowed}</p>
+          <div className="flex flex-col gap-4">
+            {/* Stats grid */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-4">
+              <div className="min-w-0">
+                <p className="text-xs text-green-600 font-medium truncate">Shows</p>
+                <p className="text-xl font-bold tracking-tight text-green-600">{displayShowed}</p>
               </div>
-              <div>
-                <p className="text-xs text-red-600 font-medium">No Shows</p>
-                <p className="text-xl font-bold text-red-600">{displayNoShow}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-red-600 font-medium truncate">No Shows</p>
+                <p className="text-xl font-bold tracking-tight text-red-600">{displayNoShow}</p>
               </div>
-              <div>
-                <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
-                <p className="text-xl font-bold">
-                  {(displayShowed + displayNoShow) > 0 ? (((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)) : "—"}%
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)] truncate">Show Rate</p>
+                <p className="text-xl font-bold tracking-tight">
+                  {(displayShowed + displayNoShow) > 0 ? `${((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)}%` : "—"}
                 </p>
-                {displayPending > 0 && <p className="text-[10px] text-yellow-600">({displayPending} pending)</p>}
+                {displayPending > 0 && <p className="text-xs text-yellow-600">{displayPending} pending</p>}
               </div>
-              <div>
-                <p className="text-xs text-[var(--muted-foreground)]">Closes</p>
-                <p className="text-xl font-bold text-blue-600">{displayCloses}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)] truncate">Closes</p>
+                <p className="text-xl font-bold tracking-tight text-[var(--accent)]">{displayCloses}</p>
               </div>
-              <div>
-                <p className="text-xs text-[var(--muted-foreground)]">Cash</p>
-                <p className="text-xl font-bold text-green-600">{formatCents(displayCash)}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)] truncate">Cash</p>
+                <p className="text-xl font-bold tracking-tight text-green-600">{formatCents(displayCash)}</p>
               </div>
-
-              {/* Divider */}
-              <div className="w-px bg-gray-200 self-stretch" />
-
-              {/* Pipeline */}
-              <div>
-                <p className="text-xs text-[var(--muted-foreground)]">On Calendar</p>
-                <p className="text-xl font-bold">{displayTotal}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)] truncate">On Calendar</p>
+                <p className="text-xl font-bold tracking-tight">{displayTotal}</p>
               </div>
               {displayPending > 0 && (
-                <div>
-                  <p className="text-xs text-yellow-600 font-medium">Pending</p>
-                  <p className="text-xl font-bold text-yellow-600">{displayPending}</p>
+                <div className="min-w-0">
+                  <p className="text-xs text-yellow-600 font-medium truncate">Pending</p>
+                  <p className="text-xl font-bold tracking-tight text-yellow-600">{displayPending}</p>
                 </div>
               )}
               {viewMode === "week" && (
                 <>
-                  <div>
-                    <p className="text-xs text-[var(--muted-foreground)]">New Bookings Today</p>
-                    <p className="text-xl font-bold">{todayBookings.length}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--muted-foreground)] truncate">Booked Today</p>
+                    <p className="text-xl font-bold tracking-tight">{todayBookings.length}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-[var(--muted-foreground)]">Days Locked</p>
-                    <p className="text-xl font-bold">{dayLocks.length}/7</p>
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--muted-foreground)] truncate">Days Locked</p>
+                    <p className="text-xl font-bold tracking-tight">{dayLocks.length}/7</p>
                   </div>
                 </>
               )}
             </div>
-            <div className="flex gap-2">
+            {/* Action buttons */}
+            <div className="flex flex-wrap gap-2 items-center">
               {viewMode === "day" && selectedPending > 0 && !selectedLock && (
                 <>
                   <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
@@ -909,12 +905,12 @@ export default function DemosPage() {
               )}
               {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && (
                 <Button size="sm" variant="outline" onClick={() => lockDay(selectedDayDate)}>
-                  🔒 Lock {DAY_NAMES[selectedDay]}
+                  Lock {DAY_NAMES[selectedDay]}
                 </Button>
               )}
               {viewMode === "day" && selectedLock && (
                 <Button size="sm" variant="ghost" onClick={() => unlockDay(selectedLock.date)}>
-                  🔓 Unlock
+                  Unlock
                 </Button>
               )}
               {displayPending > 0 && (
@@ -992,7 +988,7 @@ export default function DemosPage() {
                       <div key={d.id} className="px-4 py-2.5 border-b last:border-0 text-xs hover:bg-[var(--muted)]">
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-semibold text-[var(--foreground)]">{d.booking.prospectName}</span>
-                          <span className="text-[10px] text-[var(--muted-foreground)]/70">
+                          <span className="text-xs text-[var(--muted-foreground)]/70">
                             {new Date(d.booking.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                           </span>
                         </div>

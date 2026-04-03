@@ -172,9 +172,9 @@ export default function DealsPage() {
                     className="border-b hover:bg-[var(--muted)] cursor-pointer"
                     onClick={() => setExpandedDeal(expandedDeal === deal.id ? null : deal.id)}
                   >
-                    <td className="p-3">
-                      <div className="font-medium">{deal.prospectName}</div>
-                      {deal.prospectEmail && <div className="text-xs text-[var(--muted-foreground)]">{deal.prospectEmail}</div>}
+                    <td className="p-3 max-w-[200px]">
+                      <div className="font-medium truncate">{deal.prospectName}</div>
+                      {deal.prospectEmail && <div className="text-xs text-[var(--muted-foreground)] truncate">{deal.prospectEmail}</div>}
                     </td>
                     <td className="p-3">
                       <select
@@ -283,7 +283,7 @@ export default function DealsPage() {
               <tbody>
                 {unlinkedPayments.map((p) => (
                   <tr key={p.id} className="border-b last:border-0">
-                    <td className="p-3 font-medium">{p.customerName || p.customerEmail || "Unknown"}</td>
+                    <td className="p-3 font-medium max-w-[200px] truncate">{p.customerName || p.customerEmail || "Unknown"}</td>
                     <td className="p-3">{formatDate(p.paidAt)}</td>
                     <td className="p-3">
                       <Badge variant={p.isSubscription ? "success" : "warning"}>

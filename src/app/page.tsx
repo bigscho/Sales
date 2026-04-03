@@ -119,7 +119,7 @@ export default function Dashboard() {
         <KPICard
           title="Demos on Calendar"
           value={String(kpis.totalBookings)}
-          subtitle={`${kpis.totalShows} showed, ${kpis.totalNoShows} no-show, ${kpis.totalPending} pending`}
+          subtitle={`${kpis.totalShows} showed · ${kpis.totalNoShows} no-show · ${kpis.totalPending} pending`}
           detail={
             <div className="space-y-1">
               {demos.map((d) => (
@@ -170,7 +170,7 @@ export default function Dashboard() {
         <KPICard
           title="Show Rate"
           value={kpis.totalConfirmed > 0 ? formatPercent(kpis.confirmedShowRate) : "\u2014"}
-          subtitle={`${kpis.totalShows} of ${kpis.totalConfirmed} confirmed (${kpis.totalPending} pending)`}
+          subtitle={`${kpis.totalShows}/${kpis.totalConfirmed} confirmed · ${kpis.totalPending} pending`}
         />
         <KPICard
           title="Close Rate"
@@ -215,7 +215,7 @@ export default function Dashboard() {
       {kpis.closerStats.length > 0 && (
         <div>
           <h3 className="section-header mb-3">Closer Performance</h3>
-          <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
+          <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-[var(--muted)] border-b">
                 <tr>

@@ -569,7 +569,7 @@ function DemoRow({
           ) : isActionable ? (
             <button onClick={onToggleConfirm} className="w-5 h-5 border-2 border-[var(--border)] rounded hover:border-green-400 transition-colors" />
           ) : (
-            <span className="text-gray-300 text-lg">—</span>
+            <span className="text-[var(--muted-foreground)]/40 text-lg">—</span>
           )}
         </div>
 

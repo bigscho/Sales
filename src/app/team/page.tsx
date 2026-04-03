@@ -91,7 +91,7 @@ export default function TeamPage() {
         <Card>
           <CardHeader><CardTitle>Add Team Member</CardTitle></CardHeader>
           <CardContent>
-            <form onSubmit={addMember} className="flex gap-3">
+            <form onSubmit={addMember} className="flex flex-wrap gap-3">
               <input name="name" placeholder="Name" required className="border rounded-lg px-3 py-2 text-sm flex-1" />
               <select name="role" required className="border rounded-lg px-3 py-2 text-sm">
                 {roleOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -357,10 +357,10 @@ function PinCell({ member, onSave }: { member: TeamMember; onSave: (pin: string 
   if (member.pin && !editing) {
     return (
       <div className="flex items-center gap-1.5">
-        <Badge variant="success" className="text-[10px] px-1.5">PIN set</Badge>
+        <Badge variant="success" className="text-xs px-1.5">PIN set</Badge>
         <button
           onClick={() => { setEditing(true); setValue(""); }}
-          className="text-[10px] text-[var(--muted-foreground)]/70 hover:text-blue-500"
+          className="text-xs text-[var(--muted-foreground)]/70 hover:text-blue-500"
         >
           Change
         </button>
@@ -388,14 +388,14 @@ function PinCell({ member, onSave }: { member: TeamMember; onSave: (pin: string 
           }
         }}
         disabled={value.length < 4}
-        className="text-[10px] text-green-600 hover:text-green-800 disabled:text-gray-300"
+        className="text-xs text-green-600 hover:text-green-800 disabled:text-[var(--muted-foreground)]/40"
       >
         Save
       </button>
       {editing && (
         <button
           onClick={() => setEditing(false)}
-          className="text-[10px] text-[var(--muted-foreground)]/70 hover:text-red-500"
+          className="text-xs text-[var(--muted-foreground)]/70 hover:text-red-500"
         >
           Cancel
         </button>

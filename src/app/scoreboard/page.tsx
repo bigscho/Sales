@@ -98,9 +98,9 @@ export default function ScoreboardPage() {
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Shows</p>
             <p className="text-3xl font-bold text-green-600 mt-1">{teamTotals.results.shows}</p>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              of {teamTotals.results.shows + teamTotals.results.noShows} confirmed
-              {teamTotals.results.pending > 0 ? ` (${teamTotals.results.pending} pending)` : ""}
+            <p className="text-xs text-[var(--muted-foreground)] truncate">
+              {teamTotals.results.shows + teamTotals.results.noShows} confirmed
+              {teamTotals.results.pending > 0 ? ` · ${teamTotals.results.pending} pending` : ""}
             </p>
           </CardContent>
         </Card>
