@@ -197,8 +197,9 @@ export async function POST(request: NextRequest) {
             },
           });
         } else {
+          // Only cancel demos that are still pending — never overwrite showed/no_show/rescheduled
           await prisma.demo.updateMany({
-            where: { bookingId: existing.id },
+            where: { bookingId: existing.id, status: "pending" },
             data: { status: "cancelled", confirmedBy: "calendly_webhook", confirmedAt: new Date() },
           });
         }

@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { href: "/blasts/admin", label: "Blast Admin", icon: "⚡", roles: ["admin"] },
   { href: "/agents", label: "Agents", icon: "🏠", roles: ["admin"] },
   { href: "/outbound", label: "Outbound", icon: "📤", roles: ["admin"] },
+  { href: "/smartlead", label: "Smartlead", icon: "📧", roles: ["admin"] },
   { href: "/verify/admin", label: "Verify", icon: "✅" },
   { href: "https://www.youtube.com/watch?v=zIG39WlSCsM", label: "Motivation", icon: "🔥" },
   { href: "/payroll", label: "Payroll", icon: "💵", roles: ["admin"] },
