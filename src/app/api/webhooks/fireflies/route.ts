@@ -16,7 +16,20 @@ interface TranscriptData {
   participants: string[];
   sentences: { text: string; speaker_id: number | null }[];
   meeting_info: { summary_status: string; silent_meeting: boolean } | null;
+  summary: { short_summary: string; keywords: string[] } | null;
 }
+
+// Keywords that indicate a genuine Grassfed sales demo or business call.
+const DEMO_RELEVANCE_TERMS = [
+  "real estate", "realtor", "agent", "brokerage", "broker", "listing",
+  "home", "property", "homeowner", "zip code", "mls",
+  "grassfed", "grsfd", "cold email", "email campaign", "email marketing",
+  "smartlead", "lead", "outreach", "campaign", "deliverability",
+  "sender account", "response rate", "open rate",
+  "demo", "onboarding", "platform", "pricing", "subscription",
+  "marketing budget", "roi", "commission", "closing", "sales",
+  "next steps", "follow up", "schedule", "calendar",
+];
 
 // Verify that a transcript represents a real two-party conversation,
 // not just a closer sitting alone in a meeting room.
@@ -36,6 +49,16 @@ function verifyRealShow(t: TranscriptData): boolean {
   // Signal 4: Only one speaker — prospect never talked
   const speakerIds = new Set(sentences.map(s => s.speaker_id).filter(id => id !== null && id !== undefined));
   if (speakerIds.size < 2) return false;
+
+  // Signal 5: Content relevance — is this actually about Grassfed's business?
+  if (t.summary) {
+    const summaryText = (t.summary.short_summary || "").toLowerCase();
+    const keywords = (t.summary.keywords || []).map(k => k.toLowerCase());
+    const allText = summaryText + " " + keywords.join(" ");
+
+    const hasRelevantContent = DEMO_RELEVANCE_TERMS.some(term => allText.includes(term));
+    if (!hasRelevantContent) return false;
+  }
 
   return true;
 }
@@ -57,6 +80,10 @@ async function fetchTranscript(apiKey: string, meetingId: string): Promise<Trans
         meeting_info {
           summary_status
           silent_meeting
+        }
+        summary {
+          short_summary
+          keywords
         }
       }
     }

@@ -21,7 +21,25 @@ interface FirefliesTranscript {
   participants: string[];
   sentences: { text: string; speaker_id: number | null }[];
   meeting_info: { summary_status: string; silent_meeting: boolean } | null;
+  summary: { short_summary: string; keywords: string[] } | null;
 }
+
+// Keywords that indicate a genuine Grassfed sales demo or business call.
+// At least one must appear in the summary or keywords for auto-confirmation.
+const DEMO_RELEVANCE_TERMS = [
+  // Product/service terms
+  "real estate", "realtor", "agent", "brokerage", "broker", "listing",
+  "home", "property", "homeowner", "zip code", "mls",
+  // Grassfed-specific
+  "grassfed", "grsfd", "cold email", "email campaign", "email marketing",
+  "smartlead", "lead", "outreach", "campaign", "deliverability",
+  "sender account", "response rate", "open rate",
+  // Sales demo flow
+  "demo", "onboarding", "platform", "pricing", "subscription",
+  "marketing budget", "roi", "commission", "closing", "sales",
+  // Follow-up signals
+  "next steps", "follow up", "schedule", "calendar",
+];
 
 async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDate: string): Promise<FirefliesTranscript[]> {
   // Fireflies uses millisecond timestamps for date fields
@@ -43,6 +61,10 @@ async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDat
         meeting_info {
           summary_status
           silent_meeting
+        }
+        summary {
+          short_summary
+          keywords
         }
       }
     }
@@ -84,6 +106,18 @@ function verifyRealShow(t: FirefliesTranscript): boolean {
   // If all sentences have the same speaker, the prospect never talked.
   const speakerIds = new Set(sentences.map(s => s.speaker_id).filter(id => id !== null && id !== undefined));
   if (speakerIds.size < 2) return false;
+
+  // Signal 5: Content relevance — is this actually about Grassfed's business?
+  // Catches cases where audio from TV/reels/podcasts creates a fake transcript.
+  // Check summary text + keywords for business-relevant terms.
+  if (t.summary) {
+    const summaryText = (t.summary.short_summary || "").toLowerCase();
+    const keywords = (t.summary.keywords || []).map(k => k.toLowerCase());
+    const allText = summaryText + " " + keywords.join(" ");
+
+    const hasRelevantContent = DEMO_RELEVANCE_TERMS.some(term => allText.includes(term));
+    if (!hasRelevantContent) return false;
+  }
 
   return true;
 }
