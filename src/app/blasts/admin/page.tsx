@@ -198,7 +198,7 @@ export default function BlastAdminPage() {
         <CardHeader><CardTitle>Setter Zones & Credits</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           {setters.map((s) => {
-            let zones: Array<{ state?: string; cities?: string[]; minProd?: number; maxProd?: number }> = [];
+            let zones: Array<{ state?: string; cities?: string[]; minProd?: number; maxProd?: number; minVolume?: number; maxVolume?: number }> = [];
             if (s.blastZones) { try { zones = JSON.parse(s.blastZones); } catch { /* */ } }
             const isEditing = editingZones === s.id;
 
