@@ -88,7 +88,7 @@ export default function Dashboard() {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-32 bg-white rounded-xl border animate-pulse" />
+          <div key={i} className="h-32 bg-[var(--card)] rounded-xl border animate-pulse" />
         ))}
       </div>
     );
@@ -215,9 +215,9 @@ export default function Dashboard() {
       {kpis.closerStats.length > 0 && (
         <div>
           <h3 className="text-lg font-semibold mb-3">Closer Performance</h3>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-[var(--muted)] border-b">
                 <tr>
                   <th className="text-left p-3 font-medium">Closer</th>
                   <th className="text-right p-3 font-medium">Shows</th>

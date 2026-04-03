@@ -202,7 +202,7 @@ export default function PayrollPage() {
       {loading && (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-24 bg-white rounded-xl border animate-pulse" />
+            <div key={i} className="h-24 bg-[var(--card)] rounded-xl border animate-pulse" />
           ))}
         </div>
       )}

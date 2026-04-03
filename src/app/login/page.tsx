@@ -80,20 +80,20 @@ export default function LoginPage() {
 
   if (pageLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="h-48 w-80 bg-white rounded-xl border animate-pulse" />
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
+        <div className="h-48 w-80 bg-[var(--card)] rounded-xl border animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-green-700">Grassfed</CardTitle>
-          <p className="text-sm text-gray-500 mt-1">Sales Tracker</p>
+          <CardTitle className="text-2xl font-bold text-[var(--primary)]">Grassfed</CardTitle>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1">Sales Tracker</p>
           {isSetup && (
-            <p className="text-xs text-blue-600 mt-2">First-time setup — choose your account and set a PIN</p>
+            <p className="text-xs text-[var(--accent)] mt-2">First-time setup — choose your account and set a PIN</p>
           )}
         </CardHeader>
         <CardContent>

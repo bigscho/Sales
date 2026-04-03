@@ -147,7 +147,7 @@ export default function VerifyPage() {
     return (
       <div className="max-w-2xl mx-auto p-6 space-y-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-20 bg-white rounded-xl border animate-pulse" />
+          <div key={i} className="h-20 bg-[var(--card)] rounded-xl border animate-pulse" />
         ))}
       </div>
     );
@@ -547,11 +547,11 @@ function DemoRow({
 
   return (
     <div className={`p-3 rounded-lg border transition-colors ${
-      isLocked ? "bg-gray-50 border-gray-200 opacity-60" :
+      isLocked ? "bg-[var(--muted)] border-gray-200 opacity-60" :
       hasExistingFlag ? "bg-orange-50 border-orange-200" :
       isConfirmed ? "bg-green-50 border-green-200" :
       hasFlagDraft ? "bg-orange-50 border-orange-200" :
-      "bg-white border-gray-200"
+      "bg-[var(--card)] border-gray-200"
     }`}>
       <div className="flex items-center gap-3">
         {/* Checkbox / Status indicator */}
@@ -629,12 +629,12 @@ function DemoRow({
 
       {/* Flag form */}
       {isFlagOpen && (
-        <div className="mt-3 ml-11 space-y-2 p-3 bg-gray-50 rounded-lg">
+        <div className="mt-3 ml-11 space-y-2 p-3 bg-[var(--muted)] rounded-lg">
           <div className="flex gap-2">
             <button
               onClick={() => setFlagType("wrong_status")}
               className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                flagType === "wrong_status" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                flagType === "wrong_status" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-[var(--card)] border-gray-200 text-gray-600 hover:border-gray-300"
               }`}
             >
               Wrong status
@@ -642,7 +642,7 @@ function DemoRow({
             <button
               onClick={() => setFlagType("not_mine")}
               className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                flagType === "not_mine" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                flagType === "not_mine" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-[var(--card)] border-gray-200 text-gray-600 hover:border-gray-300"
               }`}
             >
               Not my booking

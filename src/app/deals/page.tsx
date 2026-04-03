@@ -147,13 +147,13 @@ export default function DealsPage() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-16 bg-white rounded-xl border animate-pulse" />
+            <div key={i} className="h-16 bg-[var(--card)] rounded-xl border animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border overflow-hidden">
+        <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-[var(--muted)] border-b">
               <tr>
                 <th className="text-left p-3 font-medium">Prospect</th>
                 <th className="text-left p-3 font-medium">Closer</th>
@@ -169,7 +169,7 @@ export default function DealsPage() {
                 <>
                   <tr
                     key={deal.id}
-                    className="border-b hover:bg-gray-50 cursor-pointer"
+                    className="border-b hover:bg-[var(--muted)] cursor-pointer"
                     onClick={() => setExpandedDeal(expandedDeal === deal.id ? null : deal.id)}
                   >
                     <td className="p-3">
@@ -216,7 +216,7 @@ export default function DealsPage() {
                   </tr>
                   {expandedDeal === deal.id && (
                     <tr key={`${deal.id}-detail`}>
-                      <td colSpan={7} className="bg-gray-50 p-4">
+                      <td colSpan={7} className="bg-[var(--muted)] p-4">
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
                             <p className="font-medium text-gray-600">Stripe Customer ID</p>
@@ -269,9 +269,9 @@ export default function DealsPage() {
           <p className="text-sm text-[var(--muted-foreground)] mb-3">
             These payments are in Stripe but not linked to a deal yet. Create a deal above to associate them.
           </p>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-[var(--muted)] border-b">
                 <tr>
                   <th className="text-left p-3 font-medium">Customer</th>
                   <th className="text-left p-3 font-medium">Date</th>
@@ -306,7 +306,7 @@ export default function DealsPage() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50">
+              <tfoot className="bg-[var(--muted)]">
                 <tr>
                   <td colSpan={4} className="p-3 font-semibold">
                     Total

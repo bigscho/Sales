@@ -139,7 +139,7 @@ export default function PnLPage() {
           <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
             + Add Expense
           </Button>
-          <label className="h-8 px-3 text-sm rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--muted)] flex items-center gap-2 cursor-pointer">
+          <label className="h-8 px-3 text-sm rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] flex items-center gap-2 cursor-pointer">
             Import CSV
             <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
           </label>

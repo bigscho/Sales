@@ -145,7 +145,7 @@ export default function VerifyAdminPage() {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 bg-white rounded-xl border animate-pulse" />
+          <div key={i} className="h-24 bg-[var(--card)] rounded-xl border animate-pulse" />
         ))}
       </div>
     );

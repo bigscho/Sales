@@ -3,23 +3,64 @@
 @tailwind utilities;
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --primary: #16a34a;
-  --primary-foreground: #ffffff;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --border: #e2e8f0;
-  --destructive: #ef4444;
-  --accent: #f1f5f9;
+  /* Grassfed Brand Palette — Light Mode */
+  --background: hsl(50 10% 96%);
+  --foreground: hsl(168 55% 23%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(168 55% 23%);
+  --primary: hsl(155 68% 28%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(155 20% 90%);
+  --secondary-foreground: hsl(155 40% 20%);
+  --muted: hsl(155 15% 88%);
+  --muted-foreground: hsl(155 20% 40%);
+  --accent: hsl(93 55% 42%);
+  --accent-foreground: hsl(0 0% 100%);
+  --border: hsl(155 15% 85%);
+  --destructive: hsl(0 84% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  /* Extended brand tokens */
+  --teal: hsl(155 68% 28%);
+  --teal-light: hsl(155 60% 38%);
+  --lime: hsl(93 55% 42%);
+  --lime-glow: hsl(93 60% 48%);
+  --brand-green: hsl(168 55% 23%);
+  --navbar: hsl(155 60% 14%);
+
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: hsl(155 30% 8%);
+  --foreground: hsl(50 10% 92%);
+  --card: hsl(155 25% 12%);
+  --card-foreground: hsl(50 10% 92%);
+  --primary: hsl(155 60% 40%);
+  --primary-foreground: hsl(155 60% 8%);
+  --secondary: hsl(155 25% 18%);
+  --secondary-foreground: hsl(155 20% 80%);
+  --muted: hsl(155 20% 16%);
+  --muted-foreground: hsl(155 15% 60%);
+  --accent: hsl(93 50% 45%);
+  --accent-foreground: hsl(93 50% 8%);
+  --border: hsl(155 20% 20%);
+  --destructive: hsl(0 70% 55%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --teal: hsl(155 60% 40%);
+  --teal-light: hsl(155 50% 50%);
+  --lime: hsl(93 50% 45%);
+  --lime-glow: hsl(93 55% 52%);
+  --brand-green: hsl(155 40% 70%);
+  --navbar: hsl(155 40% 6%);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: system-ui, -apple-system, sans-serif;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 @layer utilities {

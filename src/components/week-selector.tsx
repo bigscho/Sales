@@ -66,7 +66,7 @@ export function WeekSelector() {
       <select
         value={currentWeekId}
         onChange={handleChange}
-        className="h-10 px-3 rounded-lg border border-[var(--border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+        className="h-10 px-3 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
       >
         {weeks.length === 0 && <option value="">No weeks yet</option>}
         {weeks.map((w) => (

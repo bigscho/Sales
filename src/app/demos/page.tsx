@@ -339,7 +339,7 @@ export default function DemosPage() {
 
   // Helper to render the demo table
   const renderDemoTable = (demosToShow: DemoRecord[], isWeekView: boolean) => (
-    <div className="bg-white rounded-xl border overflow-hidden">
+    <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
         <div className="bg-blue-50 border-b px-4 py-2 flex items-center justify-between">
@@ -353,7 +353,7 @@ export default function DemosPage() {
         </div>
       )}
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b">
+        <thead className="bg-[var(--muted)] border-b">
           <tr>
             <th className="p-3 w-10">
               <input
@@ -566,8 +566,8 @@ export default function DemosPage() {
     };
 
     return (
-      <div className="bg-white rounded-xl border overflow-hidden h-full">
-        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+      <div className="bg-[var(--card)] rounded-xl border overflow-hidden h-full">
+        <div className="px-4 py-3 border-b bg-[var(--muted)] flex items-center justify-between">
           <h3 className="text-sm font-semibold">
             {isWeekView ? "Week Payments" : `Payments — ${DAY_NAMES[selectedDay]}`}
             {!isWeekView && selectedDayDate && ` ${getDateLabel(selectedDayDate)}`}
@@ -611,7 +611,7 @@ export default function DemosPage() {
                               }}
                             >?</span>
                             {matchingPaymentId === p.id && (
-                              <div className="absolute left-0 top-6 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-64 max-h-48 overflow-y-auto">
+                              <div className="absolute left-0 top-6 z-50 bg-[var(--card)] border border-gray-200 rounded-lg shadow-lg w-64 max-h-48 overflow-y-auto">
                                 <div className="px-3 py-2 border-b text-xs font-medium text-gray-500">Match to demo:</div>
                                 {demos.filter(d => d.status === "showed" || d.status === "pending").length === 0 ? (
                                   <div className="px-3 py-2 text-xs text-gray-400">No demos available</div>
@@ -642,7 +642,7 @@ export default function DemosPage() {
                                   ))
                                 )}
                                 <button
-                                  className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50"
+                                  className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-[var(--muted)]"
                                   onClick={(e) => { e.stopPropagation(); setMatchingPaymentId(null); }}
                                 >Cancel</button>
                               </div>
@@ -663,7 +663,7 @@ export default function DemosPage() {
               </tbody>
             </table>
             {/* Summary totals */}
-            <div className="border-t bg-gray-50 px-4 py-3 space-y-2">
+            <div className="border-t bg-[var(--muted)] px-4 py-3 space-y-2">
               {/* New Revenue highlight */}
               {newRevenue > 0 && (
                 <div className="flex items-center justify-between text-sm font-semibold">
@@ -750,7 +750,7 @@ export default function DemosPage() {
       {loading ? (
         <div className="grid grid-cols-7 gap-2">
           {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="h-32 bg-white rounded-xl border animate-pulse" />
+            <div key={i} className="h-32 bg-[var(--card)] rounded-xl border animate-pulse" />
           ))}
         </div>
       ) : (
@@ -769,14 +769,14 @@ export default function DemosPage() {
                 <div
                   key={dayIndex}
                   onClick={() => { setSelectedDay(dayIndex); setViewMode("day"); }}
-                  className={`rounded-xl border bg-white flex flex-col min-h-[140px] cursor-pointer transition-all relative ${
+                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[140px] cursor-pointer transition-all relative ${
                     isSelected ? "ring-2 ring-[var(--primary)] shadow-md" :
                     isToday ? "border-[var(--primary)]" :
                     "border-[var(--border)] hover:shadow-sm"
                   }`}
                 >
                   <div className={`px-2.5 py-2 border-b rounded-t-xl flex items-center justify-between ${
-                    isSelected ? "bg-green-50" : isToday ? "bg-green-50/50" : "bg-gray-50"
+                    isSelected ? "bg-green-50" : isToday ? "bg-green-50/50" : "bg-[var(--muted)]"
                   }`}>
                     <div>
                       <span className={`text-sm font-semibold ${isSelected || isToday ? "text-[var(--primary)]" : ""}`}>
@@ -791,7 +791,7 @@ export default function DemosPage() {
                   </div>
 
                   {lock && (
-                    <div className="absolute inset-0 top-[38px] bg-white/75 backdrop-blur-[1px] rounded-b-xl flex flex-col items-center justify-center z-10 pointer-events-none">
+                    <div className="absolute inset-0 top-[38px] bg-[var(--card)]/75 backdrop-blur-[1px] rounded-b-xl flex flex-col items-center justify-center z-10 pointer-events-none">
                       <span className="text-lg">🔒</span>
                       <p className="text-sm font-bold mt-1">{lock.showCount}/{lock.demoCount} showed</p>
                       <p className="text-xs text-gray-500">
@@ -841,7 +841,7 @@ export default function DemosPage() {
 
       {/* ===== STATS BAR (right under calendar) ===== */}
       {!loading && (
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-[var(--card)] rounded-xl border p-4">
           <div className="flex items-center justify-between">
             <div className="flex gap-6">
               {/* Confirmed Results */}
@@ -976,8 +976,8 @@ export default function DemosPage() {
             <div className="space-y-4">
               {/* Bookings Today */}
               {todayBookings.length > 0 && (
-                <div className="bg-white rounded-xl border overflow-hidden">
-                  <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center justify-between">
+                <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
+                  <div className="px-4 py-2.5 border-b bg-[var(--muted)] flex items-center justify-between">
                     <h3 className="text-sm font-semibold flex items-center gap-2">
                       Bookings Today
                       <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
@@ -989,7 +989,7 @@ export default function DemosPage() {
                     {todayBookings
                       .sort((a, b) => new Date(b.booking.createdAt).getTime() - new Date(a.booking.createdAt).getTime())
                       .map((d) => (
-                      <div key={d.id} className="px-4 py-2.5 border-b last:border-0 text-xs hover:bg-gray-50">
+                      <div key={d.id} className="px-4 py-2.5 border-b last:border-0 text-xs hover:bg-[var(--muted)]">
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-semibold text-gray-800">{d.booking.prospectName}</span>
                           <span className="text-[10px] text-gray-400">

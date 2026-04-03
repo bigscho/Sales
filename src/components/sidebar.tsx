@@ -52,10 +52,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-56 bg-white border-r border-[var(--border)] min-h-screen flex flex-col">
-      <div className="p-4 border-b border-[var(--border)]">
-        <h1 className="text-xl font-bold text-[var(--primary)]">Grassfed</h1>
-        <p className="text-xs text-[var(--muted-foreground)]">Sales Tracker</p>
+    <aside className="w-56 bg-[var(--navbar)] border-r border-[var(--border)] min-h-screen flex flex-col">
+      <div className="p-4 border-b border-white/10">
+        <h1 className="text-xl font-bold text-[var(--accent)]">Grassfed</h1>
+        <p className="text-xs text-white/50">Sales Tracker</p>
       </div>
       <nav className="flex-1 p-2">
         {visibleItems.map((item) => {
@@ -72,7 +72,7 @@ export function Sidebar() {
                 rel="noopener noreferrer"
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
-                  "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  "text-white/60 hover:bg-white/10 hover:text-white"
                 )}
               >
                 <span className="text-base">{item.icon}</span>
@@ -88,8 +88,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
                 isActive
-                  ? "bg-green-50 text-[var(--primary)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  ? "bg-white/15 text-[var(--accent)]"
+                  : "text-white/60 hover:bg-white/10 hover:text-white"
               )}
             >
               <span className="text-base">{item.icon}</span>

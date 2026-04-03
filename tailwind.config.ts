@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -11,6 +12,21 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        card: { DEFAULT: "var(--card)", foreground: "var(--card-foreground)" },
+        primary: { DEFAULT: "var(--primary)", foreground: "var(--primary-foreground)" },
+        secondary: { DEFAULT: "var(--secondary)", foreground: "var(--secondary-foreground)" },
+        muted: { DEFAULT: "var(--muted)", foreground: "var(--muted-foreground)" },
+        accent: { DEFAULT: "var(--accent)", foreground: "var(--accent-foreground)" },
+        destructive: { DEFAULT: "var(--destructive)", foreground: "var(--destructive-foreground)" },
+        border: "var(--border)",
+        teal: { DEFAULT: "var(--teal)", light: "var(--teal-light)" },
+        lime: { DEFAULT: "var(--lime)", glow: "var(--lime-glow)" },
+        navbar: "var(--navbar)",
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
     },
   },

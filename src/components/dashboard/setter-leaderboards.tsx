@@ -56,7 +56,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
         </CardHeader>
         <CardContent className="space-y-3">
           {activityRanked.map((setter, idx) => (
-            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-gray-100 transition-colors">
               <div className="w-8 text-center flex-shrink-0">
                 {idx < 3 && setter.activity.newBookings > 0 ? (
                   <span className="text-xl">{MEDALS[idx]}</span>
@@ -103,7 +103,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
         </CardHeader>
         <CardContent className="space-y-3">
           {resultsRanked.map((setter, idx) => (
-            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-gray-100 transition-colors">
               <div className="w-8 text-center flex-shrink-0">
                 {idx < 3 && setter.results.shows > 0 ? (
                   <span className="text-xl">{MEDALS[idx]}</span>

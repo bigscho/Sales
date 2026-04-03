@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { WeekSelector } from "@/components/week-selector";
 import { SyncButton } from "@/components/sync-button";
 import { UserMenu } from "@/components/user-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Suspense } from "react";
 
 export interface Session {
@@ -42,12 +43,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sidebar />
         </Suspense>
         <main className="flex-1 flex flex-col">
-          <header className="h-16 border-b border-[var(--border)] bg-white flex items-center justify-between px-6">
+          <header className="h-16 border-b border-[var(--border)] bg-[var(--card)] flex items-center justify-between px-6">
             <Suspense fallback={<div className="h-10 w-56 bg-gray-100 animate-pulse rounded-lg" />}>
               <WeekSelector />
             </Suspense>
             <div className="flex items-center gap-3">
               <SyncButton />
+              <ThemeToggle />
               <UserMenu />
             </div>
           </header>

@@ -116,7 +116,7 @@ export default function TeamPage() {
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-24 bg-white rounded-xl border animate-pulse" />
+            <div key={i} className="h-24 bg-[var(--card)] rounded-xl border animate-pulse" />
           ))}
         </div>
       ) : (
@@ -124,9 +124,9 @@ export default function TeamPage() {
           {/* Setters */}
           <div>
             <h3 className="text-lg font-semibold mb-3">Setters ({setters.length})</h3>
-            <div className="bg-white rounded-xl border overflow-hidden">
+            <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-[var(--muted)] border-b">
                   <tr>
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Tier</th>
@@ -219,9 +219,9 @@ export default function TeamPage() {
           {/* Closers */}
           <div>
             <h3 className="text-lg font-semibold mb-3">Closers ({closers.length})</h3>
-            <div className="bg-white rounded-xl border overflow-hidden">
+            <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-[var(--muted)] border-b">
                   <tr>
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Slack ID</th>
@@ -283,9 +283,9 @@ export default function TeamPage() {
           {/* Show Rate Reps */}
           <div>
             <h3 className="text-lg font-semibold mb-3">Show Rate Optimization ({showRateReps.length})</h3>
-            <div className="bg-white rounded-xl border overflow-hidden">
+            <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-[var(--muted)] border-b">
                   <tr>
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Status</th>
