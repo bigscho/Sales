@@ -844,45 +844,30 @@ export default function DemosPage() {
       {/* ===== STATS BAR (right under calendar) ===== */}
       {!loading && (
         <div className="bg-[var(--card)] rounded-xl border p-4">
-          <div className="flex flex-col gap-4">
-            {/* Stats grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-[1fr_2fr_auto_auto_auto] gap-4 items-end">
-              {/* Show/No-show/Pending status bar */}
-              <div className="col-span-2 lg:col-span-1">
-                <StatusBar showed={displayShowed} noShow={displayNoShow} pending={displayPending} />
-              </div>
-
-              {/* Show Rate */}
-              <div className="text-center min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
-                <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">
-                  {(displayShowed + displayNoShow) > 0 ? `${((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)}%` : "—"}
-                </p>
-              </div>
-
-              {/* Closes */}
-              <div className="text-center min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)]">Closes</p>
-                <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayCloses}</p>
-              </div>
-
-              {/* Cash */}
-              <div className="text-center min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)]">Cash</p>
-                <p className={`text-2xl font-bold tracking-tight ${cashColor(displayCash)}`}>{formatCents(displayCash)}</p>
-              </div>
-
-              {/* On Calendar + extras */}
-              <div className="text-center min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)]">On Calendar</p>
-                <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayTotal}</p>
-                {viewMode === "week" && (
-                  <p className="text-xs text-[var(--muted-foreground)]">{todayBookings.length} today · {dayLocks.length}/7 locked</p>
-                )}
-              </div>
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
+            <div className="text-center min-w-0">
+              <p className="text-xs text-[var(--muted-foreground)]">On Calendar</p>
+              <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayTotal}</p>
             </div>
+            <div className="text-center min-w-0">
+              <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
+              <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">
+                {(displayShowed + displayNoShow) > 0 ? `${((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)}%` : "—"}
+              </p>
+            </div>
+            <div className="text-center min-w-0">
+              <p className="text-xs text-[var(--muted-foreground)]">Closes</p>
+              <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayCloses}</p>
+            </div>
+            <div className="text-center min-w-0">
+              <p className="text-xs text-[var(--muted-foreground)]">Cash</p>
+              <p className={`text-2xl font-bold tracking-tight ${cashColor(displayCash)}`}>{formatCents(displayCash)}</p>
+            </div>
+            {viewMode === "week" && (
+              <div className="text-xs text-[var(--muted-foreground)]">{todayBookings.length} booked today · {dayLocks.length}/7 locked</div>
+            )}
             {/* Action buttons */}
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-wrap gap-2 items-center ml-auto">
               {viewMode === "day" && selectedPending > 0 && !selectedLock && (
                 <>
                   <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
@@ -913,7 +898,7 @@ export default function DemosPage() {
         </div>
       )}
 
-      {/* ===== DAY/WEEK TABS ===== */}
+      {/* ===== DAY/WEEK TABS + STATUS BAR ===== */}
       {!loading && (
         <div className="space-y-4">
           {/* Day Tabs + View Toggle */}
@@ -949,6 +934,21 @@ export default function DemosPage() {
                 Week
               </button>
             </div>
+          </div>
+
+          {/* StatusBar — scoped to selected tab */}
+          <div className="bg-[var(--card)] rounded-xl border px-4 py-3">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wide">
+                {viewMode === "week"
+                  ? "Full Week"
+                  : `${DAY_NAMES[selectedDay]}${weekDates[selectedDay] ? ` · ${getDateLabel(weekDates[selectedDay])}` : ""}`}
+              </span>
+              <span className="text-xs text-[var(--muted-foreground)]">
+                {displayShowed + displayNoShow + displayPending} demos
+              </span>
+            </div>
+            <StatusBar showed={displayShowed} noShow={displayNoShow} pending={displayPending} size="md" />
           </div>
 
           {/* ===== MAIN: SIDE-BY-SIDE DEMOS + FEEDS ===== */}
