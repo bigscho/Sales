@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBar } from "@/components/ui/status-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCents } from "@/lib/utils";
-import { cashColor } from "@/lib/perf-color";
+
 
 interface TeamMember { id: string; name: string; role: string }
 
@@ -310,11 +310,9 @@ export default function DemosPage() {
   }
 
   // Overall stats
-  const totalBooked = demos.length;
   const totalShowed = demos.filter((d) => d.status === "showed").length;
   const totalNoShow = demos.filter((d) => d.status === "no_show").length;
   const totalPending = demos.filter((d) => d.status === "pending").length;
-  const totalCloses = demos.filter((d) => d.deal?.status === "closed_won").length;
 
   // Selected day data
   const selectedDemos = demosByDay[selectedDay] || [];
@@ -328,17 +326,11 @@ export default function DemosPage() {
   const selectedShowed = selectedDemos.filter((d) => d.status === "showed").length;
   const selectedNoShow = selectedDemos.filter((d) => d.status === "no_show").length;
   const selectedPending = selectedDemos.filter((d) => d.status === "pending").length;
-  const selectedCloses = selectedDemos.filter((d) => d.deal?.status === "closed_won").length;
-
   // Demos and payments to display based on view mode
-  const displayDemos = viewMode === "week" ? demos : selectedDemos;
   const displayPayments = viewMode === "week" ? payments : selectedPayments;
   const displayShowed = viewMode === "week" ? totalShowed : selectedShowed;
   const displayNoShow = viewMode === "week" ? totalNoShow : selectedNoShow;
   const displayPending = viewMode === "week" ? totalPending : selectedPending;
-  const displayCloses = viewMode === "week" ? totalCloses : selectedCloses;
-  const displayTotal = viewMode === "week" ? totalBooked : selectedDemos.length;
-  const displayCash = displayPayments.reduce((s, p) => s + p.amountCents, 0);
 
   // Helper to render the demo table
   const renderDemoTable = (demosToShow: DemoRecord[], isWeekView: boolean) => (
