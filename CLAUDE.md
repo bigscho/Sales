@@ -139,6 +139,20 @@ If using Enterprise Claude (without MCP tools), it needs:
 ## Known Bugs to Fix
 1. **Calendly closer name stripping** — FIXED: now dynamic from DB + known variants. No longer hardcoded
 2. **Andrea Reeves-Witherspoon invisible** — marked no_show, GCal invite dragged to next Thursday, sync returns 0 updated. She's not visible in UI on any date. Needs DB investigation via `/api/debug?name=andrea`. Likely causes: (a) calendarEventId format mismatch preventing lookup, (b) booking in DismissedEvent table, (c) weekId pointing to nonexistent/wrong week. Four code fixes already applied in gcal/route.ts but her specific record needs manual investigation.
+3. **Fireflies false shows** — FIXED (Apr 3): 5-layer verification now checks summary_status, silent_meeting, sentence count (≥6 substantive), speaker count (≥2), and content relevance (business keyword match). 9 false shows identified for week of Mar 30 — user manually correcting.
+
+## Branch Hygiene
+- **Single working branch**: `claude/review-and-continue-PKIc1` — all sessions build on this
+- **TODO**: Delete 7 stale remote branches from GitHub (recap, resume-enterprise, resume-session, review-branches, sales-tracker-kpi, setup-project, smartlead-import)
+- Archive tags exist locally as safety net
+
+## What Was Built (Apr 3 session)
+- **Closer verification cron**: `/api/slack/closer/verify` at 8 PM ET → `#closer-tpds`, per-closer pending demos + WTD show rate + link to demos page
+- **Setter verification env var fix**: `SLACK_DATAVERIFICATION_WEBHOOK_URL` (was mismatched as `SLACK_VERIFY_WEBHOOK_URL`)
+- **Fireflies show detection overhaul**: 5-signal verification in both sync cron and webhook (summary_status, silent_meeting, sentence count, speaker count, content relevance keywords)
+- **Smartlead import**: cherry-picked from orphaned branch — API client (`src/lib/smartlead.ts`), import route, UI page (`/smartlead`)
+- **Admin lookup**: cherry-picked — `/api/admin/lookup` diagnostic endpoint
+- **Calendly guard**: cherry-picked — invitee.canceled only cancels pending demos
 
 ## Remaining Pillars (in order)
 1. **Pillar 3: CEO Slack Deep Dive** — P&L summary, anomaly detection, cash flow week-over-week. User said "let's dive deeper when we do it"
