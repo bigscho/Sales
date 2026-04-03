@@ -7,13 +7,14 @@ import { useState } from "react";
 interface KPICardProps {
   title: string;
   value: string;
-  subtitle?: string;
+  valueClassName?: string;
+  subtitle?: string | React.ReactNode;
   detail?: React.ReactNode;
   trend?: { value: number; label: string };
   className?: string;
 }
 
-export function KPICard({ title, value, subtitle, detail, trend, className }: KPICardProps) {
+export function KPICard({ title, value, valueClassName, subtitle, detail, trend, className }: KPICardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -26,17 +27,19 @@ export function KPICard({ title, value, subtitle, detail, trend, className }: KP
       onClick={() => detail && setExpanded(!expanded)}
     >
       <div className="p-5">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-sm font-medium text-[var(--muted-foreground)]">{title}</p>
+        <div className="flex items-center justify-between h-5 mb-1">
+          <p className="text-sm font-medium text-[var(--muted-foreground)] truncate">{title}</p>
           {detail && (
-            <span className="text-xs text-[var(--muted-foreground)]">
-              {expanded ? "▲ collapse" : "▼ drill down"}
+            <span className="text-xs text-[var(--muted-foreground)] flex-shrink-0 ml-1">
+              {expanded ? "▲" : "▼"}
             </span>
           )}
         </div>
-        <p className="text-2xl font-bold tracking-tight text-[var(--accent)]">{value}</p>
+        <p className={cn("text-2xl font-bold tracking-tight leading-8", valueClassName || "text-[var(--teal)]")}>{value}</p>
         {subtitle && (
-          <p className="text-xs text-[var(--muted-foreground)] mt-1">{subtitle}</p>
+          typeof subtitle === "string"
+            ? <p className="text-xs text-[var(--muted-foreground)] mt-1">{subtitle}</p>
+            : <div className="mt-1">{subtitle}</div>
         )}
         {trend && (
           <div className="flex items-center gap-1 mt-2">

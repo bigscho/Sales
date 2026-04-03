@@ -3,9 +3,11 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatusBar } from "@/components/ui/status-bar";
 import { TimeDimensionToggle } from "@/components/time-dimension-toggle";
 import { useTimeDimension } from "@/lib/hooks/use-time-dimension";
 import { formatPercent } from "@/lib/utils";
+import { showRateColor } from "@/lib/perf-color";
 import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
 
 interface SetterScore {
@@ -90,26 +92,21 @@ export default function ScoreboardPage() {
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">New Bookings</p>
-            <p className="text-3xl font-bold mt-1">{teamTotals.activity.newBookings}</p>
+            <p className="text-3xl font-bold tracking-tight text-[var(--teal)] mt-1">{teamTotals.activity.newBookings}</p>
             <p className="text-xs text-[var(--muted-foreground)]">booked {dimLabel.toLowerCase()}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Shows</p>
-            <p className="text-3xl font-bold text-green-600 mt-1">{teamTotals.results.shows}</p>
-            <p className="text-xs text-[var(--muted-foreground)] truncate">
-              {teamTotals.results.shows + teamTotals.results.noShows} confirmed
-              {teamTotals.results.pending > 0 ? ` · ${teamTotals.results.pending} pending` : ""}
-            </p>
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Demo Results</p>
+            <StatusBar showed={teamTotals.results.shows} noShow={teamTotals.results.noShows} pending={teamTotals.results.pending} size="sm" className="mt-2" />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate</p>
-            <p className={`text-3xl font-bold mt-1 ${
-              teamTotals.results.showRate >= 0.6 ? "text-green-600" :
-              teamTotals.results.showRate >= 0.4 ? "text-yellow-600" : "text-red-600"
+            <p className={`text-3xl font-bold tracking-tight mt-1 ${
+              (teamTotals.results.shows + teamTotals.results.noShows) > 0 ? showRateColor(teamTotals.results.showRate) : "text-[var(--muted-foreground)]"
             }`}>
               {(teamTotals.results.shows + teamTotals.results.noShows) > 0 ? formatPercent(teamTotals.results.showRate) : "—"}
             </p>

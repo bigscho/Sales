@@ -4,8 +4,10 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
 import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
+import { StatusBar } from "@/components/ui/status-bar";
 import { Badge } from "@/components/ui/badge";
 import { formatCents, formatPercent } from "@/lib/utils";
+import { showRateColor, closeRateColor, cashColor } from "@/lib/perf-color";
 
 interface KPIData {
   weekId: string;
@@ -119,13 +121,13 @@ export default function Dashboard() {
         <KPICard
           title="Demos on Calendar"
           value={String(kpis.totalBookings)}
-          subtitle={`${kpis.totalShows} showed · ${kpis.totalNoShows} no-show · ${kpis.totalPending} pending`}
+          subtitle={<StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} size="sm" />}
           detail={
             <div className="space-y-1">
               {demos.map((d) => (
                 <div key={d.id} className="flex justify-between text-sm">
-                  <span>{d.booking.prospectName}</span>
-                  <div className="flex items-center gap-2">
+                  <span className="truncate mr-2">{d.booking.prospectName}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name || "—"}</span>
                     <Badge variant={d.status === "showed" ? "success" : d.status === "no_show" ? "danger" : "warning"}>
                       {d.status}
@@ -140,7 +142,8 @@ export default function Dashboard() {
         <KPICard
           title="Shows"
           value={String(kpis.totalShows)}
-          subtitle={`${kpis.totalNoShows} no-shows`}
+          valueClassName="text-green-600"
+          subtitle={<StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} size="sm" />}
           detail={
             <div className="space-y-1">
               <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">Showed:</p>
@@ -170,12 +173,14 @@ export default function Dashboard() {
         <KPICard
           title="Show Rate"
           value={kpis.totalConfirmed > 0 ? formatPercent(kpis.confirmedShowRate) : "\u2014"}
+          valueClassName={kpis.totalConfirmed > 0 ? showRateColor(kpis.confirmedShowRate) : undefined}
           subtitle={`${kpis.totalShows}/${kpis.totalConfirmed} confirmed · ${kpis.totalPending} pending`}
         />
         <KPICard
           title="Close Rate"
           value={formatPercent(kpis.closeRate)}
-          subtitle={`${kpis.totalCloses} closes, ${kpis.totalHeld} held`}
+          valueClassName={closeRateColor(kpis.closeRate)}
+          subtitle={`${kpis.totalCloses} closes · ${kpis.totalHeld} held`}
         />
       </div>
 
@@ -184,19 +189,23 @@ export default function Dashboard() {
         <KPICard
           title="New Revenue"
           value={formatCents(kpis.newRevenue)}
-          subtitle={`Total: ${formatCents(kpis.cashCollected)} (${formatCents(kpis.returningRevenue)} returning)`}
+          valueClassName={cashColor(kpis.newRevenue)}
+          subtitle={`Total: ${formatCents(kpis.cashCollected)} · ${formatCents(kpis.returningRevenue)} returning`}
         />
         <KPICard
           title="Avg Cash / Close"
           value={formatCents(kpis.avgCashPerClose)}
+          valueClassName={cashColor(kpis.avgCashPerClose)}
         />
         <KPICard
           title="Cash / Booking"
           value={formatCents(kpis.cashPerBooking)}
+          valueClassName={cashColor(kpis.cashPerBooking)}
         />
         <KPICard
           title="Cash / Show"
           value={formatCents(kpis.cashPerShow)}
+          valueClassName={cashColor(kpis.cashPerShow)}
         />
       </div>
 

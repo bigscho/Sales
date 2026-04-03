@@ -4,8 +4,10 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBar } from "@/components/ui/status-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCents } from "@/lib/utils";
+import { cashColor } from "@/lib/perf-color";
 
 interface TeamMember { id: string; name: string; role: string }
 
@@ -769,7 +771,7 @@ export default function DemosPage() {
                 <div
                   key={dayIndex}
                   onClick={() => { setSelectedDay(dayIndex); setViewMode("day"); }}
-                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[140px] cursor-pointer transition-all relative ${
+                  className={`rounded-xl border bg-[var(--card)] flex flex-col min-h-[160px] max-h-[280px] cursor-pointer transition-all relative ${
                     isSelected ? "ring-2 ring-[var(--primary)] shadow-md" :
                     isToday ? "border-[var(--primary)]" :
                     "border-[var(--border)] hover:shadow-sm"
@@ -803,7 +805,7 @@ export default function DemosPage() {
                     </div>
                   )}
 
-                  <div className="flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[200px]">
+                  <div className="flex-1 p-1.5 space-y-1 overflow-y-auto">
                     {dayDemos.length === 0 && (
                       <p className="text-xs text-[var(--muted-foreground)]/70 text-center py-3">No demos</p>
                     )}
@@ -844,52 +846,40 @@ export default function DemosPage() {
         <div className="bg-[var(--card)] rounded-xl border p-4">
           <div className="flex flex-col gap-4">
             {/* Stats grid */}
-            <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-4">
-              <div className="min-w-0">
-                <p className="text-xs text-green-600 font-medium truncate">Shows</p>
-                <p className="text-xl font-bold tracking-tight text-green-600">{displayShowed}</p>
+            <div className="grid grid-cols-2 lg:grid-cols-[1fr_2fr_auto_auto_auto] gap-4 items-end">
+              {/* Show/No-show/Pending status bar */}
+              <div className="col-span-2 lg:col-span-1">
+                <StatusBar showed={displayShowed} noShow={displayNoShow} pending={displayPending} />
               </div>
-              <div className="min-w-0">
-                <p className="text-xs text-red-600 font-medium truncate">No Shows</p>
-                <p className="text-xl font-bold tracking-tight text-red-600">{displayNoShow}</p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)] truncate">Show Rate</p>
-                <p className="text-xl font-bold tracking-tight">
+
+              {/* Show Rate */}
+              <div className="text-center min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
+                <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">
                   {(displayShowed + displayNoShow) > 0 ? `${((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)}%` : "—"}
                 </p>
-                {displayPending > 0 && <p className="text-xs text-yellow-600">{displayPending} pending</p>}
               </div>
-              <div className="min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)] truncate">Closes</p>
-                <p className="text-xl font-bold tracking-tight text-[var(--accent)]">{displayCloses}</p>
+
+              {/* Closes */}
+              <div className="text-center min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)]">Closes</p>
+                <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayCloses}</p>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)] truncate">Cash</p>
-                <p className="text-xl font-bold tracking-tight text-green-600">{formatCents(displayCash)}</p>
+
+              {/* Cash */}
+              <div className="text-center min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)]">Cash</p>
+                <p className={`text-2xl font-bold tracking-tight ${cashColor(displayCash)}`}>{formatCents(displayCash)}</p>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs text-[var(--muted-foreground)] truncate">On Calendar</p>
-                <p className="text-xl font-bold tracking-tight">{displayTotal}</p>
+
+              {/* On Calendar + extras */}
+              <div className="text-center min-w-0">
+                <p className="text-xs text-[var(--muted-foreground)]">On Calendar</p>
+                <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayTotal}</p>
+                {viewMode === "week" && (
+                  <p className="text-xs text-[var(--muted-foreground)]">{todayBookings.length} today · {dayLocks.length}/7 locked</p>
+                )}
               </div>
-              {displayPending > 0 && (
-                <div className="min-w-0">
-                  <p className="text-xs text-yellow-600 font-medium truncate">Pending</p>
-                  <p className="text-xl font-bold tracking-tight text-yellow-600">{displayPending}</p>
-                </div>
-              )}
-              {viewMode === "week" && (
-                <>
-                  <div className="min-w-0">
-                    <p className="text-xs text-[var(--muted-foreground)] truncate">Booked Today</p>
-                    <p className="text-xl font-bold tracking-tight">{todayBookings.length}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-[var(--muted-foreground)] truncate">Days Locked</p>
-                    <p className="text-xl font-bold tracking-tight">{dayLocks.length}/7</p>
-                  </div>
-                </>
-              )}
             </div>
             {/* Action buttons */}
             <div className="flex flex-wrap gap-2 items-center">

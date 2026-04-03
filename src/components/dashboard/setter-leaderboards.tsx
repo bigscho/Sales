@@ -1,7 +1,9 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBar } from "@/components/ui/status-bar";
 import { formatPercent } from "@/lib/utils";
+import { showRateColor } from "@/lib/perf-color";
 
 interface SetterScore {
   id: string;
@@ -44,7 +46,6 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
   const activityRanked = [...scoreboard].sort((a, b) => b.activity.newBookings - a.activity.newBookings);
   const resultsRanked = [...scoreboard].sort((a, b) => b.results.shows - a.results.shows);
   const maxActivity = Math.max(...scoreboard.map((s) => s.activity.newBookings), 1);
-  const maxShows = Math.max(...scoreboard.map((s) => s.results.shows), 1);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -118,20 +119,11 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 </span>
               </div>
               <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
-                  <span className="text-xs text-green-600 whitespace-nowrap">{setter.results.shows} showed</span>
-                  <span className="text-xs text-red-600 whitespace-nowrap">{setter.results.noShows} no-show</span>
-                  {setter.results.pending > 0 && (
-                    <span className="text-xs text-yellow-600 whitespace-nowrap">{setter.results.pending} pend</span>
-                  )}
-                </div>
-                <StatBar value={setter.results.shows} max={maxShows} color="bg-green-500" />
+                <StatusBar showed={setter.results.shows} noShow={setter.results.noShows} pending={setter.results.pending} size="sm" />
               </div>
               <div className="w-16 text-right flex-shrink-0">
                 <p className={`text-lg font-bold ${
-                  setter.results.showRate >= 0.6 ? "text-green-600" :
-                  setter.results.showRate >= 0.4 ? "text-yellow-600" :
-                  (setter.results.shows + setter.results.noShows) === 0 ? "text-[var(--muted-foreground)]/70" : "text-red-600"
+                  (setter.results.shows + setter.results.noShows) > 0 ? showRateColor(setter.results.showRate) : "text-[var(--muted-foreground)]"
                 }`}>
                   {(setter.results.shows + setter.results.noShows) > 0 ? formatPercent(setter.results.showRate) : "—"}
                 </p>
@@ -145,11 +137,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
               </div>
               <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
-                  <span className="text-xs text-green-600 whitespace-nowrap">{unattributed.results.shows} showed</span>
-                  <span className="text-xs text-red-600 whitespace-nowrap">{unattributed.results.noShows} no-show</span>
-                </div>
-                <StatBar value={unattributed.results.shows} max={maxShows} color="bg-yellow-400" />
+                <StatusBar showed={unattributed.results.shows} noShow={unattributed.results.noShows} pending={unattributed.results.pending} size="sm" />
               </div>
               <div className="w-16 text-right flex-shrink-0">
                 <p className="text-lg font-bold text-yellow-600">
