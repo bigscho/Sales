@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  let setterId = searchParams.get("setterId") || (session.isAdmin ? undefined : session.memberId);
+  const setterId = searchParams.get("setterId") || (session.isAdmin ? undefined : session.memberId);
   const page = parseInt(searchParams.get("page") || "1");
   const limit = 20;
 

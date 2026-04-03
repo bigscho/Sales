@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  let setterId = searchParams.get("setterId") || session.memberId;
+  const setterId = searchParams.get("setterId") || session.memberId;
 
   // Setters can only query their own credits
   if (!session.isAdmin && setterId !== session.memberId) {
