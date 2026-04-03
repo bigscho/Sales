@@ -48,6 +48,55 @@ export default function BlastAdminPage() {
   const [warmupAccount, setWarmupAccount] = useState("1");
   const [warmupLimit, setWarmupLimit] = useState(100);
 
+  // Zone editing
+  const [editingZones, setEditingZones] = useState<string | null>(null); // setterId being edited
+  const [zoneState, setZoneState] = useState("");
+  const [zoneCities, setZoneCities] = useState("");
+  const [zoneMinProd, setZoneMinProd] = useState("");
+  const [zoneMaxProd, setZoneMaxProd] = useState("");
+  const [existingZones, setExistingZones] = useState<Array<{ state?: string; cities?: string[]; minProd?: number; maxProd?: number }>>([]);
+
+  const startEditZones = (setter: TeamMember) => {
+    setEditingZones(setter.id);
+    if (setter.blastZones) {
+      try { setExistingZones(JSON.parse(setter.blastZones)); } catch { setExistingZones([]); }
+    } else {
+      setExistingZones([]);
+    }
+    setZoneState("");
+    setZoneCities("");
+    setZoneMinProd("");
+    setZoneMaxProd("");
+  };
+
+  const addZone = () => {
+    if (!zoneState) return;
+    const newZone: { state: string; cities?: string[]; minProd?: number; maxProd?: number } = { state: zoneState };
+    if (zoneCities) newZone.cities = zoneCities.split(",").map(c => c.trim());
+    if (zoneMinProd) newZone.minProd = Number(zoneMinProd);
+    if (zoneMaxProd) newZone.maxProd = Number(zoneMaxProd);
+    setExistingZones(prev => [...prev, newZone]);
+    setZoneState("");
+    setZoneCities("");
+    setZoneMinProd("");
+    setZoneMaxProd("");
+  };
+
+  const removeZone = (idx: number) => {
+    setExistingZones(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const saveZones = async () => {
+    if (!editingZones) return;
+    await fetch("/api/team", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingZones, blastZones: JSON.stringify(existingZones) }),
+    });
+    setEditingZones(null);
+    loadData();
+  };
+
   const loadData = useCallback(() => {
     Promise.all([
       fetch("/api/ghl/warmup").then(r => r.json()),
@@ -144,37 +193,86 @@ export default function BlastAdminPage() {
         </CardContent>
       </Card>
 
-      {/* Setter Credit Balances */}
+      {/* Setter Credit Balances + Zone Assignment */}
       <Card>
-        <CardHeader><CardTitle>Setter Credit Balances</CardTitle></CardHeader>
-        <CardContent>
-          <table className="w-full text-sm">
-            <thead className="bg-[var(--muted)] border-b">
-              <tr>
-                <th className="text-left p-3 font-medium">Setter</th>
-                <th className="text-right p-3 font-medium">Balance</th>
-                <th className="text-left p-3 font-medium">Zones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {setters.map((s) => {
-                let zoneLabel = "None";
-                if (s.blastZones) {
-                  try {
-                    const zones = JSON.parse(s.blastZones);
-                    zoneLabel = zones.map((z: { state?: string }) => z.state || "All").join(", ");
-                  } catch { zoneLabel = "Invalid"; }
-                }
-                return (
-                  <tr key={s.id} className="border-b last:border-0">
-                    <td className="p-3 font-medium">{s.name}</td>
-                    <td className="p-3 text-right font-bold text-[var(--teal)]">{s.creditBalance.toLocaleString()}</td>
-                    <td className="p-3 text-[var(--muted-foreground)]">{zoneLabel}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <CardHeader><CardTitle>Setter Zones & Credits</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {setters.map((s) => {
+            let zones: Array<{ state?: string; cities?: string[]; minProd?: number; maxProd?: number }> = [];
+            if (s.blastZones) { try { zones = JSON.parse(s.blastZones); } catch { /* */ } }
+            const isEditing = editingZones === s.id;
+
+            return (
+              <div key={s.id} className="border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="font-medium">{s.name}</span>
+                    <span className="ml-3 font-bold text-[var(--teal)]">{s.creditBalance.toLocaleString()} credits</span>
+                  </div>
+                  {!isEditing && (
+                    <Button size="sm" variant="outline" onClick={() => startEditZones(s)}>
+                      {zones.length > 0 ? "Edit Zones" : "Assign Zones"}
+                    </Button>
+                  )}
+                </div>
+
+                {!isEditing && zones.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {zones.map((z, i) => (
+                      <span key={i} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[var(--teal-tint)] text-[var(--teal)]">
+                        {z.state}{z.cities?.length ? ` (${z.cities.join(", ")})` : ""}
+                        {z.minProd || z.maxProd ? ` · ${z.minProd || 0}-${z.maxProd || "∞"} txns` : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {!isEditing && zones.length === 0 && (
+                  <p className="text-xs text-[var(--muted-foreground)]">No zones assigned</p>
+                )}
+
+                {isEditing && (
+                  <div className="space-y-3 mt-3 border-t pt-3">
+                    {/* Existing zones */}
+                    {existingZones.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {existingZones.map((z, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[var(--teal-tint)] text-[var(--teal)]">
+                            {z.state}{z.cities?.length ? ` (${z.cities.join(", ")})` : ""}
+                            {z.minProd || z.maxProd ? ` · ${z.minProd || 0}-${z.maxProd || "∞"}` : ""}
+                            <button onClick={() => removeZone(i)} className="ml-1 text-red-500 hover:text-red-700">×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Add zone form */}
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <div>
+                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">State</label>
+                        <input value={zoneState} onChange={(e) => setZoneState(e.target.value)} placeholder="TX" className="border rounded-lg px-3 py-1.5 text-sm w-20 bg-[var(--card)]" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Cities (optional)</label>
+                        <input value={zoneCities} onChange={(e) => setZoneCities(e.target.value)} placeholder="Austin, Dallas" className="border rounded-lg px-3 py-1.5 text-sm w-40 bg-[var(--card)]" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Min Txns</label>
+                        <input type="number" value={zoneMinProd} onChange={(e) => setZoneMinProd(e.target.value)} placeholder="0" className="border rounded-lg px-3 py-1.5 text-sm w-20 bg-[var(--card)]" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Max Txns</label>
+                        <input type="number" value={zoneMaxProd} onChange={(e) => setZoneMaxProd(e.target.value)} placeholder="∞" className="border rounded-lg px-3 py-1.5 text-sm w-20 bg-[var(--card)]" />
+                      </div>
+                      <Button size="sm" variant="outline" onClick={addZone} disabled={!zoneState}>+ Add Zone</Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveZones}>Save Zones</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingZones(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 
