@@ -19,7 +19,8 @@ interface FirefliesTranscript {
   duration: number;
   organizer_email: string;
   participants: string[];
-  sentences: { text: string; speaker_id: number | null }[];
+  speakers: { name: string; id: number }[];
+  sentences: { text: string; speaker_id: number | null; speaker_name: string | null }[];
   meeting_info: { summary_status: string; silent_meeting: boolean } | null;
   summary: { short_summary: string; keywords: string[] } | null;
 }
@@ -54,9 +55,14 @@ async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDat
         duration
         organizer_email
         participants
+        speakers {
+          name
+          id
+        }
         sentences {
           text
           speaker_id
+          speaker_name
         }
         meeting_info {
           summary_status
@@ -86,8 +92,8 @@ async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDat
 
 // Verify that a transcript represents a real two-party conversation,
 // not just a closer sitting alone in a meeting room.
-// Returns true only if there's evidence of genuine back-and-forth.
-function verifyRealShow(t: FirefliesTranscript): boolean {
+// teamNames: lowercase names of internal team members to exclude.
+function verifyRealShow(t: FirefliesTranscript, teamNames: string[]): boolean {
   const sentences = t.sentences || [];
 
   // Signal 1: Fireflies skipped summarization → no real conversation
@@ -119,6 +125,24 @@ function verifyRealShow(t: FirefliesTranscript): boolean {
     if (!hasRelevantContent) return false;
   }
 
+  // Signal 6: At least one speaker must NOT be an internal team member.
+  // Catches cases where closers chat with each other while waiting for a no-show prospect.
+  // Fireflies labels speakers by name (e.g. "Colin Schofield", "Mark Whittelsey").
+  const speakerNames = (t.speakers || []).map(s => s.name.toLowerCase());
+  if (speakerNames.length > 0 && teamNames.length > 0) {
+    const hasExternalSpeaker = speakerNames.some(name => {
+      // Check if this speaker name matches any team member (first name, last name, or full name)
+      return !teamNames.some(teamName => {
+        const parts = teamName.split(/\s+/);
+        const nameParts = name.split(/\s+/);
+        // Match if full name matches, or if first name matches (for single-name speakers)
+        return name === teamName
+          || (parts[0] && nameParts[0] && parts[0] === nameParts[0] && parts[0].length > 2);
+      });
+    });
+    if (!hasExternalSpeaker) return false;
+  }
+
   return true;
 }
 
@@ -137,6 +161,10 @@ export async function POST() {
   const apiKeys = apiKeyEnv.split(",").map((k) => k.trim()).filter(Boolean);
 
   const results = { showed: 0, noShow: 0, skipped: 0, errors: [] as string[] };
+
+  // Load all team member names for speaker cross-reference (Signal 6)
+  const teamMembers = await prisma.teamMember.findMany({ select: { name: true } });
+  const teamNames = teamMembers.map(m => m.name.toLowerCase());
 
   // Get all demos from the last 2 weeks that Fireflies hasn't verified yet
   const twoWeeksAgo = new Date();
@@ -216,7 +244,7 @@ export async function POST() {
       if (match) {
         // Transcript found — but was it a REAL conversation?
         // Check for genuine two-party interaction:
-        const isRealShow = verifyRealShow(match);
+        const isRealShow = verifyRealShow(match, teamNames);
 
         // Always link the transcript to the demo for reference
         const wasAlreadyConfirmed = demo.status === "showed";

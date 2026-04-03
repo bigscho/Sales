@@ -14,7 +14,8 @@ interface TranscriptData {
   duration: number;
   organizer_email: string;
   participants: string[];
-  sentences: { text: string; speaker_id: number | null }[];
+  speakers: { name: string; id: number }[];
+  sentences: { text: string; speaker_id: number | null; speaker_name: string | null }[];
   meeting_info: { summary_status: string; silent_meeting: boolean } | null;
   summary: { short_summary: string; keywords: string[] } | null;
 }
@@ -33,7 +34,7 @@ const DEMO_RELEVANCE_TERMS = [
 
 // Verify that a transcript represents a real two-party conversation,
 // not just a closer sitting alone in a meeting room.
-function verifyRealShow(t: TranscriptData): boolean {
+function verifyRealShow(t: TranscriptData, teamNames: string[]): boolean {
   const sentences = t.sentences || [];
 
   // Signal 1: Fireflies skipped summarization → no real conversation
@@ -60,6 +61,21 @@ function verifyRealShow(t: TranscriptData): boolean {
     if (!hasRelevantContent) return false;
   }
 
+  // Signal 6: At least one speaker must NOT be an internal team member.
+  // Catches closers chatting while waiting for a no-show prospect.
+  const speakerNames = (t.speakers || []).map(s => s.name.toLowerCase());
+  if (speakerNames.length > 0 && teamNames.length > 0) {
+    const hasExternalSpeaker = speakerNames.some(name => {
+      return !teamNames.some(teamName => {
+        const parts = teamName.split(/\s+/);
+        const nameParts = name.split(/\s+/);
+        return name === teamName
+          || (parts[0] && nameParts[0] && parts[0] === nameParts[0] && parts[0].length > 2);
+      });
+    });
+    if (!hasExternalSpeaker) return false;
+  }
+
   return true;
 }
 
@@ -73,9 +89,14 @@ async function fetchTranscript(apiKey: string, meetingId: string): Promise<Trans
         duration
         organizer_email
         participants
+        speakers {
+          name
+          id
+        }
         sentences {
           text
           speaker_id
+          speaker_name
         }
         meeting_info {
           summary_status
@@ -138,6 +159,10 @@ export async function POST(request: NextRequest) {
     const windowStart = new Date(meetingDate.getTime() - 3 * 60 * 60 * 1000);
     const windowEnd = new Date(meetingDate.getTime() + 3 * 60 * 60 * 1000);
 
+    // Load team names for speaker cross-reference (Signal 6)
+    const teamMembers = await prisma.teamMember.findMany({ select: { name: true } });
+    const teamNames = teamMembers.map(m => m.name.toLowerCase());
+
     // Find matching demos (pending or already confirmed) that Fireflies hasn't verified yet
     const pendingDemos = await prisma.demo.findMany({
       where: {
@@ -168,7 +193,7 @@ export async function POST(request: NextRequest) {
       );
 
       if (emailMatch || nameMatch) {
-        const isRealShow = verifyRealShow(transcript);
+        const isRealShow = verifyRealShow(transcript, teamNames);
         const wasAlreadyConfirmed = demo.status === "showed";
 
         await prisma.demo.update({
