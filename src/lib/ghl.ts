@@ -211,7 +211,7 @@ export async function processBlast(blastId: string): Promise<void> {
       data: {
         name: `SMS Blast — ${blast.setter.name} — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
         channel: "ghl",
-        externalId: GHL_WORKFLOW_ID,
+        externalId: GHL_WORKFLOWS["1"] || GHL_WORKFLOWS["2"],
         status: "active",
       },
     });
