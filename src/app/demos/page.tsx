@@ -100,6 +100,7 @@ export default function DemosPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [matchingPaymentId, setMatchingPaymentId] = useState<string | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set());
   const initialLoad = useRef(true);
 
   const loadData = useCallback(() => {
@@ -841,67 +842,10 @@ export default function DemosPage() {
         </div>
       )}
 
-      {/* ===== STATS BAR (right under calendar) ===== */}
-      {!loading && (
-        <div className="bg-[var(--card)] rounded-xl border p-4">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-            <div className="text-center min-w-0">
-              <p className="text-xs text-[var(--muted-foreground)]">On Calendar</p>
-              <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayTotal}</p>
-            </div>
-            <div className="text-center min-w-0">
-              <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
-              <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">
-                {(displayShowed + displayNoShow) > 0 ? `${((displayShowed / (displayShowed + displayNoShow)) * 100).toFixed(0)}%` : "—"}
-              </p>
-            </div>
-            <div className="text-center min-w-0">
-              <p className="text-xs text-[var(--muted-foreground)]">Closes</p>
-              <p className="text-2xl font-bold tracking-tight text-[var(--teal)]">{displayCloses}</p>
-            </div>
-            <div className="text-center min-w-0">
-              <p className="text-xs text-[var(--muted-foreground)]">Cash</p>
-              <p className={`text-2xl font-bold tracking-tight ${cashColor(displayCash)}`}>{formatCents(displayCash)}</p>
-            </div>
-            {viewMode === "week" && (
-              <div className="text-xs text-[var(--muted-foreground)]">{todayBookings.length} booked today · {dayLocks.length}/7 locked</div>
-            )}
-            {/* Action buttons */}
-            <div className="flex flex-wrap gap-2 items-center ml-auto">
-              {viewMode === "day" && selectedPending > 0 && !selectedLock && (
-                <>
-                  <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
-                    All Showed ({selectedPending})
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => bulkMarkDay(selectedDemos, "no_show")}>
-                    All No Show
-                  </Button>
-                </>
-              )}
-              {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && (
-                <Button size="sm" variant="outline" onClick={() => lockDay(selectedDayDate)}>
-                  Lock {DAY_NAMES[selectedDay]}
-                </Button>
-              )}
-              {viewMode === "day" && selectedLock && (
-                <Button size="sm" variant="ghost" onClick={() => unlockDay(selectedLock.date)}>
-                  Unlock
-                </Button>
-              )}
-              {displayPending > 0 && (
-                <Badge variant="warning" className="text-sm px-3 py-1">
-                  {displayPending} need review
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== DAY/WEEK TABS + STATUS BAR ===== */}
+      {/* ===== BOTTOM SECTION: TABS + CONTENT ===== */}
       {!loading && (
         <div className="space-y-4">
-          {/* Day Tabs + View Toggle */}
+          {/* Day Tabs + Week Toggle */}
           <div className="flex items-center justify-between border-b border-[var(--border)]">
             <div className="flex items-center gap-1">
               {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => {
@@ -934,28 +878,125 @@ export default function DemosPage() {
                 Week
               </button>
             </div>
-          </div>
-
-          {/* StatusBar — scoped to selected tab */}
-          <div className="bg-[var(--card)] rounded-xl border px-4 py-3">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wide">
-                {viewMode === "week"
-                  ? "Full Week"
-                  : `${DAY_NAMES[selectedDay]}${weekDates[selectedDay] ? ` · ${getDateLabel(weekDates[selectedDay])}` : ""}`}
-              </span>
-              <span className="text-xs text-[var(--muted-foreground)]">
-                {displayShowed + displayNoShow + displayPending} demos
-              </span>
+            {/* Action buttons */}
+            <div className="flex flex-wrap gap-2 items-center">
+              {viewMode === "day" && selectedPending > 0 && !selectedLock && (
+                <>
+                  <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
+                    All Showed ({selectedPending})
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => bulkMarkDay(selectedDemos, "no_show")}>
+                    All No Show
+                  </Button>
+                </>
+              )}
+              {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && (
+                <Button size="sm" variant="outline" onClick={() => lockDay(selectedDayDate)}>
+                  Lock {DAY_NAMES[selectedDay]}
+                </Button>
+              )}
+              {viewMode === "day" && selectedLock && (
+                <Button size="sm" variant="ghost" onClick={() => unlockDay(selectedLock.date)}>
+                  Unlock
+                </Button>
+              )}
             </div>
-            <StatusBar showed={displayShowed} noShow={displayNoShow} pending={displayPending} size="md" />
           </div>
 
-          {/* ===== MAIN: SIDE-BY-SIDE DEMOS + FEEDS ===== */}
+          {/* ===== MAIN: SIDE-BY-SIDE CONTENT ===== */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Left: Demo Table (2/3 width) */}
-            <div className="lg:col-span-2">
-              {renderDemoTable(displayDemos, viewMode === "week")}
+            {/* Left: StatusBar + Demo list (2/3 width) */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* StatusBar */}
+              <StatusBar showed={displayShowed} noShow={displayNoShow} pending={displayPending} size="md" />
+
+              {/* DAY VIEW: flat demo table */}
+              {viewMode === "day" && renderDemoTable(selectedDemos, false)}
+
+              {/* WEEK VIEW: accordion by day */}
+              {viewMode === "week" && (
+                <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
+                  {[1, 2, 3, 4, 5, 6, 0].map((dayIndex) => {
+                    const dayDemos = demosByDay[dayIndex];
+                    const lock = locksByDay[dayIndex];
+                    const dateLabel = weekDates[dayIndex] ? getDateLabel(weekDates[dayIndex]) : "";
+                    const dayShowed = dayDemos.filter((d) => d.status === "showed").length;
+                    const dayNoShow = dayDemos.filter((d) => d.status === "no_show").length;
+                    const dayPending = dayDemos.filter((d) => d.status === "pending").length;
+                    const dayCloses = dayDemos.filter((d) => d.deal?.status === "closed_won").length;
+                    const isExpanded = expandedDays.has(dayIndex);
+                    const dayPayments = payments.filter((p) => weekDateKeys[dayIndex] && toDateKey(p.paidAt) === weekDateKeys[dayIndex]);
+                    const dayCash = dayPayments.reduce((s, p) => s + p.amountCents, 0);
+                    const dayShowRate = (dayShowed + dayNoShow) > 0
+                      ? `${((dayShowed / (dayShowed + dayNoShow)) * 100).toFixed(0)}%`
+                      : "—";
+
+                    const toggleDay = () => {
+                      setExpandedDays((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(dayIndex)) next.delete(dayIndex);
+                        else next.add(dayIndex);
+                        return next;
+                      });
+                    };
+
+                    return (
+                      <div key={dayIndex} className={`border-b last:border-0 ${dayDemos.length === 0 ? "opacity-50" : ""}`}>
+                        {/* Day header row — always visible */}
+                        <button
+                          onClick={toggleDay}
+                          disabled={dayDemos.length === 0}
+                          className={`w-full px-4 py-3 flex items-center gap-4 text-left transition-colors ${
+                            dayDemos.length > 0 ? "hover:bg-[var(--muted)] cursor-pointer" : "cursor-default"
+                          } ${isExpanded ? "bg-[var(--muted)]" : ""}`}
+                        >
+                          {/* Day name + date */}
+                          <div className="w-24 flex-shrink-0">
+                            <span className="text-sm font-semibold">{DAY_NAMES[dayIndex]}</span>
+                            {dateLabel && <span className="text-xs text-[var(--muted-foreground)] ml-1.5">{dateLabel}</span>}
+                          </div>
+
+                          {/* Mini status bar */}
+                          <div className="flex-1 max-w-[200px]">
+                            {dayDemos.length > 0 ? (
+                              <StatusBar showed={dayShowed} noShow={dayNoShow} pending={dayPending} size="sm" />
+                            ) : (
+                              <span className="text-xs text-[var(--muted-foreground)]">No demos</span>
+                            )}
+                          </div>
+
+                          {/* Stats */}
+                          <div className="flex items-center gap-4 text-xs flex-shrink-0">
+                            {dayDemos.length > 0 && (
+                              <>
+                                <span className="text-[var(--muted-foreground)]">{dayDemos.length} demos</span>
+                                <span className="text-[var(--muted-foreground)]">{dayShowRate} show</span>
+                                {dayCloses > 0 && <span className="text-[var(--teal)] font-medium">{dayCloses} close{dayCloses !== 1 ? "s" : ""}</span>}
+                                {dayCash > 0 && <span className="font-medium text-green-600">{formatCents(dayCash)}</span>}
+                              </>
+                            )}
+                            {lock && <span className="text-xs">🔒</span>}
+                          </div>
+
+                          {/* Expand arrow */}
+                          {dayDemos.length > 0 && (
+                            <span className="text-xs text-[var(--muted-foreground)] flex-shrink-0">
+                              {isExpanded ? "▲" : "▼"}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Expanded: demo table for this day */}
+                        {isExpanded && dayDemos.length > 0 && (
+                          <div className="border-t">
+                            {renderDemoTable(dayDemos, false)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Right: Booking Feed + Financial Feed (1/3 width) */}
@@ -999,9 +1040,6 @@ export default function DemosPage() {
               {renderFinancialFeed(displayPayments, viewMode === "week")}
             </div>
           </div>
-
-
-
         </div>
       )}
     </div>
