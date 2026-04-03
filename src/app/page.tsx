@@ -118,58 +118,66 @@ export default function Dashboard() {
           value={String(kpis.newBookings)}
           subtitle="booked this week"
         />
-        <KPICard
-          title="Demos on Calendar"
-          value={String(kpis.totalBookings)}
-          subtitle={<StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} size="sm" />}
-          detail={
-            <div className="space-y-1">
-              {demos.map((d) => (
-                <div key={d.id} className="flex justify-between text-sm">
-                  <span className="truncate mr-2">{d.booking.prospectName}</span>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name || "—"}</span>
-                    <Badge variant={d.status === "showed" ? "success" : d.status === "no_show" ? "danger" : "warning"}>
-                      {d.status}
-                    </Badge>
-                  </div>
+
+        {/* Demos + Shows pair with shared StatusBar beneath */}
+        <div className="col-span-2 flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-4">
+            <KPICard
+              title="Demos on Calendar"
+              value={String(kpis.totalBookings)}
+              subtitle={`${kpis.totalShows} showed · ${kpis.totalNoShows} no-show · ${kpis.totalPending} pending`}
+              detail={
+                <div className="space-y-1">
+                  {demos.map((d) => (
+                    <div key={d.id} className="flex justify-between text-sm">
+                      <span className="truncate mr-2">{d.booking.prospectName}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name || "—"}</span>
+                        <Badge variant={d.status === "showed" ? "success" : d.status === "no_show" ? "danger" : "warning"}>
+                          {d.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {demos.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">No bookings this week</p>}
                 </div>
-              ))}
-              {demos.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">No bookings this week</p>}
-            </div>
-          }
-        />
-        <KPICard
-          title="Shows"
-          value={String(kpis.totalShows)}
-          valueClassName="text-green-600"
-          subtitle={<StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} size="sm" />}
-          detail={
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">Showed:</p>
-              {showedDemos.map((d) => (
-                <div key={d.id} className="flex justify-between text-sm">
-                  <span>{d.booking.prospectName}</span>
-                  <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name}</span>
+              }
+            />
+            <KPICard
+              title="Shows"
+              value={String(kpis.totalShows)}
+              valueClassName="text-green-600"
+              subtitle={`${kpis.totalShows}/${kpis.totalConfirmed} confirmed`}
+              detail={
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">Showed:</p>
+                  {showedDemos.map((d) => (
+                    <div key={d.id} className="flex justify-between text-sm">
+                      <span>{d.booking.prospectName}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name}</span>
+                    </div>
+                  ))}
+                  {noShowDemos.length > 0 && <p className="text-xs font-medium text-[var(--muted-foreground)] mt-3 mb-2">No-shows:</p>}
+                  {noShowDemos.map((d) => (
+                    <div key={d.id} className="flex justify-between text-sm text-red-600">
+                      <span>{d.booking.prospectName}</span>
+                      <span className="text-xs">{d.booking.setter?.name}</span>
+                    </div>
+                  ))}
+                  {pendingDemos.length > 0 && <p className="text-xs font-medium text-[var(--muted-foreground)] mt-3 mb-2">Pending:</p>}
+                  {pendingDemos.map((d) => (
+                    <div key={d.id} className="flex justify-between text-sm text-yellow-600">
+                      <span>{d.booking.prospectName}</span>
+                      <span className="text-xs">{d.booking.setter?.name}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {noShowDemos.length > 0 && <p className="text-xs font-medium text-[var(--muted-foreground)] mt-3 mb-2">No-shows:</p>}
-              {noShowDemos.map((d) => (
-                <div key={d.id} className="flex justify-between text-sm text-red-600">
-                  <span>{d.booking.prospectName}</span>
-                  <span className="text-xs">{d.booking.setter?.name}</span>
-                </div>
-              ))}
-              {pendingDemos.length > 0 && <p className="text-xs font-medium text-[var(--muted-foreground)] mt-3 mb-2">Pending:</p>}
-              {pendingDemos.map((d) => (
-                <div key={d.id} className="flex justify-between text-sm text-yellow-600">
-                  <span>{d.booking.prospectName}</span>
-                  <span className="text-xs">{d.booking.setter?.name}</span>
-                </div>
-              ))}
-            </div>
-          }
-        />
+              }
+            />
+          </div>
+          <StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} size="md" />
+        </div>
+
         <KPICard
           title="Show Rate"
           value={kpis.totalConfirmed > 0 ? formatPercent(kpis.confirmedShowRate) : "\u2014"}
