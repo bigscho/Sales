@@ -238,7 +238,7 @@ export default function BlastAdminPage() {
                         {existingZones.map((z, i) => (
                           <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[var(--teal-tint)] text-[var(--teal)]">
                             {z.state}{z.cities?.length ? ` (${z.cities.join(", ")})` : ""}
-                            {z.minProd || z.maxProd ? ` · ${z.minProd || 0}-${z.maxProd || "∞"}` : ""}
+                            {z.minVolume || z.maxVolume ? ` · $${z.minVolume ? (z.minVolume >= 1000000 ? (z.minVolume/1000000).toFixed(1)+"M" : (z.minVolume/1000).toFixed(0)+"K") : "0"}-${z.maxVolume ? (z.maxVolume >= 1000000 ? (z.maxVolume/1000000).toFixed(1)+"M" : (z.maxVolume/1000).toFixed(0)+"K") : "∞"}` : ""}
                             <button onClick={() => removeZone(i)} className="ml-1 text-red-500 hover:text-red-700">×</button>
                           </span>
                         ))}
