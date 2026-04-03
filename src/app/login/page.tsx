@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 interface MemberOption {
   id: string;
@@ -91,9 +91,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <Image src="/logos/g-icon.png" alt="Grassfed" width={56} height={56} className="mx-auto mb-2" />
-          <CardTitle className="text-2xl font-bold text-[var(--primary)]">Grassfed</CardTitle>
-          <p className="text-sm text-[var(--muted-foreground)] mt-1">Sales Tracker</p>
+          <Image src="/logos/logo-dark.png" alt="Grassfed" width={160} height={52} className="mx-auto mb-1" />
           {isSetup && (
             <p className="text-xs text-[var(--accent)] mt-2">First-time setup — choose your account and set a PIN</p>
           )}
