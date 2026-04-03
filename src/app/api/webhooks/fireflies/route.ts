@@ -14,6 +14,30 @@ interface TranscriptData {
   duration: number;
   organizer_email: string;
   participants: string[];
+  sentences: { text: string; speaker_id: number | null }[];
+  meeting_info: { summary_status: string; silent_meeting: boolean } | null;
+}
+
+// Verify that a transcript represents a real two-party conversation,
+// not just a closer sitting alone in a meeting room.
+function verifyRealShow(t: TranscriptData): boolean {
+  const sentences = t.sentences || [];
+
+  // Signal 1: Fireflies skipped summarization → no real conversation
+  if (t.meeting_info?.summary_status === "skipped") return false;
+
+  // Signal 2: Fireflies flagged it as silent
+  if (t.meeting_info?.silent_meeting === true) return false;
+
+  // Signal 3: Too few substantive sentences
+  const substantiveSentences = sentences.filter(s => s.text.trim().length > 5);
+  if (substantiveSentences.length < 6) return false;
+
+  // Signal 4: Only one speaker — prospect never talked
+  const speakerIds = new Set(sentences.map(s => s.speaker_id).filter(id => id !== null && id !== undefined));
+  if (speakerIds.size < 2) return false;
+
+  return true;
 }
 
 async function fetchTranscript(apiKey: string, meetingId: string): Promise<TranscriptData | null> {
@@ -26,6 +50,14 @@ async function fetchTranscript(apiKey: string, meetingId: string): Promise<Trans
         duration
         organizer_email
         participants
+        sentences {
+          text
+          speaker_id
+        }
+        meeting_info {
+          summary_status
+          silent_meeting
+        }
       }
     }
   `;
@@ -109,14 +141,22 @@ export async function POST(request: NextRequest) {
       );
 
       if (emailMatch || nameMatch) {
+        const isRealShow = verifyRealShow(transcript);
         const wasAlreadyConfirmed = demo.status === "showed";
+
         await prisma.demo.update({
           where: { id: demo.id },
           data: {
-            status: "showed",
-            ...(wasAlreadyConfirmed ? {} : { confirmedBy: "fireflies_auto", confirmedAt: new Date() }),
             hasFirefliesRecording: true,
             firefliesTranscriptId: meetingId,
+            // Only auto-mark showed if real two-party conversation
+            ...(isRealShow && !wasAlreadyConfirmed
+              ? { status: "showed", confirmedBy: "fireflies_auto", confirmedAt: new Date() }
+              : {}),
+            // Flag for manual review if transcript exists but no real conversation
+            ...(!isRealShow && !wasAlreadyConfirmed
+              ? { notes: [demo.notes, "transcript_no_conversation"].filter(Boolean).join(",") }
+              : {}),
           },
         });
 
@@ -124,18 +164,22 @@ export async function POST(request: NextRequest) {
           data: {
             entityType: "demo",
             entityId: demo.id,
-            action: "fireflies_webhook_showed",
+            action: isRealShow ? "fireflies_webhook_showed" : "fireflies_webhook_no_conversation",
             newValue: JSON.stringify({
               transcriptId: meetingId,
               title: transcript.title,
               duration: transcript.duration,
+              isRealShow,
+              sentenceCount: transcript.sentences?.length || 0,
+              speakerCount: new Set(transcript.sentences?.map(s => s.speaker_id).filter(id => id !== null)).size,
+              summaryStatus: transcript.meeting_info?.summary_status,
             }),
             performedBy: "fireflies_webhook",
           },
         });
 
-        // Notify show rate channel
-        if (!wasAlreadyConfirmed) {
+        // Notify show rate channel only for real shows
+        if (isRealShow && !wasAlreadyConfirmed) {
           try {
             const { sendShowNotification } = await import("@/lib/setter-game");
             await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, null, "fireflies_webhook");

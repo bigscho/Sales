@@ -19,6 +19,8 @@ interface FirefliesTranscript {
   duration: number;
   organizer_email: string;
   participants: string[];
+  sentences: { text: string; speaker_id: number | null }[];
+  meeting_info: { summary_status: string; silent_meeting: boolean } | null;
 }
 
 async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDate: string): Promise<FirefliesTranscript[]> {
@@ -34,6 +36,14 @@ async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDat
         duration
         organizer_email
         participants
+        sentences {
+          text
+          speaker_id
+        }
+        meeting_info {
+          summary_status
+          silent_meeting
+        }
       }
     }
   `;
@@ -50,6 +60,32 @@ async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDat
   if (!res.ok) return [];
   const data = await res.json();
   return data?.data?.transcripts || [];
+}
+
+// Verify that a transcript represents a real two-party conversation,
+// not just a closer sitting alone in a meeting room.
+// Returns true only if there's evidence of genuine back-and-forth.
+function verifyRealShow(t: FirefliesTranscript): boolean {
+  const sentences = t.sentences || [];
+
+  // Signal 1: Fireflies skipped summarization → no real conversation
+  if (t.meeting_info?.summary_status === "skipped") return false;
+
+  // Signal 2: Fireflies flagged it as silent
+  if (t.meeting_info?.silent_meeting === true) return false;
+
+  // Signal 3: Too few sentences — a real demo has back-and-forth
+  // (filtering out trivial sentences like "It." "Okay." "Uh.")
+  const substantiveSentences = sentences.filter(s => s.text.trim().length > 5);
+  if (substantiveSentences.length < 6) return false;
+
+  // Signal 4: Only one speaker (or no speaker labels at all)
+  // Fireflies assigns speaker_id to distinguish speakers.
+  // If all sentences have the same speaker, the prospect never talked.
+  const speakerIds = new Set(sentences.map(s => s.speaker_id).filter(id => id !== null && id !== undefined));
+  if (speakerIds.size < 2) return false;
+
+  return true;
 }
 
 // GET handler for Vercel cron
@@ -144,26 +180,37 @@ export async function POST() {
       });
 
       if (match) {
-        // Transcript found — mark as showed + Fireflies verified
+        // Transcript found — but was it a REAL conversation?
+        // Check for genuine two-party interaction:
+        const isRealShow = verifyRealShow(match);
+
+        // Always link the transcript to the demo for reference
         const wasAlreadyConfirmed = demo.status === "showed";
         await prisma.demo.update({
           where: { id: demo.id },
           data: {
-            status: "showed",
-            // Only overwrite confirmedBy if it was pending
-            ...(wasAlreadyConfirmed ? {} : { confirmedBy: "fireflies_auto", confirmedAt: new Date() }),
             hasFirefliesRecording: true,
             firefliesTranscriptId: match.id,
+            // Only auto-mark as showed if it was a real conversation
+            ...(isRealShow && !wasAlreadyConfirmed
+              ? { status: "showed", confirmedBy: "fireflies_auto", confirmedAt: new Date() }
+              : {}),
+            // Flag transcript-exists-but-not-a-real-show for manual review
+            ...(!isRealShow && !wasAlreadyConfirmed
+              ? { notes: [demo.notes, "transcript_no_conversation"].filter(Boolean).join(",") }
+              : {}),
           },
         });
-        // Notify show rate channel
-        if (!wasAlreadyConfirmed) {
+
+        // Notify show rate channel only for real shows
+        if (isRealShow && !wasAlreadyConfirmed) {
           try {
             const { sendShowNotification } = await import("@/lib/setter-game");
             await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, demo.closer?.name || null, "fireflies_auto");
           } catch { /* show rate notification failed */ }
         }
-        results.showed++;
+        results.showed += isRealShow ? 1 : 0;
+        results.skipped += isRealShow ? 0 : 1;
       } else {
         // No transcript — leave as pending, but flag "no transcript" if demo time passed
         const now = new Date();
