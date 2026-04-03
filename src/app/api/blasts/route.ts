@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const body = await request.json();
-  const { quantity, filterState, filterCity, filterMinProd, filterMaxProd, scheduledFor } = body;
+  const { quantity, filterState, filterCity, filterMinProd, filterMaxProd, filterMinVolume, filterMaxVolume, scheduledFor } = body;
 
   if (!quantity || quantity <= 0) {
     return NextResponse.json({ error: "quantity must be a positive number" }, { status: 400 });
@@ -101,6 +101,8 @@ export async function POST(request: NextRequest) {
   if (filterCity) agentFilter.city = { contains: filterCity, mode: "insensitive" };
   if (filterMinProd) agentFilter.avgTransactions = { ...((agentFilter.avgTransactions as Record<string, unknown>) || {}), gte: filterMinProd };
   if (filterMaxProd) agentFilter.avgTransactions = { ...((agentFilter.avgTransactions as Record<string, unknown>) || {}), lte: filterMaxProd };
+  if (filterMinVolume) agentFilter.avgVolumeCents = { ...((agentFilter.avgVolumeCents as Record<string, unknown>) || {}), gte: BigInt(filterMinVolume) };
+  if (filterMaxVolume) agentFilter.avgVolumeCents = { ...((agentFilter.avgVolumeCents as Record<string, unknown>) || {}), lte: BigInt(filterMaxVolume) };
 
   const availableAgents = await prisma.agent.count({ where: agentFilter });
   if (availableAgents === 0) {
@@ -118,6 +120,8 @@ export async function POST(request: NextRequest) {
       filterCity: filterCity || null,
       filterMinProd: filterMinProd || null,
       filterMaxProd: filterMaxProd || null,
+      filterMinVolume: filterMinVolume ? BigInt(filterMinVolume) : null,
+      filterMaxVolume: filterMaxVolume ? BigInt(filterMaxVolume) : null,
     },
   });
 

@@ -243,11 +243,13 @@ export async function processBlast(blastId: string): Promise<void> {
   if (blast.filterCity) agentFilter.city = { contains: blast.filterCity, mode: "insensitive" };
   if (blast.filterMinProd) agentFilter.avgTransactions = { ...((agentFilter.avgTransactions as Record<string, unknown>) || {}), gte: blast.filterMinProd };
   if (blast.filterMaxProd) agentFilter.avgTransactions = { ...((agentFilter.avgTransactions as Record<string, unknown>) || {}), lte: blast.filterMaxProd };
+  if (blast.filterMinVolume) agentFilter.avgVolumeCents = { ...((agentFilter.avgVolumeCents as Record<string, unknown>) || {}), gte: blast.filterMinVolume };
+  if (blast.filterMaxVolume) agentFilter.avgVolumeCents = { ...((agentFilter.avgVolumeCents as Record<string, unknown>) || {}), lte: blast.filterMaxVolume };
 
-  // Get agents, ordered by best production first
+  // Get agents, ordered by best volume first
   const agents = await prisma.agent.findMany({
     where: agentFilter,
-    orderBy: { avgTransactions: "desc" },
+    orderBy: { avgVolumeCents: "desc" },
     take: remaining,
   });
 

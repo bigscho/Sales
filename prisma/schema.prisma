@@ -424,6 +424,8 @@ model TextBlast {
   filterCity      String?
   filterMinProd   Int?
   filterMaxProd   Int?
+  filterMinVolume BigInt?   // min avg annual volume in cents
+  filterMaxVolume BigInt?   // max avg annual volume in cents
   campaignId      String?   // links to OutboundCampaign used
   totalPushed     Int       @default(0) // actual contacts pushed to GHL
   totalFailed     Int       @default(0)

@@ -52,9 +52,9 @@ export default function BlastAdminPage() {
   const [editingZones, setEditingZones] = useState<string | null>(null); // setterId being edited
   const [zoneState, setZoneState] = useState("");
   const [zoneCities, setZoneCities] = useState("");
-  const [zoneMinProd, setZoneMinProd] = useState("");
-  const [zoneMaxProd, setZoneMaxProd] = useState("");
-  const [existingZones, setExistingZones] = useState<Array<{ state?: string; cities?: string[]; minProd?: number; maxProd?: number }>>([]);
+  const [zoneMinVolume, setZoneMinVolume] = useState("");
+  const [zoneMaxVolume, setZoneMaxVolume] = useState("");
+  const [existingZones, setExistingZones] = useState<Array<{ state?: string; cities?: string[]; minVolume?: number; maxVolume?: number }>>([]);
 
   const startEditZones = (setter: TeamMember) => {
     setEditingZones(setter.id);
@@ -65,21 +65,21 @@ export default function BlastAdminPage() {
     }
     setZoneState("");
     setZoneCities("");
-    setZoneMinProd("");
-    setZoneMaxProd("");
+    setZoneMinVolume("");
+    setZoneMaxVolume("");
   };
 
   const addZone = () => {
     if (!zoneState) return;
-    const newZone: { state: string; cities?: string[]; minProd?: number; maxProd?: number } = { state: zoneState };
+    const newZone: { state: string; cities?: string[]; minVolume?: number; maxVolume?: number } = { state: zoneState };
     if (zoneCities) newZone.cities = zoneCities.split(",").map(c => c.trim());
-    if (zoneMinProd) newZone.minProd = Number(zoneMinProd);
-    if (zoneMaxProd) newZone.maxProd = Number(zoneMaxProd);
+    if (zoneMinVolume) newZone.minVolume = Number(zoneMinVolume);
+    if (zoneMaxVolume) newZone.maxVolume = Number(zoneMaxVolume);
     setExistingZones(prev => [...prev, newZone]);
     setZoneState("");
     setZoneCities("");
-    setZoneMinProd("");
-    setZoneMaxProd("");
+    setZoneMinVolume("");
+    setZoneMaxVolume("");
   };
 
   const removeZone = (idx: number) => {
@@ -221,7 +221,7 @@ export default function BlastAdminPage() {
                     {zones.map((z, i) => (
                       <span key={i} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[var(--teal-tint)] text-[var(--teal)]">
                         {z.state}{z.cities?.length ? ` (${z.cities.join(", ")})` : ""}
-                        {z.minProd || z.maxProd ? ` · ${z.minProd || 0}-${z.maxProd || "∞"} txns` : ""}
+                        {z.minVolume || z.maxVolume ? ` · $${z.minVolume ? (z.minVolume >= 1000000 ? (z.minVolume/1000000).toFixed(1)+"M" : (z.minVolume/1000).toFixed(0)+"K") : "0"}-${z.maxVolume ? (z.maxVolume >= 1000000 ? (z.maxVolume/1000000).toFixed(1)+"M" : (z.maxVolume/1000).toFixed(0)+"K") : "∞"}` : ""}
                       </span>
                     ))}
                   </div>
@@ -255,12 +255,12 @@ export default function BlastAdminPage() {
                         <input value={zoneCities} onChange={(e) => setZoneCities(e.target.value)} placeholder="Austin, Dallas" className="border rounded-lg px-3 py-1.5 text-sm w-40 bg-[var(--card)]" />
                       </div>
                       <div>
-                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Min Txns</label>
-                        <input type="number" value={zoneMinProd} onChange={(e) => setZoneMinProd(e.target.value)} placeholder="0" className="border rounded-lg px-3 py-1.5 text-sm w-20 bg-[var(--card)]" />
+                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Min Volume ($/yr)</label>
+                        <input type="number" value={zoneMinVolume} onChange={(e) => setZoneMinVolume(e.target.value)} placeholder="e.g. 500000" className="border rounded-lg px-3 py-1.5 text-sm w-32 bg-[var(--card)]" />
                       </div>
                       <div>
-                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Max Txns</label>
-                        <input type="number" value={zoneMaxProd} onChange={(e) => setZoneMaxProd(e.target.value)} placeholder="∞" className="border rounded-lg px-3 py-1.5 text-sm w-20 bg-[var(--card)]" />
+                        <label className="text-xs text-[var(--muted-foreground)] block mb-1">Max Volume ($/yr)</label>
+                        <input type="number" value={zoneMaxVolume} onChange={(e) => setZoneMaxVolume(e.target.value)} placeholder="∞" className="border rounded-lg px-3 py-1.5 text-sm w-32 bg-[var(--card)]" />
                       </div>
                       <Button size="sm" variant="outline" onClick={addZone} disabled={!zoneState}>+ Add Zone</Button>
                     </div>

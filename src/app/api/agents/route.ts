@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
   const city = params.get("city");
   const minProd = params.get("minProd") ? parseInt(params.get("minProd")!) : null;
   const maxProd = params.get("maxProd") ? parseInt(params.get("maxProd")!) : null;
+  const minVolume = params.get("minVolume") ? BigInt(params.get("minVolume")!) : null;
+  const maxVolume = params.get("maxVolume") ? BigInt(params.get("maxVolume")!) : null;
   const contacted = params.get("contacted"); // "true" | "false" | null (any)
   const sortBy = params.get("sortBy") || "lastName";
   const sortDir = (params.get("sortDir") || "asc") as "asc" | "desc";
@@ -33,6 +35,12 @@ export async function GET(request: NextRequest) {
     where.avgTransactions = {};
     if (minProd !== null) (where.avgTransactions as Record<string, unknown>).gte = minProd;
     if (maxProd !== null) (where.avgTransactions as Record<string, unknown>).lte = maxProd;
+  }
+
+  if (minVolume !== null || maxVolume !== null) {
+    where.avgVolumeCents = {};
+    if (minVolume !== null) (where.avgVolumeCents as Record<string, unknown>).gte = minVolume;
+    if (maxVolume !== null) (where.avgVolumeCents as Record<string, unknown>).lte = maxVolume;
   }
 
   if (contacted === "true") {

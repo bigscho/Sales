@@ -11,6 +11,8 @@ interface BlastZone {
   cities?: string[];
   minProd?: number;
   maxProd?: number;
+  minVolume?: number;
+  maxVolume?: number;
 }
 
 interface BlastRecord {
@@ -98,6 +100,8 @@ export default function BlastsPage() {
     if (zone.cities?.[0]) params.set("city", zone.cities[0]);
     if (zone.minProd) params.set("minProd", String(zone.minProd));
     if (zone.maxProd) params.set("maxProd", String(zone.maxProd));
+    if (zone.minVolume) params.set("minVolume", String(zone.minVolume));
+    if (zone.maxVolume) params.set("maxVolume", String(zone.maxVolume));
 
     fetch(`/api/agents?${params}`)
       .then(r => r.json())
@@ -116,6 +120,8 @@ export default function BlastsPage() {
     if (zone?.cities?.[0]) body.filterCity = zone.cities[0];
     if (zone?.minProd) body.filterMinProd = zone.minProd;
     if (zone?.maxProd) body.filterMaxProd = zone.maxProd;
+    if (zone?.minVolume) body.filterMinVolume = zone.minVolume;
+    if (zone?.maxVolume) body.filterMaxVolume = zone.maxVolume;
     if (scheduleMode === "later" && scheduledFor) body.scheduledFor = scheduledFor;
 
     try {
@@ -148,12 +154,14 @@ export default function BlastsPage() {
   }
 
   const selectedZone = zones[selectedZoneIdx];
+  const formatVol = (v: number) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`;
   const zoneLabel = (z: BlastZone) => {
     if (!z.state && !z.cities?.length) return "Custom (all regions)";
     const parts = [];
     if (z.state) parts.push(z.state);
     if (z.cities?.length) parts.push(z.cities.join(", "));
-    if (z.minProd || z.maxProd) parts.push(`${z.minProd || 0}-${z.maxProd || "∞"} txns/yr`);
+    if (z.minVolume || z.maxVolume) parts.push(`${z.minVolume ? formatVol(z.minVolume) : "$0"}-${z.maxVolume ? formatVol(z.maxVolume) : "∞"}/yr`);
+    else if (z.minProd || z.maxProd) parts.push(`${z.minProd || 0}-${z.maxProd || "∞"} txns/yr`);
     return parts.join(" — ");
   };
 
