@@ -75,7 +75,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - SLACK_SETTER_WEBHOOK_URL (#setter-tpds)
 - SLACK_SHOWRATE_WEBHOOK_URL (#show-rate-tpds)
 - SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
-- SLACK_VERIFY_WEBHOOK_URL (#setter-daily-verify)
+- SLACK_DATAVERIFICATION_WEBHOOK_URL (#setter-daily-verify)
 - SESSION_SECRET (random string for JWT signing)
 
 ## Outbound Console (In Progress)

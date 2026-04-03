@@ -128,7 +128,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `SLACK_SETTER_WEBHOOK_URL` | #setter-tpds channel webhook |
 | `SLACK_SHOWRATE_WEBHOOK_URL` | #show-rate-tpds channel webhook |
 | `SLACK_CLOSER_WEBHOOK_URL` | #closer-tpds channel webhook |
-| `SLACK_VERIFY_WEBHOOK_URL` | #setter-daily-verify channel webhook |
+| `SLACK_DATAVERIFICATION_WEBHOOK_URL` | #setter-daily-verify channel webhook |
 
 ---
 

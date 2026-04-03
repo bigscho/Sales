@@ -57,7 +57,7 @@ export async function sendSlackNoShow(text: string, blocks?: unknown[]) {
 
 // Send to #setter-daily-verify channel
 export async function sendSlackVerify(text: string, blocks?: unknown[]) {
-  const url = process.env.SLACK_VERIFY_WEBHOOK_URL;
+  const url = process.env.SLACK_DATAVERIFICATION_WEBHOOK_URL;
   if (!url) return;
   await sendToWebhook(url, text, blocks);
 }
