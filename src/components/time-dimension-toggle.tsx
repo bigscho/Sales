@@ -29,7 +29,7 @@ export function TimeDimensionToggle({
           className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
             value === dim
               ? "bg-[var(--card)] text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
           }`}
         >
           {LABELS[dim]}

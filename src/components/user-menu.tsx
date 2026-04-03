@@ -21,11 +21,11 @@ export function UserMenu() {
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="text-gray-600">{session.name}</span>
-      <span className="text-xs text-gray-400">({session.isAdmin ? "admin" : session.role})</span>
+      <span className="text-[var(--muted-foreground)]">{session.name}</span>
+      <span className="text-xs text-[var(--muted-foreground)]/70">({session.isAdmin ? "admin" : session.role})</span>
       <button
         onClick={handleLogout}
-        className="text-xs text-gray-400 hover:text-red-500 ml-1"
+        className="text-xs text-[var(--muted-foreground)]/70 hover:text-red-500 ml-1"
       >
         Logout
       </button>

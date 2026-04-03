@@ -80,7 +80,7 @@ export default function ScoreboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Setter Scoreboard</h2>
-          <p className="text-sm text-gray-500 mt-1">{dimLabel} performance</p>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1">{dimLabel} performance</p>
         </div>
         <TimeDimensionToggle value={dimension} onChange={setDimension} />
       </div>
@@ -89,16 +89,16 @@ export default function ScoreboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">New Bookings</p>
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">New Bookings</p>
             <p className="text-3xl font-bold mt-1">{teamTotals.activity.newBookings}</p>
-            <p className="text-xs text-gray-500">booked {dimLabel.toLowerCase()}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">booked {dimLabel.toLowerCase()}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Shows</p>
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Shows</p>
             <p className="text-3xl font-bold text-green-600 mt-1">{teamTotals.results.shows}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-[var(--muted-foreground)]">
               of {teamTotals.results.shows + teamTotals.results.noShows} confirmed
               {teamTotals.results.pending > 0 ? ` (${teamTotals.results.pending} pending)` : ""}
             </p>
@@ -106,28 +106,28 @@ export default function ScoreboardPage() {
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Show Rate</p>
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate</p>
             <p className={`text-3xl font-bold mt-1 ${
               teamTotals.results.showRate >= 0.6 ? "text-green-600" :
               teamTotals.results.showRate >= 0.4 ? "text-yellow-600" : "text-red-600"
             }`}>
               {(teamTotals.results.shows + teamTotals.results.noShows) > 0 ? formatPercent(teamTotals.results.showRate) : "—"}
             </p>
-            <p className="text-xs text-gray-500">team average</p>
+            <p className="text-xs text-[var(--muted-foreground)]">team average</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Awaiting Confirmation</p>
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Awaiting Confirmation</p>
             <p className="text-3xl font-bold text-yellow-600 mt-1">{teamTotals.results.pending}</p>
-            <p className="text-xs text-gray-500">on calendar {dimLabel.toLowerCase()}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">on calendar {dimLabel.toLowerCase()}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Pending Total</p>
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Pending Total</p>
             <p className="text-3xl font-bold text-blue-600 mt-1">{teamTotals.pendingTotal}</p>
-            <p className="text-xs text-gray-500">across all weeks</p>
+            <p className="text-xs text-[var(--muted-foreground)]">across all weeks</p>
           </CardContent>
         </Card>
       </div>
@@ -141,11 +141,11 @@ export default function ScoreboardPage() {
           <CardContent className="pt-4 pb-4 px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Show Rate Rep</p>
+                <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate Rep</p>
                 <p className="text-xl font-bold mt-1">{showRateRep.name}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-gray-500">{dimLabel}</p>
+                <p className="text-xs text-[var(--muted-foreground)]">{dimLabel}</p>
                 <p className={`text-3xl font-bold ${
                   showRateRep.showRate >= 0.6 ? "text-green-600" :
                   showRateRep.showRate >= 0.4 ? "text-yellow-600" : "text-red-600"
@@ -153,7 +153,7 @@ export default function ScoreboardPage() {
                   {(teamTotals.results.shows + teamTotals.results.noShows) > 0 ? formatPercent(showRateRep.showRate) : "—"}
                 </p>
               </div>
-              <div className="text-sm text-gray-600 max-w-xs">
+              <div className="text-sm text-[var(--muted-foreground)] max-w-xs">
                 <p className="font-medium">Bonus Tiers:</p>
                 <p>50%+ → $100 | 60%+ → $200 | 70%+ → $300</p>
               </div>

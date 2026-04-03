@@ -88,8 +88,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
                 isActive
-                  ? "bg-white/15 text-[var(--accent)]"
-                  : "text-white/60 hover:bg-white/10 hover:text-white"
+                  ? "bg-white/10 text-[var(--accent)] border-l-2 border-[var(--lime)]"
+                  : "text-white/60 hover:bg-white/10 hover:text-white border-l-2 border-transparent"
               )}
             >
               <span className="text-base">{item.icon}</span>

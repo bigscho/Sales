@@ -178,14 +178,14 @@ export default function PnLPage() {
             <CardContent className="pt-6">
               <p className="text-sm text-[var(--muted-foreground)]">Revenue</p>
               <p className="text-2xl font-bold text-green-600">{formatCents(totalRevenue)}</p>
-              <p className="text-xs text-gray-500 mt-1">{payments.length} payments - click to expand</p>
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">{payments.length} payments - click to expand</p>
             </CardContent>
           </Card>
           <Card className="cursor-pointer hover:shadow-md" onClick={() => setShowExpenses(!showExpenses)}>
             <CardContent className="pt-6">
               <p className="text-sm text-[var(--muted-foreground)]">Expenses</p>
               <p className="text-2xl font-bold text-red-600">{formatCents(totalExpenses)}</p>
-              <p className="text-xs text-gray-500 mt-1">{expenses.length} line items - click to expand</p>
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">{expenses.length} line items - click to expand</p>
             </CardContent>
           </Card>
           <Card>
@@ -229,7 +229,7 @@ export default function PnLPage() {
                   </tr>
                 ))}
                 {payments.length === 0 && (
-                  <tr><td colSpan={3} className="p-4 text-center text-gray-500">No payments this week</td></tr>
+                  <tr><td colSpan={3} className="p-4 text-center text-[var(--muted-foreground)]">No payments this week</td></tr>
                 )}
               </tbody>
             </table>

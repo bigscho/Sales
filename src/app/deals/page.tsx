@@ -174,7 +174,7 @@ export default function DealsPage() {
                   >
                     <td className="p-3">
                       <div className="font-medium">{deal.prospectName}</div>
-                      {deal.prospectEmail && <div className="text-xs text-gray-500">{deal.prospectEmail}</div>}
+                      {deal.prospectEmail && <div className="text-xs text-[var(--muted-foreground)]">{deal.prospectEmail}</div>}
                     </td>
                     <td className="p-3">
                       <select
@@ -210,7 +210,7 @@ export default function DealsPage() {
                         : "—"
                       }
                     </td>
-                    <td className="p-3 text-xs text-gray-500">
+                    <td className="p-3 text-xs text-[var(--muted-foreground)]">
                       {deal.demo?.booking?.setter?.name || "—"}
                     </td>
                   </tr>
@@ -219,20 +219,20 @@ export default function DealsPage() {
                       <td colSpan={7} className="bg-[var(--muted)] p-4">
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
-                            <p className="font-medium text-gray-600">Stripe Customer ID</p>
+                            <p className="font-medium text-[var(--muted-foreground)]">Stripe Customer ID</p>
                             <p>{deal.stripeCustomerId || "Not linked"}</p>
                           </div>
                           <div>
-                            <p className="font-medium text-gray-600">Demo Date</p>
+                            <p className="font-medium text-[var(--muted-foreground)]">Demo Date</p>
                             <p>{deal.demo ? formatDate(deal.demo.booking.demoDate) : "No demo linked"}</p>
                           </div>
                           <div>
-                            <p className="font-medium text-gray-600">Notes</p>
+                            <p className="font-medium text-[var(--muted-foreground)]">Notes</p>
                             <p>{deal.notes || "—"}</p>
                           </div>
                           {deal.payments.length > 0 && (
                             <div className="col-span-3">
-                              <p className="font-medium text-gray-600 mb-2">Stripe Payments</p>
+                              <p className="font-medium text-[var(--muted-foreground)] mb-2">Stripe Payments</p>
                               {deal.payments.map((p) => (
                                 <div key={p.id} className="flex justify-between py-1 border-b last:border-0">
                                   <span>{formatDate(p.paidAt)}</span>
@@ -252,7 +252,7 @@ export default function DealsPage() {
               ))}
               {deals.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-gray-500">
+                  <td colSpan={7} className="p-8 text-center text-[var(--muted-foreground)]">
                     No deals this week. Add deals manually or they&apos;ll be created from confirmed demos.
                   </td>
                 </tr>
@@ -296,10 +296,10 @@ export default function DealsPage() {
                       ) : p.matchStatus === "matched" ? (
                         <span className="text-xs text-green-600 font-medium">Matched</span>
                       ) : (
-                        <span className="text-xs text-gray-500">Unlinked</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">Unlinked</span>
                       )}
                       {p.matchReason && (
-                        <p className="text-xs text-gray-400 truncate max-w-[150px]" title={p.matchReason}>{p.matchReason}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]/70 truncate max-w-[150px]" title={p.matchReason}>{p.matchReason}</p>
                       )}
                     </td>
                     <td className="p-3 text-right font-medium">{formatCents(p.amountCents)}</td>
@@ -310,7 +310,7 @@ export default function DealsPage() {
                 <tr>
                   <td colSpan={4} className="p-3 font-semibold">
                     Total
-                    <span className="ml-4 font-normal text-xs text-gray-500">
+                    <span className="ml-4 font-normal text-xs text-[var(--muted-foreground)]">
                       MRR: {formatCents(unlinkedPayments.filter(p => p.isSubscription).reduce((s, p) => s + p.amountCents, 0))}
                       {" | "}
                       One-Time: {formatCents(unlinkedPayments.filter(p => !p.isSubscription).reduce((s, p) => s + p.amountCents, 0))}

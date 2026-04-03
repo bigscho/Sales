@@ -86,7 +86,7 @@ export default function SettingsPage() {
               </div>
             ))}
             {categories.length === 0 && (
-              <p className="text-sm text-gray-500">No custom categories. Default categories are always available.</p>
+              <p className="text-sm text-[var(--muted-foreground)]">No custom categories. Default categories are always available.</p>
             )}
           </div>
         </CardContent>
@@ -106,7 +106,7 @@ export default function SettingsPage() {
             <EnvStatus name="AIRTABLE_API_KEY" label="Airtable" />
             <EnvStatus name="FIREFLIES_API_KEY" label="Fireflies" />
           </div>
-          <p className="text-xs text-gray-500 mt-4">
+          <p className="text-xs text-[var(--muted-foreground)] mt-4">
             Set these in your .env.local file or Vercel environment variables.
           </p>
         </CardContent>
@@ -139,7 +139,7 @@ export default function SettingsPage() {
                       </span>
                     </td>
                     <td className="p-2 text-right">{log.recordsSynced}</td>
-                    <td className="p-2 text-xs text-gray-500">
+                    <td className="p-2 text-xs text-[var(--muted-foreground)]">
                       {new Date(log.startedAt).toLocaleString()}
                     </td>
                     <td className="p-2 text-xs text-red-500">{log.errorMessage || "—"}</td>
@@ -148,7 +148,7 @@ export default function SettingsPage() {
               </tbody>
             </table>
           ) : (
-            <p className="text-sm text-gray-500">No sync history yet. Click &quot;Sync Data&quot; to pull data from your integrations.</p>
+            <p className="text-sm text-[var(--muted-foreground)]">No sync history yet. Click &quot;Sync Data&quot; to pull data from your integrations.</p>
           )}
         </CardContent>
       </Card>
@@ -161,7 +161,7 @@ function EnvStatus({ name, label }: { name: string; label: string }) {
   return (
     <div className="flex items-center justify-between py-1">
       <span>{label}</span>
-      <code className="text-xs bg-gray-100 px-2 py-1 rounded">{name}</code>
+      <code className="text-xs bg-[var(--muted)] px-2 py-1 rounded">{name}</code>
     </div>
   );
 }

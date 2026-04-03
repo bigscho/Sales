@@ -126,14 +126,14 @@ export default function Dashboard() {
                 <div key={d.id} className="flex justify-between text-sm">
                   <span>{d.booking.prospectName}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{d.booking.setter?.name || "—"}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name || "—"}</span>
                     <Badge variant={d.status === "showed" ? "success" : d.status === "no_show" ? "danger" : "warning"}>
                       {d.status}
                     </Badge>
                   </div>
                 </div>
               ))}
-              {demos.length === 0 && <p className="text-sm text-gray-500">No bookings this week</p>}
+              {demos.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">No bookings this week</p>}
             </div>
           }
         />
@@ -143,21 +143,21 @@ export default function Dashboard() {
           subtitle={`${kpis.totalNoShows} no-shows`}
           detail={
             <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-600 mb-2">Showed:</p>
+              <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">Showed:</p>
               {showedDemos.map((d) => (
                 <div key={d.id} className="flex justify-between text-sm">
                   <span>{d.booking.prospectName}</span>
-                  <span className="text-xs text-gray-500">{d.booking.setter?.name}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">{d.booking.setter?.name}</span>
                 </div>
               ))}
-              {noShowDemos.length > 0 && <p className="text-xs font-medium text-gray-600 mt-3 mb-2">No-shows:</p>}
+              {noShowDemos.length > 0 && <p className="text-xs font-medium text-[var(--muted-foreground)] mt-3 mb-2">No-shows:</p>}
               {noShowDemos.map((d) => (
                 <div key={d.id} className="flex justify-between text-sm text-red-600">
                   <span>{d.booking.prospectName}</span>
                   <span className="text-xs">{d.booking.setter?.name}</span>
                 </div>
               ))}
-              {pendingDemos.length > 0 && <p className="text-xs font-medium text-gray-600 mt-3 mb-2">Pending:</p>}
+              {pendingDemos.length > 0 && <p className="text-xs font-medium text-[var(--muted-foreground)] mt-3 mb-2">Pending:</p>}
               {pendingDemos.map((d) => (
                 <div key={d.id} className="flex justify-between text-sm text-yellow-600">
                   <span>{d.booking.prospectName}</span>
@@ -203,7 +203,7 @@ export default function Dashboard() {
       {/* Setter Leaderboards */}
       {scoreboardData && scoreboardData.scoreboard.length > 0 && (
         <div>
-          <h3 className="text-lg font-semibold mb-3">Setter Performance</h3>
+          <h3 className="section-header mb-3">Setter Performance</h3>
           <SetterLeaderboards
             scoreboard={scoreboardData.scoreboard}
             unattributed={scoreboardData.unattributed}
@@ -214,7 +214,7 @@ export default function Dashboard() {
       {/* Closer Performance */}
       {kpis.closerStats.length > 0 && (
         <div>
-          <h3 className="text-lg font-semibold mb-3">Closer Performance</h3>
+          <h3 className="section-header mb-3">Closer Performance</h3>
           <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-[var(--muted)] border-b">

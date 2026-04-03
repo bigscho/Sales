@@ -62,7 +62,7 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   showed: "bg-green-100 text-green-800",
   no_show: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-600",
+  cancelled: "bg-[var(--muted)] text-[var(--muted-foreground)]",
   rescheduled: "bg-blue-100 text-blue-700",
 };
 
@@ -138,7 +138,7 @@ export default function VerifyPage() {
   if (!weekId || !setterId) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">Invalid verification link. Contact your manager.</p>
+        <p className="text-[var(--muted-foreground)]">Invalid verification link. Contact your manager.</p>
       </div>
     );
   }
@@ -153,7 +153,7 @@ export default function VerifyPage() {
     );
   }
 
-  if (!data) return <p className="text-center mt-10 text-gray-500">Error loading data</p>;
+  if (!data) return <p className="text-center mt-10 text-[var(--muted-foreground)]">Error loading data</p>;
 
   const { setter, demos, missingFlags, verification } = data;
 
@@ -277,10 +277,10 @@ export default function VerifyPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">{setter.name} — Weekly Verification</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-[var(--muted-foreground)] mt-1">
           {formatWeekRange(data.weekStart, data.weekEnd)}
         </p>
-        <p className="text-sm text-gray-600 mt-2">
+        <p className="text-sm text-[var(--muted-foreground)] mt-2">
           Here are the bookings and shows we&apos;re crediting you for this week.
           Confirm what&apos;s correct, and flag anything that needs fixing.
         </p>
@@ -291,27 +291,27 @@ export default function VerifyPage() {
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold">{demos.length}</p>
-            <p className="text-xs text-gray-500">Booked</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Booked</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold text-green-600">{showCount}</p>
-            <p className="text-xs text-gray-500">Showed</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Showed</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold text-red-600">{noShowCount}</p>
-            <p className="text-xs text-gray-500">No Show</p>
+            <p className="text-xs text-[var(--muted-foreground)]">No Show</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
-            <p className={`text-2xl font-bold ${Number(showRate) >= 60 ? "text-green-600" : Number(showRate) >= 40 ? "text-yellow-600" : "text-gray-600"}`}>
+            <p className={`text-2xl font-bold ${Number(showRate) >= 60 ? "text-green-600" : Number(showRate) >= 40 ? "text-yellow-600" : "text-[var(--muted-foreground)]"}`}>
               {showRate}%
             </p>
-            <p className="text-xs text-gray-500">Show Rate</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
           </CardContent>
         </Card>
       </div>
@@ -350,7 +350,7 @@ export default function VerifyPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           {demos.length === 0 && (
-            <p className="text-sm text-gray-500 py-4 text-center">No demos attributed to you this week.</p>
+            <p className="text-sm text-[var(--muted-foreground)] py-4 text-center">No demos attributed to you this week.</p>
           )}
 
           {/* Unlocked demos first */}
@@ -374,7 +374,7 @@ export default function VerifyPage() {
           {lockedDemos.length > 0 && (
             <>
               <div className="border-t pt-3 mt-3">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Locked Days</p>
+                <p className="text-xs text-[var(--muted-foreground)]/70 uppercase tracking-wide mb-2">Locked Days</p>
               </div>
               {lockedDemos.map((demo) => (
                 <DemoRow
@@ -407,11 +407,11 @@ export default function VerifyPage() {
               <div key={f.id} className="flex items-center justify-between p-3 rounded-lg bg-orange-50 border border-orange-200">
                 <div>
                   <p className="text-sm font-medium">{f.prospectName || "Unknown"}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-[var(--muted-foreground)]">
                     {f.prospectEmail && <span>{f.prospectEmail} &middot; </span>}
                     {f.demoDate && <span>~{f.demoDate}</span>}
                   </p>
-                  {f.note && <p className="text-xs text-gray-600 mt-1">{f.note}</p>}
+                  {f.note && <p className="text-xs text-[var(--muted-foreground)] mt-1">{f.note}</p>}
                 </div>
                 <Badge variant={f.ceoAction === "approved" ? "success" : f.ceoAction === "rejected" ? "danger" : "warning"}>
                   {f.ceoAction === "pending" ? "Under Review" : f.ceoAction === "approved" ? "Approved" : "Rejected"}
@@ -427,7 +427,7 @@ export default function VerifyPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Missing a Demo?</CardTitle>
-            <p className="text-xs text-gray-500">If you booked a demo this week that&apos;s not listed above, let us know.</p>
+            <p className="text-xs text-[var(--muted-foreground)]">If you booked a demo this week that&apos;s not listed above, let us know.</p>
           </CardHeader>
           <CardContent>
             {/* Pending missing drafts */}
@@ -435,7 +435,7 @@ export default function VerifyPage() {
               <div key={idx} className="flex items-center justify-between p-2 mb-2 rounded bg-orange-50 border border-orange-200">
                 <div>
                   <p className="text-sm font-medium">{draft.missingProspectName}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-[var(--muted-foreground)]">
                     {draft.missingProspectEmail && <span>{draft.missingProspectEmail} &middot; </span>}
                     {draft.missingDemoDate && <span>~{draft.missingDemoDate}</span>}
                   </p>
@@ -503,7 +503,7 @@ export default function VerifyPage() {
                 : "Confirm All Correct"}
           </Button>
           {!allAccountedFor && unlockedActionable.length > 0 && (
-            <p className="text-xs text-center text-gray-500 mt-2">
+            <p className="text-xs text-center text-[var(--muted-foreground)] mt-2">
               {unlockedActionable.length - confirmedIds.size - flagDrafts.size} demo(s) still need to be confirmed or flagged
             </p>
           )}
@@ -547,17 +547,17 @@ function DemoRow({
 
   return (
     <div className={`p-3 rounded-lg border transition-colors ${
-      isLocked ? "bg-[var(--muted)] border-gray-200 opacity-60" :
+      isLocked ? "bg-[var(--muted)] border-[var(--border)] opacity-60" :
       hasExistingFlag ? "bg-orange-50 border-orange-200" :
       isConfirmed ? "bg-green-50 border-green-200" :
       hasFlagDraft ? "bg-orange-50 border-orange-200" :
-      "bg-[var(--card)] border-gray-200"
+      "bg-[var(--card)] border-[var(--border)]"
     }`}>
       <div className="flex items-center gap-3">
         {/* Checkbox / Status indicator */}
         <div className="flex-shrink-0 w-8">
           {isLocked ? (
-            <span className="text-gray-400 text-lg" title="Day locked">🔒</span>
+            <span className="text-[var(--muted-foreground)]/70 text-lg" title="Day locked">🔒</span>
           ) : hasExistingFlag ? (
             <span className="text-orange-500 text-lg" title="Flagged">🚩</span>
           ) : hasFlagDraft ? (
@@ -567,7 +567,7 @@ function DemoRow({
               <span className="text-green-600 text-lg">✓</span>
             </button>
           ) : isActionable ? (
-            <button onClick={onToggleConfirm} className="w-5 h-5 border-2 border-gray-300 rounded hover:border-green-400 transition-colors" />
+            <button onClick={onToggleConfirm} className="w-5 h-5 border-2 border-[var(--border)] rounded hover:border-green-400 transition-colors" />
           ) : (
             <span className="text-gray-300 text-lg">—</span>
           )}
@@ -576,7 +576,7 @@ function DemoRow({
         {/* Demo info */}
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm truncate">{demo.prospectName}</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[var(--muted-foreground)]">
             {formatDate(demo.demoDate)}
             {demo.closer && <span> &middot; w/ {demo.closer}</span>}
           </p>
@@ -584,7 +584,7 @@ function DemoRow({
 
         {/* Status badge */}
         <div className="flex-shrink-0">
-          <span className={`text-xs font-medium px-2 py-1 rounded-full ${STATUS_COLORS[demo.status] || "bg-gray-100 text-gray-600"}`}>
+          <span className={`text-xs font-medium px-2 py-1 rounded-full ${STATUS_COLORS[demo.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]"}`}>
             {STATUS_LABELS[demo.status] || demo.status}
           </span>
         </div>
@@ -593,7 +593,7 @@ function DemoRow({
         {isActionable && !isConfirmed && !hasFlagDraft && (
           <button
             onClick={onToggleFlag}
-            className="flex-shrink-0 text-xs text-gray-400 hover:text-orange-500 transition-colors"
+            className="flex-shrink-0 text-xs text-[var(--muted-foreground)]/70 hover:text-orange-500 transition-colors"
             title="Flag an issue"
           >
             Flag
@@ -634,7 +634,7 @@ function DemoRow({
             <button
               onClick={() => setFlagType("wrong_status")}
               className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                flagType === "wrong_status" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-[var(--card)] border-gray-200 text-gray-600 hover:border-gray-300"
+                flagType === "wrong_status" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-[var(--card)] border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--border)]"
               }`}
             >
               Wrong status
@@ -642,7 +642,7 @@ function DemoRow({
             <button
               onClick={() => setFlagType("not_mine")}
               className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                flagType === "not_mine" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-[var(--card)] border-gray-200 text-gray-600 hover:border-gray-300"
+                flagType === "not_mine" ? "bg-orange-100 border-orange-300 text-orange-700" : "bg-[var(--card)] border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--border)]"
               }`}
             >
               Not my booking

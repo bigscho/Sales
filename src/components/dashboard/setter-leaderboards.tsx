@@ -25,7 +25,7 @@ interface SetterLeaderboardsProps {
 const MEDALS = ["🥇", "🥈", "🥉"];
 const TIER_LABELS: Record<number, string> = { 1: "Tier 1", 2: "Tier 2", 3: "Tier 3", 4: "Tier 4" };
 const TIER_COLORS: Record<number, string> = {
-  1: "bg-gray-100 text-gray-600",
+  1: "bg-[var(--muted)] text-[var(--muted-foreground)]",
   2: "bg-blue-100 text-blue-700",
   3: "bg-purple-100 text-purple-700",
   4: "bg-amber-100 text-amber-700",
@@ -34,7 +34,7 @@ const TIER_COLORS: Record<number, string> = {
 function StatBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0;
   return (
-    <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+    <div className="w-full bg-[var(--muted)] rounded-full h-3 overflow-hidden">
       <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
     </div>
   );
@@ -52,16 +52,16 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">New Bookings</CardTitle>
-          <p className="text-xs text-gray-500">Ranked by bookings created {dimLabel.toLowerCase()}</p>
+          <p className="text-xs text-[var(--muted-foreground)]">Ranked by bookings created {dimLabel.toLowerCase()}</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {activityRanked.map((setter, idx) => (
-            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-gray-100 transition-colors">
+            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-[var(--teal-tint)] transition-colors">
               <div className="w-8 text-center flex-shrink-0">
                 {idx < 3 && setter.activity.newBookings > 0 ? (
                   <span className="text-xl">{MEDALS[idx]}</span>
                 ) : (
-                  <span className="text-sm font-bold text-gray-400">#{idx + 1}</span>
+                  <span className="text-sm font-bold text-[var(--muted-foreground)]/70">#{idx + 1}</span>
                 )}
               </div>
               <div className="w-20 flex-shrink-0">
@@ -82,7 +82,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
             <div className="flex items-center gap-3 p-2.5 rounded-lg bg-yellow-50/50 border border-yellow-200">
               <div className="w-8 text-center flex-shrink-0"><span className="text-lg">❓</span></div>
               <div className="w-20 flex-shrink-0">
-                <p className="font-bold text-sm text-gray-500">Unknown</p>
+                <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
@@ -99,16 +99,16 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">Shows</CardTitle>
-          <p className="text-xs text-gray-500">Ranked by demos showed {dimLabel.toLowerCase()}</p>
+          <p className="text-xs text-[var(--muted-foreground)]">Ranked by demos showed {dimLabel.toLowerCase()}</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {resultsRanked.map((setter, idx) => (
-            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-gray-100 transition-colors">
+            <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-[var(--teal-tint)] transition-colors">
               <div className="w-8 text-center flex-shrink-0">
                 {idx < 3 && setter.results.shows > 0 ? (
                   <span className="text-xl">{MEDALS[idx]}</span>
                 ) : (
-                  <span className="text-sm font-bold text-gray-400">#{idx + 1}</span>
+                  <span className="text-sm font-bold text-[var(--muted-foreground)]/70">#{idx + 1}</span>
                 )}
               </div>
               <div className="w-20 flex-shrink-0">
@@ -134,7 +134,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 <p className={`text-lg font-bold ${
                   setter.results.showRate >= 0.6 ? "text-green-600" :
                   setter.results.showRate >= 0.4 ? "text-yellow-600" :
-                  (setter.results.shows + setter.results.noShows) === 0 ? "text-gray-400" : "text-red-600"
+                  (setter.results.shows + setter.results.noShows) === 0 ? "text-[var(--muted-foreground)]/70" : "text-red-600"
                 }`}>
                   {(setter.results.shows + setter.results.noShows) > 0 ? formatPercent(setter.results.showRate) : "—"}
                 </p>
@@ -145,7 +145,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
             <div className="flex items-center gap-3 p-2.5 rounded-lg bg-yellow-50/50 border border-yellow-200">
               <div className="w-8 text-center flex-shrink-0"><span className="text-lg">❓</span></div>
               <div className="w-20 flex-shrink-0">
-                <p className="font-bold text-sm text-gray-500">Unknown</p>
+                <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">

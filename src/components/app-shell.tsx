@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
         <main className="flex-1 flex flex-col">
           <header className="h-16 border-b border-[var(--border)] bg-[var(--card)] flex items-center justify-between px-6">
-            <Suspense fallback={<div className="h-10 w-56 bg-gray-100 animate-pulse rounded-lg" />}>
+            <Suspense fallback={<div className="h-10 w-56 bg-[var(--muted)] animate-pulse rounded-lg" />}>
               <WeekSelector />
             </Suspense>
             <div className="flex items-center gap-3">

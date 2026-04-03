@@ -103,7 +103,7 @@ export default function TeamPage() {
                 <option value="4">Tier 4 - Lead SDR</option>
               </select>
               <input name="slackUserId" placeholder="Slack ID (U0...)" className="border rounded-lg px-3 py-2 text-sm w-36" />
-              <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+              <label className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] whitespace-nowrap">
                 <input type="checkbox" name="excludeFromLeaderboard" className="rounded" />
                 Exclude from leaderboard
               </label>
@@ -175,7 +175,7 @@ export default function TeamPage() {
                         {m.excludeFromLeaderboard ? (
                           <button
                             onClick={() => updateMember(m.id, { excludeFromLeaderboard: false })}
-                            className="text-xs text-gray-400 hover:text-green-600"
+                            className="text-xs text-[var(--muted-foreground)]/70 hover:text-green-600"
                             title="Click to include in leaderboard"
                           >
                             Excluded
@@ -183,7 +183,7 @@ export default function TeamPage() {
                         ) : (
                           <button
                             onClick={() => updateMember(m.id, { excludeFromLeaderboard: true })}
-                            className="text-xs text-green-600 hover:text-gray-400"
+                            className="text-xs text-green-600 hover:text-[var(--muted-foreground)]/70"
                             title="Click to exclude from leaderboard"
                           >
                             Included
@@ -209,7 +209,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {setters.length === 0 && (
-                    <tr><td colSpan={9} className="p-4 text-center text-gray-500">No setters added yet</td></tr>
+                    <tr><td colSpan={9} className="p-4 text-center text-[var(--muted-foreground)]">No setters added yet</td></tr>
                   )}
                 </tbody>
               </table>
@@ -273,7 +273,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {closers.length === 0 && (
-                    <tr><td colSpan={6} className="p-4 text-center text-gray-500">No closers added yet</td></tr>
+                    <tr><td colSpan={6} className="p-4 text-center text-[var(--muted-foreground)]">No closers added yet</td></tr>
                   )}
                 </tbody>
               </table>
@@ -309,7 +309,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {showRateReps.length === 0 && (
-                    <tr><td colSpan={3} className="p-4 text-center text-gray-500">No show rate rep added yet</td></tr>
+                    <tr><td colSpan={3} className="p-4 text-center text-[var(--muted-foreground)]">No show rate rep added yet</td></tr>
                   )}
                 </tbody>
               </table>
@@ -324,7 +324,7 @@ export default function TeamPage() {
         <CardContent className="text-sm space-y-4">
           <div>
             <p className="font-medium mb-1">Setter Tiers</p>
-            <ul className="space-y-1 text-gray-600">
+            <ul className="space-y-1 text-[var(--muted-foreground)]">
               <li>Tier 1 (Junior): $25/show flat. Promote at 15 cumulative shows.</li>
               <li>Tier 2 (SDR): 0-9 shows=$25, 10-14=$35, 15+=$40/show. Promote at 45 cumulative shows.</li>
               <li>Tier 3 (Senior SDR): Same rates + $500 base if 10+ shows/week. Promote after 2 consecutive 15+ weeks.</li>
@@ -333,11 +333,11 @@ export default function TeamPage() {
           </div>
           <div>
             <p className="font-medium mb-1">Closers</p>
-            <p className="text-gray-600">$2,000/month base + 20% of Month 1 cash collected per close.</p>
+            <p className="text-[var(--muted-foreground)]">$2,000/month base + 20% of Month 1 cash collected per close.</p>
           </div>
           <div>
             <p className="font-medium mb-1">Show Rate Rep Bonus</p>
-            <ul className="space-y-1 text-gray-600">
+            <ul className="space-y-1 text-[var(--muted-foreground)]">
               <li>50%+ show rate: $100</li>
               <li>60%+ show rate: $200</li>
               <li>70%+ show rate: $300</li>
@@ -360,7 +360,7 @@ function PinCell({ member, onSave }: { member: TeamMember; onSave: (pin: string 
         <Badge variant="success" className="text-[10px] px-1.5">PIN set</Badge>
         <button
           onClick={() => { setEditing(true); setValue(""); }}
-          className="text-[10px] text-gray-400 hover:text-blue-500"
+          className="text-[10px] text-[var(--muted-foreground)]/70 hover:text-blue-500"
         >
           Change
         </button>
@@ -395,7 +395,7 @@ function PinCell({ member, onSave }: { member: TeamMember; onSave: (pin: string 
       {editing && (
         <button
           onClick={() => setEditing(false)}
-          className="text-[10px] text-gray-400 hover:text-red-500"
+          className="text-[10px] text-[var(--muted-foreground)]/70 hover:text-red-500"
         >
           Cancel
         </button>

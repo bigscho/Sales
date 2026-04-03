@@ -34,7 +34,7 @@ export function KPICard({ title, value, subtitle, detail, trend, className }: KP
             </span>
           )}
         </div>
-        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-2xl font-bold tracking-tight text-[var(--accent)]">{value}</p>
         {subtitle && (
           <p className="text-xs text-[var(--muted-foreground)] mt-1">{subtitle}</p>
         )}
@@ -43,7 +43,7 @@ export function KPICard({ title, value, subtitle, detail, trend, className }: KP
             <span
               className={cn(
                 "text-xs font-medium",
-                trend.value > 0 ? "text-green-600" : trend.value < 0 ? "text-red-600" : "text-gray-500"
+                trend.value > 0 ? "text-green-600" : trend.value < 0 ? "text-red-600" : "text-[var(--muted-foreground)]"
               )}
             >
               {trend.value > 0 ? "↑" : trend.value < 0 ? "↓" : "→"} {Math.abs(trend.value).toFixed(1)}%

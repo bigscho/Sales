@@ -58,7 +58,7 @@ export function WeekSelector() {
     [router, pathname]
   );
 
-  if (loading) return <div className="h-10 w-56 bg-gray-100 animate-pulse rounded-lg" />;
+  if (loading) return <div className="h-10 w-56 bg-[var(--muted)] animate-pulse rounded-lg" />;
 
   return (
     <div className="flex items-center gap-3">

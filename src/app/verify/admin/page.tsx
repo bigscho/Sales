@@ -136,7 +136,7 @@ export default function VerifyAdminPage() {
   if (!weekId) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">Select a week to manage verifications</p>
+        <p className="text-[var(--muted-foreground)]">Select a week to manage verifications</p>
       </div>
     );
   }
@@ -151,7 +151,7 @@ export default function VerifyAdminPage() {
     );
   }
 
-  if (!data) return <p className="text-center mt-10 text-gray-500">{error ? `Error: ${error}` : "Error loading data"}</p>;
+  if (!data) return <p className="text-center mt-10 text-[var(--muted-foreground)]">{error ? `Error: ${error}` : "Error loading data"}</p>;
 
   const { week, setters, pendingDemoCount, totalFlags, lockedDates, unattributedCount } = data;
   const isLocked = week.status === "confirmed";
@@ -174,7 +174,7 @@ export default function VerifyAdminPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Week Verification</h1>
-          <p className="text-sm text-gray-500 mt-1">{formatWeekRange(week.weekStart, week.weekEnd)}</p>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1">{formatWeekRange(week.weekStart, week.weekEnd)}</p>
         </div>
         <div className="flex items-center gap-3">
           {isLocked ? (
@@ -183,7 +183,7 @@ export default function VerifyAdminPage() {
             <Button
               onClick={lockWeek}
               disabled={!canLock || locking}
-              className="bg-green-600 hover:bg-green-700 text-white px-6"
+              className="bg-gradient-to-r from-[var(--teal)] to-[var(--lime)] text-white hover:brightness-110 px-6"
             >
               {locking ? "Locking..." : "Lock Week"}
             </Button>
@@ -217,33 +217,33 @@ export default function VerifyAdminPage() {
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold">{teamTotals.demos}</p>
-            <p className="text-xs text-gray-500">Total Demos</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Total Demos</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold text-green-600">{teamTotals.shows}</p>
-            <p className="text-xs text-gray-500">Shows</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Shows</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold text-red-600">{teamTotals.noShows}</p>
-            <p className="text-xs text-gray-500">No Shows</p>
+            <p className="text-xs text-[var(--muted-foreground)]">No Shows</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
-            <p className={`text-2xl font-bold ${teamShowRate >= 0.6 ? "text-green-600" : teamShowRate >= 0.4 ? "text-yellow-600" : "text-gray-600"}`}>
+            <p className={`text-2xl font-bold ${teamShowRate >= 0.6 ? "text-green-600" : teamShowRate >= 0.4 ? "text-yellow-600" : "text-[var(--muted-foreground)]"}`}>
               {teamConfirmed > 0 ? formatPercent(teamShowRate) : "--"}
             </p>
-            <p className="text-xs text-gray-500">Show Rate</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className="text-2xl font-bold">{lockedDates.length}/7</p>
-            <p className="text-xs text-gray-500">Days Locked</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Days Locked</p>
           </CardContent>
         </Card>
       </div>
@@ -282,7 +282,7 @@ export default function VerifyAdminPage() {
                   <span className="text-red-600">{setter.noShows} no-show</span>
                   {setter.pending > 0 && <span className="text-yellow-600">{setter.pending} pending</span>}
                   <span className={`font-bold ${
-                    setter.showRate >= 0.6 ? "text-green-600" : setter.showRate >= 0.4 ? "text-yellow-600" : confirmed === 0 ? "text-gray-400" : "text-red-600"
+                    setter.showRate >= 0.6 ? "text-green-600" : setter.showRate >= 0.4 ? "text-yellow-600" : confirmed === 0 ? "text-[var(--muted-foreground)]/70" : "text-red-600"
                   }`}>
                     {confirmed > 0 ? formatPercent(setter.showRate) : "--"}
                   </span>
@@ -304,7 +304,7 @@ export default function VerifyAdminPage() {
                               Prospect: <strong>{flag.missingProspectName || "?"}</strong>
                               {flag.missingProspectEmail && <span> ({flag.missingProspectEmail})</span>}
                             </p>
-                            {flag.missingDemoDate && <p className="text-xs text-gray-600">Approx: {flag.missingDemoDate}</p>}
+                            {flag.missingDemoDate && <p className="text-xs text-[var(--muted-foreground)]">Approx: {flag.missingDemoDate}</p>}
                           </>
                         ) : (
                           <>
@@ -314,13 +314,13 @@ export default function VerifyAdminPage() {
                             {flag.demoName && (
                               <p className="text-sm mt-1">
                                 {flag.demoName}
-                                {flag.demoDate && <span className="text-gray-500"> — {formatDate(flag.demoDate)}</span>}
-                                {flag.demoStatus && <span className="text-gray-500"> [{flag.demoStatus}]</span>}
+                                {flag.demoDate && <span className="text-[var(--muted-foreground)]"> — {formatDate(flag.demoDate)}</span>}
+                                {flag.demoStatus && <span className="text-[var(--muted-foreground)]"> [{flag.demoStatus}]</span>}
                               </p>
                             )}
                           </>
                         )}
-                        {flag.note && <p className="text-xs text-gray-600 mt-1 italic">&quot;{flag.note}&quot;</p>}
+                        {flag.note && <p className="text-xs text-[var(--muted-foreground)] mt-1 italic">&quot;{flag.note}&quot;</p>}
                       </div>
 
                       <div className="flex-shrink-0 flex items-center gap-2">
@@ -330,7 +330,7 @@ export default function VerifyAdminPage() {
                               size="sm"
                               onClick={() => addMissingDemo(flag, setter.id)}
                               disabled={resolving.has(flag.id)}
-                              className="bg-green-600 hover:bg-green-700 text-white"
+                              className="bg-gradient-to-r from-[var(--teal)] to-[var(--lime)] text-white hover:brightness-110"
                             >
                               Add Demo
                             </Button>
@@ -393,9 +393,9 @@ export default function VerifyAdminPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-yellow-800">{unattributedCount} unattributed demo(s)</p>
-                <p className="text-xs text-gray-500">Not assigned to any setter</p>
+                <p className="text-xs text-[var(--muted-foreground)]">Not assigned to any setter</p>
               </div>
-              <a href={`/demos?weekId=${weekId}`} className="text-sm text-blue-600 underline">View in Demos</a>
+              <a href={`/demos?weekId=${weekId}`} className="text-sm text-[var(--teal)] underline">View in Demos</a>
             </div>
           </CardContent>
         </Card>
@@ -405,7 +405,7 @@ export default function VerifyAdminPage() {
       {!isLocked && (
         <div className="sticky bottom-4">
           <Button
-            className="w-full py-6 text-base font-semibold bg-green-600 hover:bg-green-700 text-white"
+            className="w-full py-6 text-base font-semibold bg-gradient-to-r from-[var(--teal)] to-[var(--lime)] text-white hover:brightness-110"
             disabled={!canLock || locking}
             onClick={lockWeek}
           >
@@ -422,7 +422,7 @@ export default function VerifyAdminPage() {
           <CardContent className="py-6 text-center">
             <p className="text-green-800 font-medium text-lg mb-2">Week locked. Numbers are final.</p>
             <a href={`/payroll?weekId=${weekId}`}>
-              <Button className="bg-green-600 hover:bg-green-700 text-white px-8">
+              <Button className="bg-gradient-to-r from-[var(--teal)] to-[var(--lime)] text-white hover:brightness-110 px-8">
                 Go to Payroll
               </Button>
             </a>
