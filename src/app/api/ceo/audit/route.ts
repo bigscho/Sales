@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { sendSlackCEO } from "@/lib/slack";
 
 // Daily financial audit — runs at 7 AM ET (11 UTC)
-// Compares our DB against Stripe, flags discrepancies, alerts on action items
+// Posts full financial snapshot + action items to CEO Slack DM
 export async function GET() {
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json({ error: "STRIPE_SECRET_KEY not set" }, { status: 400 });
@@ -15,10 +15,11 @@ export async function GET() {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthName = now.toLocaleDateString("en-US", { month: "long" });
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
   const issues: string[] = [];
   const alerts: string[] = [];
-  const summary: string[] = [];
 
   // === 1. Compare MTD payments: Stripe vs DB ===
   let stripePaymentCount = 0;
@@ -63,7 +64,7 @@ export async function GET() {
     },
   });
 
-  const dbTotal = dbPayments.reduce((sum, p) => sum + p.amountCents, 0);
+  const collected = dbPayments.reduce((sum, p) => sum + p.amountCents, 0);
   const dbPiIds = new Set(dbPayments.map(p => p.stripePaymentIntentId).filter(Boolean));
 
   // Find missing payments
@@ -73,18 +74,31 @@ export async function GET() {
   }
 
   if (missingFromDb.length > 0) {
-    issues.push(`🔴 ${missingFromDb.length} payment(s) in Stripe not in our DB`);
+    issues.push(`🔴 ${missingFromDb.length} payment(s) in Stripe missing from DB — run backfill`);
+    // Look up details for each missing payment
+    for (const piId of missingFromDb) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(piId);
+        const custId = typeof pi.customer === "string" ? pi.customer : null;
+        let name = "Unknown";
+        if (custId) {
+          try {
+            const c = await stripe.customers.retrieve(custId);
+            if (!("deleted" in c && c.deleted)) name = c.name || c.email || "Unknown";
+          } catch { /* */ }
+        }
+        issues.push(`   → $${(pi.amount/100).toFixed(2)} from ${name} (${piId})`);
+      } catch { /* */ }
+    }
   }
 
-  const paymentDiff = Math.abs(stripeTotal - dbTotal);
-  if (paymentDiff > 100) { // more than $1 difference
-    issues.push(`🔴 Payment total mismatch: Stripe $${(stripeTotal/100).toFixed(2)} vs DB $${(dbTotal/100).toFixed(2)} (diff: $${(paymentDiff/100).toFixed(2)})`);
+  const paymentDiff = Math.abs(stripeTotal - collected);
+  if (paymentDiff > 100) {
+    issues.push(`🔴 Revenue mismatch: Stripe says $${(stripeTotal/100).toFixed(2)}, DB says $${(collected/100).toFixed(2)} (off by $${(paymentDiff/100).toFixed(2)})`);
   }
 
-  summary.push(`💰 ${monthName} collected: $${(dbTotal/100).toFixed(2)} (${dbPayments.length} payments)`);
-
-  // === 2. Check for failed payments (last 24 hours) ===
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  // === 2. Check for failed payments (last 48 hours) ===
+  const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
   let failedHasMore = true;
   let failedStartingAfter: string | undefined;
@@ -93,7 +107,7 @@ export async function GET() {
     const params: Record<string, unknown> = {
       limit: 100,
       created: {
-        gte: Math.floor(yesterday.getTime() / 1000),
+        gte: Math.floor(twoDaysAgo.getTime() / 1000),
         lte: Math.floor(now.getTime() / 1000),
       },
     };
@@ -115,7 +129,7 @@ export async function GET() {
             }
           } catch { /* */ }
         }
-        alerts.push(`⚠️ Payment failed: $${(pi.amount/100).toFixed(2)} from ${name} — card needs updating`);
+        alerts.push(`🚨 Failed payment: $${(pi.amount/100).toFixed(2)} from ${name} — update card ASAP`);
       }
     }
 
@@ -125,35 +139,93 @@ export async function GET() {
     }
   }
 
-  // === 3. MRR check: count active subs ===
-  const subs = await stripe.subscriptions.list({ status: "active", limit: 100 });
+  // === 3. Full subscription analysis ===
+  const subs = await stripe.subscriptions.list({
+    status: "active",
+    limit: 100,
+    expand: ["data.customer"],
+  });
+
   let activeMrr = 0;
+  let pausedMrr = 0;
+  let collectibleThisMonth = 0;
+  let recoverableMonthly = 0;
+  let terminalMrr = 0;
   let pausedCount = 0;
   let activeCount = 0;
+  let terminalCount = 0;
+  const recoverableNames: string[] = [];
+  const terminalNames: string[] = [];
 
   for (const sub of subs.data) {
     const subRaw = sub as unknown as Record<string, unknown>;
     const isPaused = !!subRaw.pause_collection;
+    const cancelAt = typeof subRaw.cancel_at === "number" ? subRaw.cancel_at : null;
+    const canceledAt = typeof subRaw.canceled_at === "number" ? subRaw.canceled_at : null;
+    const billingAnchor = typeof subRaw.billing_cycle_anchor === "number" ? subRaw.billing_cycle_anchor : 0;
+
+    const customer = typeof sub.customer === "string" ? null : sub.customer;
+    const name = customer && !("deleted" in customer && customer.deleted)
+      ? (customer.name || customer.email || "Unknown")
+      : "Unknown";
 
     let subMrr = 0;
+    let chargeAmount = 0;
+    const intervalMonths = sub.items.data[0]?.price.recurring?.interval === "month"
+      ? (sub.items.data[0]?.price.recurring?.interval_count || 1)
+      : sub.items.data[0]?.price.recurring?.interval === "year" ? 12 : 1;
+
     for (const item of sub.items.data) {
       const unitAmount = item.price.unit_amount || 0;
       const quantity = item.quantity || 1;
       const interval = item.price.recurring?.interval;
-      const intervalCount = item.price.recurring?.interval_count || 1;
+      const intCount = item.price.recurring?.interval_count || 1;
 
-      if (interval === "month") subMrr += unitAmount * quantity / intervalCount;
-      else if (interval === "year") subMrr += Math.round((unitAmount * quantity) / (12 * intervalCount));
+      chargeAmount += unitAmount * quantity;
+      if (interval === "month") subMrr += unitAmount * quantity / intCount;
+      else if (interval === "year") subMrr += Math.round((unitAmount * quantity) / (12 * intCount));
     }
 
-    if (isPaused) pausedCount++;
-    else {
-      activeMrr += subMrr;
+    // Terminal check
+    let isTerminal = false;
+    if (cancelAt && canceledAt && billingAnchor > 0 && intervalMonths > 0) {
+      const anchor = new Date(billingAnchor * 1000);
+      const cancelDate = new Date(cancelAt * 1000);
+      const nextBill = new Date(anchor);
+      while (nextBill <= now) {
+        nextBill.setMonth(nextBill.getMonth() + intervalMonths);
+      }
+      isTerminal = nextBill >= cancelDate;
+    }
+
+    if (isPaused) {
+      pausedCount++;
+      pausedMrr += subMrr;
+      if (intervalMonths === 1) {
+        recoverableMonthly += subMrr;
+        recoverableNames.push(`${name} ($${(subMrr/100).toFixed(2)}/mo)`);
+      }
+    } else if (isTerminal) {
+      terminalCount++;
+      terminalMrr += subMrr;
+      terminalNames.push(`${name} ($${(subMrr/100).toFixed(2)}/mo)`);
+    } else {
       activeCount++;
+      activeMrr += subMrr;
+
+      // Collectible this month
+      if (billingAnchor > 0 && intervalMonths > 0) {
+        const anchor = new Date(billingAnchor * 1000);
+        const nextBill = new Date(anchor);
+        while (nextBill <= now) {
+          nextBill.setMonth(nextBill.getMonth() + intervalMonths);
+        }
+        if (nextBill >= thisMonthStart && nextBill <= thisMonthEnd) {
+          collectibleThisMonth += chargeAmount;
+        }
+      }
     }
   }
-
-  summary.push(`📊 MRR: $${(activeMrr/100).toFixed(2)} (${activeCount} active, ${pausedCount} paused)`);
 
   // === 4. Upcoming term endings (within 14 days) ===
   for (const sub of subs.data) {
@@ -170,51 +242,75 @@ export async function GET() {
           ? (customer.name || customer.email || "Unknown")
           : "Unknown";
 
-        let subMrr = 0;
+        let amount = 0;
         for (const item of sub.items.data) {
-          subMrr += (item.price.unit_amount || 0) * (item.quantity || 1);
+          amount += (item.price.unit_amount || 0) * (item.quantity || 1);
         }
 
-        alerts.push(`📅 ${name} subscription ends in ${daysUntil} days ($${(subMrr/100).toFixed(2)}) — renewal needed`);
+        alerts.push(`📅 ${name} ends in ${daysUntil} days ($${(amount/100).toFixed(2)}/mo) — renewal needed`);
       }
     }
   }
 
-  // === 5. Payments with missing customer info ===
-  const unknownPayments = await prisma.payment.count({
+  // === 5. Data quality checks ===
+  const unknownPayments = await prisma.payment.findMany({
     where: {
       paidAt: { gte: monthStart, lte: now },
       customerName: null,
-      status: "succeeded",
+      status: { in: ["succeeded", "partially_refunded"] },
     },
   });
 
-  if (unknownPayments > 0) {
-    issues.push(`⚠️ ${unknownPayments} payment(s) with unknown customer — run enrich`);
+  if (unknownPayments.length > 0) {
+    issues.push(`⚠️ ${unknownPayments.length} payment(s) with unknown customer:`);
+    for (const p of unknownPayments) {
+      issues.push(`   → $${(p.amountCents/100).toFixed(2)} on ${p.paidAt.toLocaleDateString()} (${p.stripePaymentIntentId || "no PI"})`);
+    }
+  }
+
+  // Check for payments marked as wrong status
+  const wrongStatus = await prisma.payment.findMany({
+    where: {
+      paidAt: { gte: monthStart, lte: now },
+      customerStatus: "unknown",
+      status: { in: ["succeeded", "partially_refunded"] },
+    },
+  });
+
+  if (wrongStatus.length > 0) {
+    issues.push(`⚠️ ${wrongStatus.length} payment(s) with unknown new/returning status — run enrich`);
   }
 
   // === Build Slack message ===
+  const totalRecoverable = recoverableMonthly + terminalMrr;
   const lines: string[] = [];
   lines.push(`📋 *Daily Financial Audit — ${now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}*`);
   lines.push("");
-
-  for (const s of summary) lines.push(s);
+  lines.push(`*${monthName} Snapshot:*`);
+  lines.push(`💰 Collected: *$${(collected/100).toFixed(2)}* (${dbPayments.length} payments)`);
+  lines.push(`📈 Collectible: *$${(collectibleThisMonth/100).toFixed(2)}* remaining this month`);
+  lines.push(`📊 MRR: *$${(activeMrr/100).toFixed(2)}* (${activeCount} active)`);
+  lines.push(`⏸️ Paused: $${(pausedMrr/100).toFixed(2)} (${pausedCount} subs)`);
+  if (terminalCount > 0) {
+    lines.push(`🔚 Terminal: $${(terminalMrr/100).toFixed(2)} (${terminalCount} — ${terminalNames.join(", ")})`);
+  }
+  lines.push(`🔄 Recoverable: *$${(totalRecoverable/100).toFixed(2)}/mo* if all conversations close`);
   lines.push("");
 
   if (alerts.length > 0) {
-    lines.push("*Action Items:*");
+    lines.push("*🚨 Action Items:*");
     for (const a of alerts) lines.push(a);
     lines.push("");
   }
 
   if (issues.length > 0) {
-    lines.push("*Data Issues:*");
+    lines.push("*⚠️ Data Issues:*");
     for (const i of issues) lines.push(i);
     lines.push("");
   }
 
   if (alerts.length === 0 && issues.length === 0) {
-    lines.push("✅ All clear — no issues found");
+    lines.push("✅ No action items or data issues");
   }
 
   const message = lines.join("\n");
@@ -224,17 +320,24 @@ export async function GET() {
   } catch { /* Slack not configured */ }
 
   return NextResponse.json({
-    summary,
-    alerts,
-    issues,
-    details: {
-      stripe: { paymentCount: stripePaymentCount, total: stripeTotal },
-      db: { paymentCount: dbPayments.length, total: dbTotal },
-      missingFromDb: missingFromDb.length,
+    snapshot: {
+      collected,
+      collectibleThisMonth,
       activeMrr,
+      pausedMrr,
+      terminalMrr,
+      recoverableMonthly,
       activeCount,
       pausedCount,
-      unknownPayments,
+      terminalCount,
+    },
+    alerts,
+    issues,
+    reconciliation: {
+      stripe: { paymentCount: stripePaymentCount, total: stripeTotal },
+      db: { paymentCount: dbPayments.length, total: collected },
+      missingFromDb: missingFromDb.length,
+      matched: paymentDiff <= 100,
     },
     message,
   });
