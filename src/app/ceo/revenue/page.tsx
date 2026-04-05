@@ -95,8 +95,6 @@ export default function RevenuePage() {
   const [showActiveList, setShowActiveList] = useState(false);
   const [showExpectedDetail, setShowExpectedDetail] = useState(false);
   const [showPausedList, setShowPausedList] = useState(false);
-  const [showNewRevenue, setShowNewRevenue] = useState(false);
-  const [showReturningRevenue, setShowReturningRevenue] = useState(false);
   const [showCustomers, setShowCustomers] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
 
@@ -167,23 +165,23 @@ export default function RevenuePage() {
         <>
           {/* === TOP ROW: The Numbers That Matter === */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowCollectedList(!showCollectedList)}>
-              <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">
-                  {data.totalRefunded > 0 ? "Collected (Net)" : "Collected"}
-                </p>
-                <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.paymentCount} payments — click to view
-                </p>
-              </CardContent>
-            </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">MRR</p>
                 <p className="text-2xl font-bold text-green-600">{formatCents(data.stripeMrr.activeMrr)}</p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.stripeMrr.activeCount} active subs
+                  {data.stripeMrr.activeCount} subs · {formatCents(data.stripeMrr.activeMrr * 12)}/yr valuation
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowCollectedList(!showCollectedList)}>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  {MONTH_NAMES[month - 1]} Collected
+                </p>
+                <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {data.newRevenue > 0 ? `${formatCents(data.newRevenue)} new · ${formatCents(data.returningRevenue)} returning` : `${data.paymentCount} payments`} — click to view
                 </p>
               </CardContent>
             </Card>
@@ -217,59 +215,145 @@ export default function RevenuePage() {
             </Card>
           </div>
 
-          {/* === COLLECTED DRILL-DOWN === */}
+          {/* === COLLECTED DRILL-DOWN with new/returning split === */}
           {showCollectedList && (
             <Card>
-              <CardHeader><CardTitle className="text-base">Collected This Month</CardTitle></CardHeader>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">{MONTH_NAMES[month - 1]} Collected — {formatCents(data.totalRevenue)}</CardTitle>
+                  <div className="flex gap-4 text-sm">
+                    {data.newRevenue > 0 && (
+                      <span className="text-blue-600 font-medium">{formatCents(data.newRevenue)} new</span>
+                    )}
+                    {data.returningRevenue > 0 && (
+                      <span className="text-purple-600 font-medium">{formatCents(data.returningRevenue)} returning</span>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
               <CardContent>
+                {/* New Revenue section */}
+                {data.newRevenue > 0 && (
+                  <>
+                    <p className="text-sm font-semibold text-blue-600 mb-2">New Revenue</p>
+                    <table className="w-full text-sm mb-6">
+                      <thead className="border-b">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Date</th>
+                          <th className="text-left p-2 font-medium">Customer</th>
+                          <th className="text-left p-2 font-medium">Type</th>
+                          <th className="text-right p-2 font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.payments
+                          .filter(p => p.customerStatus === "new" && p.status !== "refunded")
+                          .map((p) => (
+                            <tr key={p.id} className="border-b last:border-0">
+                              <td className="p-2">{formatDate(p.paidAt)}</td>
+                              <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
+                              <td className="p-2">
+                                <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
+                                  {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "1x" : p.revenueType}
+                                </Badge>
+                              </td>
+                              <td className="p-2 text-right font-medium text-blue-600">{formatCents(p.amountCents)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                      <tfoot className="border-t">
+                        <tr>
+                          <td className="p-2 font-bold" colSpan={3}>Total New</td>
+                          <td className="p-2 text-right font-bold text-blue-600">{formatCents(data.newRevenue)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
+                )}
+
+                {/* Returning Revenue section */}
+                <p className="text-sm font-semibold text-purple-600 mb-2">Returning Revenue</p>
                 <table className="w-full text-sm">
                   <thead className="border-b">
                     <tr>
                       <th className="text-left p-2 font-medium">Date</th>
                       <th className="text-left p-2 font-medium">Customer</th>
                       <th className="text-left p-2 font-medium">Type</th>
-                      <th className="text-left p-2 font-medium">Status</th>
                       <th className="text-right p-2 font-medium">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.payments.map((p) => (
-                      <tr key={p.id} className="border-b last:border-0">
-                        <td className="p-2">{formatDate(p.paidAt)}</td>
-                        <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
-                        <td className="p-2">
-                          <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
-                            {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "One-time" : p.revenueType}
-                          </Badge>
-                        </td>
-                        <td className="p-2">
-                          <Badge variant={p.customerStatus === "new" ? "warning" : "secondary"}>
-                            {p.customerStatus}
-                          </Badge>
-                        </td>
-                        <td className="p-2 text-right">
-                          <span className={`font-medium ${p.status === "refunded" || p.status === "disputed" ? "text-red-600 line-through" : "text-green-600"}`}>
-                            {formatCents(p.amountCents)}
-                          </span>
-                          {p.refundedCents > 0 && (
-                            <span className="text-xs text-red-600 block">-{formatCents(p.refundedCents)} refunded</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {data.payments.length === 0 && (
-                      <tr><td colSpan={5} className="p-4 text-center text-[var(--muted-foreground)]">No payments yet this month</td></tr>
+                    {data.payments
+                      .filter(p => p.customerStatus === "returning" && p.status !== "refunded")
+                      .map((p) => (
+                        <tr key={p.id} className="border-b last:border-0">
+                          <td className="p-2">{formatDate(p.paidAt)}</td>
+                          <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
+                          <td className="p-2">
+                            <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
+                              {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "1x" : p.revenueType}
+                            </Badge>
+                          </td>
+                          <td className="p-2 text-right font-medium text-purple-600">{formatCents(p.amountCents)}</td>
+                        </tr>
+                      ))}
+                    {data.payments.filter(p => p.customerStatus === "returning" && p.status !== "refunded").length === 0 && (
+                      <tr><td colSpan={4} className="p-4 text-center text-[var(--muted-foreground)]">No returning payments yet</td></tr>
                     )}
                   </tbody>
                   <tfoot className="border-t">
                     <tr>
-                      <td className="p-2 font-bold" colSpan={4}>
-                        {data.totalRefunded > 0 ? `Gross: ${formatCents(data.grossRevenue)} · Refunds: -${formatCents(data.totalRefunded)}` : "Total"}
-                      </td>
-                      <td className="p-2 text-right font-bold text-green-600">{formatCents(data.totalRevenue)}</td>
+                      <td className="p-2 font-bold" colSpan={3}>Total Returning</td>
+                      <td className="p-2 text-right font-bold text-purple-600">{formatCents(data.returningRevenue)}</td>
                     </tr>
                   </tfoot>
                 </table>
+
+                {/* One-Time / A La Carte Revenue */}
+                {data.byType.oneTime > 0 && (
+                  <>
+                    <p className="text-sm font-semibold text-gray-600 mb-2 mt-6">One-Time / A La Carte</p>
+                    <table className="w-full text-sm">
+                      <thead className="border-b">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Date</th>
+                          <th className="text-left p-2 font-medium">Customer</th>
+                          <th className="text-left p-2 font-medium">Status</th>
+                          <th className="text-right p-2 font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.payments
+                          .filter(p => p.revenueType === "one_time" && p.status !== "refunded")
+                          .map((p) => (
+                            <tr key={p.id} className="border-b last:border-0">
+                              <td className="p-2">{formatDate(p.paidAt)}</td>
+                              <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
+                              <td className="p-2">
+                                <Badge variant={p.customerStatus === "new" ? "warning" : "secondary"}>
+                                  {p.customerStatus}
+                                </Badge>
+                              </td>
+                              <td className="p-2 text-right font-medium">{formatCents(p.amountCents)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                      <tfoot className="border-t">
+                        <tr>
+                          <td className="p-2 font-bold" colSpan={3}>Total One-Time</td>
+                          <td className="p-2 text-right font-bold">{formatCents(data.byType.oneTime)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
+                )}
+
+                {/* Refunds note */}
+                {data.totalRefunded > 0 && (
+                  <p className="text-xs text-red-600 mt-4 text-right">
+                    Gross: {formatCents(data.grossRevenue)} · Refunds: -{formatCents(data.totalRefunded)} · Net: {formatCents(data.totalRevenue)}
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -506,136 +590,6 @@ export default function RevenuePage() {
             )}
           </Card>
 
-          {/* === PERIOD REVENUE (Collected) === */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">
-                  {data.totalRefunded > 0 ? "Net Collected" : "Collected"}
-                </p>
-                <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
-                {data.totalRefunded > 0 && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Gross: {formatCents(data.grossRevenue)} · Refunds: -{formatCents(data.totalRefunded)}
-                  </p>
-                )}
-                {data.comparison.prevTotal > 0 && data.totalRefunded === 0 && (
-                  <p className={`text-xs mt-1 ${data.comparison.change >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {data.comparison.change >= 0 ? "+" : ""}{(data.comparison.change * 100).toFixed(1)}% vs prev period
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowNewRevenue(!showNewRevenue)}>
-              <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">New Revenue</p>
-                <p className="text-2xl font-bold text-blue-600">{formatCents(data.newRevenue)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.payments.filter(p => p.customerStatus === "new" && p.status !== "refunded").length} payments — click to expand
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowReturningRevenue(!showReturningRevenue)}>
-              <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">Returning Revenue</p>
-                <p className="text-2xl font-bold text-purple-600">{formatCents(data.returningRevenue)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.payments.filter(p => p.customerStatus === "returning" && p.status !== "refunded").length} payments — click to expand
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">Payments</p>
-                <p className="text-2xl font-bold">{data.paymentCount}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {MONTH_NAMES[month - 1]} {year}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* New Revenue Drill-down */}
-          {showNewRevenue && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">New Revenue Transactions</CardTitle></CardHeader>
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Date</th>
-                      <th className="text-left p-2 font-medium">Customer</th>
-                      <th className="text-left p-2 font-medium">Type</th>
-                      <th className="text-right p-2 font-medium">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.payments
-                      .filter(p => p.customerStatus === "new" && p.status !== "refunded")
-                      .map((p) => (
-                        <tr key={p.id} className="border-b last:border-0">
-                          <td className="p-2">{formatDate(p.paidAt)}</td>
-                          <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
-                          <td className="p-2">
-                            <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
-                              {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "One-time" : p.revenueType}
-                            </Badge>
-                          </td>
-                          <td className="p-2 text-right font-medium text-blue-600">{formatCents(p.amountCents)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                  <tfoot className="border-t">
-                    <tr>
-                      <td className="p-2 font-bold" colSpan={3}>Total New Revenue</td>
-                      <td className="p-2 text-right font-bold text-blue-600">{formatCents(data.newRevenue)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Returning Revenue Drill-down */}
-          {showReturningRevenue && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Returning Revenue Transactions</CardTitle></CardHeader>
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Date</th>
-                      <th className="text-left p-2 font-medium">Customer</th>
-                      <th className="text-left p-2 font-medium">Type</th>
-                      <th className="text-right p-2 font-medium">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.payments
-                      .filter(p => p.customerStatus === "returning" && p.status !== "refunded")
-                      .map((p) => (
-                        <tr key={p.id} className="border-b last:border-0">
-                          <td className="p-2">{formatDate(p.paidAt)}</td>
-                          <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
-                          <td className="p-2">
-                            <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
-                              {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "One-time" : p.revenueType}
-                            </Badge>
-                          </td>
-                          <td className="p-2 text-right font-medium text-purple-600">{formatCents(p.amountCents)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                  <tfoot className="border-t">
-                    <tr>
-                      <td className="p-2 font-bold" colSpan={3}>Total Returning Revenue</td>
-                      <td className="p-2 text-right font-bold text-purple-600">{formatCents(data.returningRevenue)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Revenue by Type */}
           <Card>
