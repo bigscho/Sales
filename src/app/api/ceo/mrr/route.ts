@@ -2,36 +2,77 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
-  // Get active MRR from Stripe subscription payments
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-  // Active subscriptions from Payment model
-  const activeSubscriptions = await prisma.payment.findMany({
-    where: {
-      isSubscription: true,
-      status: "succeeded",
-    },
-    orderBy: { paidAt: "desc" },
-  });
+  // === Real MRR from Stripe subscriptions API ===
+  let activeMrr = 0;
+  let activeCustomers = 0;
+  const subscriptionDetails: Array<{
+    clientName: string;
+    email: string | null;
+    mrrCents: number;
+    currentPeriodEnd: string;
+  }> = [];
 
-  // Deduplicate by customer — take most recent payment per customer
-  const byCustomer = new Map<string, typeof activeSubscriptions[0]>();
-  for (const p of activeSubscriptions) {
-    const key = p.stripeCustomerId || p.customerEmail || p.id;
-    if (!byCustomer.has(key)) byCustomer.set(key, p);
+  if (process.env.STRIPE_SECRET_KEY) {
+    try {
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      const subs = await stripe.subscriptions.list({
+        status: "active",
+        limit: 100,
+        expand: ["data.customer"],
+      });
+
+      for (const sub of subs.data) {
+        let subMrr = 0;
+        for (const item of sub.items.data) {
+          const price = item.price;
+          const quantity = item.quantity || 1;
+          const unitAmount = price.unit_amount || 0;
+
+          if (price.recurring?.interval === "month") {
+            subMrr += unitAmount * quantity / (price.recurring.interval_count || 1);
+          } else if (price.recurring?.interval === "year") {
+            subMrr += Math.round((unitAmount * quantity) / (12 * (price.recurring.interval_count || 1)));
+          } else if (price.recurring?.interval === "week") {
+            subMrr += Math.round((unitAmount * quantity * 52) / (12 * (price.recurring.interval_count || 1)));
+          }
+        }
+
+        const customer = typeof sub.customer === "string" ? null : sub.customer;
+        const clientName = customer && !("deleted" in customer && customer.deleted)
+          ? (customer.name || customer.email || "Unknown")
+          : "Unknown";
+        const email = customer && !("deleted" in customer && customer.deleted)
+          ? customer.email
+          : null;
+
+        activeMrr += subMrr;
+        subscriptionDetails.push({
+          clientName,
+          email,
+          mrrCents: subMrr,
+          currentPeriodEnd: new Date(((sub as unknown as Record<string, number>).current_period_end || 0) * 1000).toISOString(),
+        });
+      }
+
+      activeCustomers = subs.data.length;
+      subscriptionDetails.sort((a, b) => b.mrrCents - a.mrrCents);
+    } catch {
+      // Stripe API failed — fall back gracefully
+    }
   }
 
-  const activeMrr = Array.from(byCustomer.values()).reduce((sum, p) => sum + p.amountCents, 0);
-
-  // MRR events (churns, new subs)
+  // MRR events (manual churn flags, new sub events)
   const mrrEvents = await prisma.mrrEvent.findMany({
     orderBy: { effectiveDate: "desc" },
     take: 50,
   });
 
-  // This month's events
   const thisMonthEvents = mrrEvents.filter(
     (e) => new Date(e.effectiveDate) >= monthStart && new Date(e.effectiveDate) <= monthEnd
   );
@@ -58,7 +99,8 @@ export async function GET() {
     newMrr,
     churnedMrr,
     netMrrChange: newMrr - churnedMrr,
-    activeCustomers: byCustomer.size,
+    activeCustomers,
+    subscriptions: subscriptionDetails,
     pendingChurns: pendingChurns.map((e) => ({
       clientName: e.clientName,
       mrrAmountCents: e.mrrAmountCents,
