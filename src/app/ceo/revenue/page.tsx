@@ -91,12 +91,12 @@ export default function RevenuePage() {
   const [data, setData] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedRecoverable, setSelectedRecoverable] = useState<Set<string>>(new Set());
-  const [showCollectedList, setShowCollectedList] = useState(false);
+  const [activeDrillDown, setActiveDrillDown] = useState<string | null>(null);
   const [showActiveList, setShowActiveList] = useState(false);
-  const [showExpectedDetail, setShowExpectedDetail] = useState(false);
-  const [showPausedList, setShowPausedList] = useState(false);
-  const [showCustomers, setShowCustomers] = useState(false);
-  const [showPayments, setShowPayments] = useState(false);
+
+  const toggleDrillDown = (name: string) => {
+    setActiveDrillDown(prev => prev === name ? null : name);
+  };
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -174,7 +174,7 @@ export default function RevenuePage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowCollectedList(!showCollectedList)}>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleDrillDown("collected")}>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">
                   {MONTH_NAMES[month - 1]} Collected
@@ -187,7 +187,7 @@ export default function RevenuePage() {
             </Card>
             <Card
               className={`cursor-pointer hover:shadow-md transition-shadow ${projectedFromRecoveries > 0 ? "border-amber-200 bg-amber-50/30" : ""}`}
-              onClick={() => setShowExpectedDetail(!showExpectedDetail)}
+              onClick={() => toggleDrillDown("expected")}
             >
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">
@@ -204,7 +204,7 @@ export default function RevenuePage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowPausedList(!showPausedList)}>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleDrillDown("paused")}>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">Paused</p>
                 <p className="text-2xl font-bold text-gray-500">{formatCents(data.stripeMrr.pausedMrr)}</p>
@@ -216,7 +216,7 @@ export default function RevenuePage() {
           </div>
 
           {/* === COLLECTED DRILL-DOWN with new/returning split === */}
-          {showCollectedList && (
+          {activeDrillDown === "collected" && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -359,7 +359,7 @@ export default function RevenuePage() {
           )}
 
           {/* === PAUSED DRILL-DOWN === */}
-          {showPausedList && (
+          {activeDrillDown === "paused" && (
             <Card>
               <CardHeader><CardTitle className="text-base">Paused Subscriptions</CardTitle></CardHeader>
               <CardContent>
@@ -396,7 +396,7 @@ export default function RevenuePage() {
           )}
 
           {/* === EXPECTED + RECOVERABLE SPLIT VIEW === */}
-          {showExpectedDetail && (
+          {activeDrillDown === "expected" && (
             <Card className={projectedFromRecoveries > 0 ? "border-amber-200" : ""}>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -445,8 +445,33 @@ export default function RevenuePage() {
                     </table>
                   </div>
 
-                  {/* RIGHT: Recoverable with checkboxes */}
+                  {/* RIGHT: One-time + Recoverable */}
                   <div>
+                    {/* One-time / A La Carte expected */}
+                    {data.byType.oneTime > 0 && (
+                      <div className="mb-6">
+                        <p className="text-sm font-semibold text-gray-600 mb-3">One-Time / A La Carte</p>
+                        <table className="w-full text-sm">
+                          <tbody>
+                            {data.payments
+                              .filter(p => p.revenueType === "one_time" && p.status !== "refunded")
+                              .map((p) => (
+                                <tr key={p.id} className="border-b last:border-0">
+                                  <td className="p-1.5">{p.customerName || "Unknown"}</td>
+                                  <td className="p-1.5 text-right font-medium">{formatCents(p.amountCents)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                          <tfoot className="border-t">
+                            <tr>
+                              <td className="p-1.5 font-bold">Total One-Time</td>
+                              <td className="p-1.5 text-right font-bold">{formatCents(data.byType.oneTime)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
                     <p className="text-sm font-semibold text-amber-600 mb-3">
                       Recoverable ({recoverableSubs.length} conversations)
                     </p>
@@ -590,150 +615,6 @@ export default function RevenuePage() {
             )}
           </Card>
 
-
-          {/* Revenue by Type */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Revenue by Type</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="border rounded-lg p-4">
-                  <p className="text-sm text-[var(--muted-foreground)]">Subscription (MRR)</p>
-                  <p className="text-xl font-bold">{formatCents(data.byType.mrr)}</p>
-                  {data.totalRevenue > 0 && (
-                    <p className="text-xs text-[var(--muted-foreground)]">{((data.byType.mrr / data.totalRevenue) * 100).toFixed(0)}% of total</p>
-                  )}
-                </div>
-                <div className="border rounded-lg p-4">
-                  <p className="text-sm text-[var(--muted-foreground)]">One-Time</p>
-                  <p className="text-xl font-bold">{formatCents(data.byType.oneTime)}</p>
-                  {data.totalRevenue > 0 && (
-                    <p className="text-xs text-[var(--muted-foreground)]">{((data.byType.oneTime / data.totalRevenue) * 100).toFixed(0)}% of total</p>
-                  )}
-                </div>
-                <div className="border rounded-lg p-4">
-                  <p className="text-sm text-[var(--muted-foreground)]">Misc</p>
-                  <p className="text-xl font-bold">{formatCents(data.byType.misc)}</p>
-                  {data.totalRevenue > 0 && (
-                    <p className="text-xs text-[var(--muted-foreground)]">{((data.byType.misc / data.totalRevenue) * 100).toFixed(0)}% of total</p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Revenue by Customer */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Revenue by Customer</CardTitle>
-                <Button size="sm" variant="outline" onClick={() => setShowCustomers(!showCustomers)}>
-                  {showCustomers ? "Collapse" : "Expand"}
-                </Button>
-              </div>
-            </CardHeader>
-            {showCustomers && (
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Customer</th>
-                      <th className="text-left p-2 font-medium">Type</th>
-                      <th className="text-left p-2 font-medium">Status</th>
-                      <th className="text-right p-2 font-medium">Payments</th>
-                      <th className="text-right p-2 font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.byCustomer.map((c, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="p-2">
-                          <p className="font-medium">{c.name}</p>
-                          {c.email && <p className="text-xs text-[var(--muted-foreground)]">{c.email}</p>}
-                        </td>
-                        <td className="p-2">
-                          <Badge variant={c.revenueType === "mrr" ? "success" : "secondary"}>
-                            {c.revenueType === "mrr" ? "MRR" : c.revenueType === "one_time" ? "One-time" : c.revenueType}
-                          </Badge>
-                        </td>
-                        <td className="p-2">
-                          <Badge variant={c.customerStatus === "new" ? "warning" : "secondary"}>
-                            {c.customerStatus}
-                          </Badge>
-                        </td>
-                        <td className="p-2 text-right">{c.payments}</td>
-                        <td className="p-2 text-right font-medium text-green-600">{formatCents(c.total)}</td>
-                      </tr>
-                    ))}
-                    {data.byCustomer.length === 0 && (
-                      <tr><td colSpan={5} className="p-4 text-center text-[var(--muted-foreground)]">No payments this period</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </CardContent>
-            )}
-          </Card>
-
-          {/* All Payments */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">All Payments ({data.paymentCount})</CardTitle>
-                <Button size="sm" variant="outline" onClick={() => setShowPayments(!showPayments)}>
-                  {showPayments ? "Collapse" : "Expand"}
-                </Button>
-              </div>
-            </CardHeader>
-            {showPayments && (
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Date</th>
-                      <th className="text-left p-2 font-medium">Customer</th>
-                      <th className="text-left p-2 font-medium">Type</th>
-                      <th className="text-left p-2 font-medium">Status</th>
-                      <th className="text-left p-2 font-medium">Match</th>
-                      <th className="text-right p-2 font-medium">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.payments.map((p) => (
-                      <tr key={p.id} className="border-b last:border-0">
-                        <td className="p-2">{formatDate(p.paidAt)}</td>
-                        <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
-                        <td className="p-2">
-                          <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
-                            {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "1x" : p.revenueType}
-                          </Badge>
-                        </td>
-                        <td className="p-2">
-                          <Badge variant={p.customerStatus === "new" ? "warning" : "secondary"}>
-                            {p.customerStatus}
-                          </Badge>
-                        </td>
-                        <td className="p-2">
-                          {p.matchStatus === "matched" && <Badge variant="success">Matched</Badge>}
-                          {p.matchStatus === "unmatched" && <Badge variant="secondary">Unmatched</Badge>}
-                          {p.matchStatus === "needs_review" && <Badge variant="danger">Review</Badge>}
-                        </td>
-                        <td className="p-2 text-right">
-                          <span className={`font-medium ${p.status === "refunded" || p.status === "disputed" ? "text-red-600 line-through" : "text-green-600"}`}>
-                            {formatCents(p.amountCents)}
-                          </span>
-                          {p.refundedCents > 0 && p.status !== "refunded" && (
-                            <span className="text-xs text-red-600 block">-{formatCents(p.refundedCents)} refunded</span>
-                          )}
-                          {p.status === "disputed" && (
-                            <span className="text-xs text-red-600 block">DISPUTED</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            )}
-          </Card>
         </>
       ) : null}
     </div>
