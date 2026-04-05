@@ -30,8 +30,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Max 7 days per batch for safe auditing" }, { status: 400 });
   }
 
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  let Stripe: typeof import("stripe").default;
+  let stripe: InstanceType<typeof Stripe>;
+  try {
+    Stripe = (await import("stripe")).default;
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    // Quick test to catch bad API keys early
+    await stripe.balance.retrieve();
+  } catch (err) {
+    return NextResponse.json({
+      error: `Stripe API key invalid or unreachable: ${err instanceof Error ? err.message : String(err)}`,
+    }, { status: 400 });
+  }
 
   // Pull all succeeded payment intents in the date range
   const paymentIntents: Array<{
