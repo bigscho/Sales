@@ -210,6 +210,10 @@ async function getStripeMRR(): Promise<{
       mrrCents: number;
       status: string;
       currentPeriodEnd: string;
+      cancelAt: string | null;
+      cancelAtPeriodEnd: boolean;
+      type: "auto-renew" | "fixed-term" | "canceling";
+      startDate: string;
     }> = [];
 
     for (const sub of subs.data) {
@@ -238,13 +242,29 @@ async function getStripeMRR(): Promise<{
         ? customer.email
         : null;
 
+      // Access raw subscription fields via cast
+      const subRaw = sub as unknown as Record<string, unknown>;
+      const currentPeriodEnd = typeof subRaw.current_period_end === "number" ? subRaw.current_period_end : 0;
+      const cancelAt = typeof subRaw.cancel_at === "number" ? subRaw.cancel_at : null;
+      const cancelAtPeriodEnd = subRaw.cancel_at_period_end === true;
+      const startDate = typeof subRaw.start_date === "number" ? subRaw.start_date : (typeof subRaw.created === "number" ? subRaw.created : 0);
+
+      // Determine subscription type
+      let subType: "auto-renew" | "fixed-term" | "canceling" = "auto-renew";
+      if (cancelAt) subType = "fixed-term";
+      if (cancelAtPeriodEnd) subType = "canceling";
+
       activeMrr += subMrr;
       subscriptions.push({
         clientName,
         email,
         mrrCents: subMrr,
         status: sub.status,
-        currentPeriodEnd: new Date(((sub as unknown as Record<string, number>).current_period_end || 0) * 1000).toISOString(),
+        currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : "unknown",
+        cancelAt: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
+        cancelAtPeriodEnd,
+        type: subType,
+        startDate: startDate ? new Date((startDate as number) * 1000).toISOString() : "unknown",
       });
     }
 
