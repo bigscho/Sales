@@ -168,7 +168,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 2. **Pillar 4: UI Cleanup** — user will provide example UIs. Cleaner typography, mobile, cards
 3. **Pillar 5: Admin/Auth** — no auth currently. Admin sees all, closers see their stuff, setters see bookings. Also filter returning revenue from sales team view
 4. **Pillar 6: Weekly Video Coaching** — aggregate Fireflies transcripts, AI coaching highlights. User wants it "SICK" with Tuff Pigeon Doctor moments at the end
-5. **Historical data import** — user will dump 2026 data "at the very end"
+5. **Historical data import** — user will dump 2026 data "at the very end". Includes demos/sales data AND financial backfill via `/api/ceo/backfill` (Stripe payments by date range with subscription detection, refund tracking, and confidence scoring). March 2026 already backfilled and reconciled.
 
 ## Backlog (lower priority improvements)
 - **Day-focused dashboard view** — main dashboard could have a "today" mode showing today's demos + cash instead of full week
