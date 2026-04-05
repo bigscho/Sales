@@ -13,8 +13,15 @@
 
 ## Project
 Next.js sales tracker at /home/user/Sales, deployed on Vercel (sales-puce-six.vercel.app).
-Primary dev branch: `claude/setup-project-access-dGk7x` (merged all work from resume-session-JU9mq)
+**Production branch: `main`** — Vercel auto-deploys from this.
 DB: Neon PostgreSQL via Prisma ORM.
+
+## CRITICAL: Branch Rules
+1. **Always branch from `origin/main`** — run `git fetch origin main` first
+2. **Never branch from other `claude/*` branches** — they go stale fast
+3. **Before starting work**, verify your branch is up to date with main: `git log --oneline origin/main..HEAD` should only show YOUR commits
+4. **Merge to main when done** — don't leave work stranded on feature branches
+5. **Delete stale branches** — if a `claude/*` branch is >1 week old and merged, delete it
 
 ## Debug Endpoint
 `GET /api/debug` — query the DB directly to investigate booking issues:
@@ -63,6 +70,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **CEO verification dashboard**: `/verify/admin?weekId=X` — per-setter summary, resolve flags, add missing demos, Lock Week button
 - **Payroll gate**: payroll generation blocked until week is verified via Lock Week
 - **Auth**: PIN-based login with role-based middleware — setters see verify+scoreboard, closers see demos+deals, admin sees everything
+- **CEO Financial Dashboard** (Phase 1): `/ceo`, `/ceo/review`, `/ceo/pnl`, `/ceo/transactions` — Mercury API sync, Amex CSV import, auto-categorization with learning merchant mappings (60+ vendors seeded), weekly review workflow, monthly P&L with MoM comparison, live MRR tracker with churn flagging, monthly close. Admin-only sidebar section. Needs `MERCURY_API_KEY` env var + `POST /api/ceo/seed` to initialize categories.
 
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)
@@ -142,9 +150,10 @@ If using Enterprise Claude (without MCP tools), it needs:
 3. **Fireflies false shows** — FIXED (Apr 3): 5-layer verification now checks summary_status, silent_meeting, sentence count (≥6 substantive), speaker count (≥2), and content relevance (business keyword match). 9 false shows identified for week of Mar 30 — user manually correcting.
 
 ## Branch Hygiene
-- **Single working branch**: `claude/review-and-continue-PKIc1` — all sessions build on this
-- **TODO**: Delete 7 stale remote branches from GitHub (recap, resume-enterprise, resume-session, review-branches, sales-tracker-kpi, setup-project, smartlead-import)
-- Archive tags exist locally as safety net
+- **Production branch is `main`** — all feature branches must be created from `origin/main`
+- **Never chain branches** — branching from `claude/foo` instead of `main` causes drift
+- **Merge back to main promptly** — don't leave work on feature branches for days
+- **Delete old branches after merge** — stale `claude/*` branches cause confusion across sessions
 
 ## What Was Built (Apr 3 session)
 - **Closer verification cron**: `/api/slack/closer/verify` at 8 PM ET → `#closer-tpds`, per-closer pending demos + WTD show rate + link to demos page
