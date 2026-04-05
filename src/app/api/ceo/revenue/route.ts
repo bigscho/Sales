@@ -28,7 +28,10 @@ export async function GET(req: NextRequest) {
   }
 
   const payments = await prisma.payment.findMany({
-    where: { paidAt: dateFilter, status: "succeeded" },
+    where: {
+      paidAt: dateFilter,
+      status: { in: ["succeeded", "refunded", "partially_refunded", "disputed"] },
+    },
     include: { deal: true, week: true },
     orderBy: { paidAt: "desc" },
   });
