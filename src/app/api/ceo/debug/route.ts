@@ -22,15 +22,20 @@ export async function GET() {
       ? (customer.name || customer.email || "Unknown")
       : "Unknown";
 
+    // Dump all top-level keys that contain "period" or "cancel" or "pause"
+    const debugFields: Record<string, unknown> = {};
+    for (const key of Object.keys(raw)) {
+      if (key.includes("period") || key.includes("cancel") || key.includes("pause") || key.includes("billing") || key.includes("current")) {
+        debugFields[key] = raw[key];
+      }
+    }
+
     return {
       name,
       status: sub.status,
+      allKeys: Object.keys(raw).sort(),
+      debugFields,
       pause_collection: raw.pause_collection || null,
-      current_period_end: raw.current_period_end,
-      current_period_start: raw.current_period_start,
-      cancel_at: raw.cancel_at,
-      cancel_at_period_end: raw.cancel_at_period_end,
-      billing_cycle_anchor: raw.billing_cycle_anchor,
       items: sub.items.data.map(item => ({
         unit_amount: item.price.unit_amount,
         interval: item.price.recurring?.interval,
