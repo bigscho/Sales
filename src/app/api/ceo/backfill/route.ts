@@ -215,8 +215,8 @@ export async function POST(req: NextRequest) {
           const charge = charges.data[0] as unknown as Record<string, unknown>;
           const chargeInvoice = typeof charge.invoice === "string" ? charge.invoice
             : (charge.invoice as Record<string, string> | null)?.id || null;
-          if (chargeInvoice && !pi.invoice) {
-            // Found invoice via charge that wasn't on the PI
+          if (chargeInvoice) {
+            // Found invoice via charge — check if it has a subscription
             try {
               const invoice = await stripe.invoices.retrieve(chargeInvoice);
               const invoiceData = invoice as unknown as Record<string, unknown>;
@@ -232,17 +232,17 @@ export async function POST(req: NextRequest) {
       } catch { /* charge lookup failed */ }
     }
 
-    // Method 3: If still no match, check if customer has subscriptions with matching amount
+    // Method 3: Check if customer has ANY subscription (active or canceled) with matching amount
+    // For backfill, a canceled sub still means the payment WAS MRR at the time
     if (!isSubscription && pi.customer) {
       try {
         const customerSubs = await stripe.subscriptions.list({
           customer: pi.customer,
           status: "all" as "active",
-          limit: 10,
+          limit: 20,
         });
 
         for (const sub of customerSubs.data) {
-          if (sub.status !== "active" && sub.status !== "trialing" && sub.status !== "past_due") continue;
           let subAmount = 0;
           for (const item of sub.items.data) {
             subAmount += (item.price.unit_amount || 0) * (item.quantity || 1);
