@@ -180,9 +180,22 @@ export default function RevenuePage() {
                   {MONTH_NAMES[month - 1]} Collected
                 </p>
                 <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.newRevenue > 0 ? `${formatCents(data.newRevenue)} new · ${formatCents(data.returningRevenue)} returning` : `${data.paymentCount} payments`} — click to view
-                </p>
+                {data.totalRevenue > 0 && (
+                  <div className="flex gap-3 mt-2">
+                    {data.newRevenue > 0 && (
+                      <span className="text-sm font-semibold text-blue-600">{formatCents(data.newRevenue)} new</span>
+                    )}
+                    {data.returningRevenue > 0 && (
+                      <span className="text-sm font-semibold text-purple-600">{formatCents(data.returningRevenue)} returning</span>
+                    )}
+                  </div>
+                )}
+                {data.totalRevenue === 0 && (
+                  <p className="text-xs text-[var(--muted-foreground)] mt-1">Click to view</p>
+                )}
+                {data.totalRefunded > 0 && (
+                  <p className="text-xs text-red-600 mt-1">-{formatCents(data.totalRefunded)} refunded</p>
+                )}
               </CardContent>
             </Card>
             <Card
