@@ -46,7 +46,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 flex flex-col min-w-0">
           <header className="h-16 border-b border-[var(--border)] bg-[var(--card)] flex items-center justify-between px-6">
             <Suspense fallback={<div className="h-10 w-56 bg-[var(--muted)] animate-pulse rounded-lg" />}>
-              <WeekSelector />
+              {pathname.startsWith("/ceo") ? (
+                <div className="text-sm font-medium text-[var(--muted-foreground)]">CEO Finance</div>
+              ) : (
+                <WeekSelector />
+              )}
             </Suspense>
             <div className="flex items-center gap-3">
               {session?.role === "setter" && (
