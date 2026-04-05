@@ -134,6 +134,30 @@ export default function RevenuePage() {
   const collectible = data?.stripeMrr.collectibleThisMonth || 0;
   const projected = collectible + projectedFromRecoveries;
 
+  const [importResult, setImportResult] = useState<{
+    summary: Record<string, number>;
+    needsReview: Array<{ description: string; amount: number; flags: string[] }>;
+  } | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleAmexUpload = async (e: React.ChangeEvent<HTMLInputElement>, dryRun: boolean) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    const csvData = await file.text();
+    const res = await fetch("/api/ceo/amex", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csvData, dryRun }),
+    });
+    const data = await res.json();
+    setImportResult({ summary: data.summary, needsReview: data.needsReview || [] });
+    setImporting(false);
+    if (!dryRun) loadData();
+    // Reset file input
+    e.target.value = "";
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -145,6 +169,16 @@ export default function RevenuePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="h-8 px-3 text-sm rounded-lg border border-[var(--border)] bg-white hover:bg-gray-50 flex items-center gap-2 cursor-pointer">
+            {importing ? "Importing..." : "Import Amex CSV"}
+            <input
+              type="file"
+              accept=".csv,.tsv,.txt"
+              onChange={(e) => handleAmexUpload(e, false)}
+              className="hidden"
+              disabled={importing}
+            />
+          </label>
           <Button size="sm" variant="outline" onClick={() => {
             if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1);
           }}>←</Button>
@@ -154,6 +188,36 @@ export default function RevenuePage() {
           }}>→</Button>
         </div>
       </div>
+
+      {/* Import Results */}
+      {importResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-green-800">
+                  Amex Import: {importResult.summary.synced} transactions imported
+                </p>
+                <p className="text-sm text-green-600">
+                  {importResult.summary.skipped} duplicates skipped · {importResult.summary.internalTransfers} internal transfers excluded
+                  {importResult.summary.needsReviewCount > 0 && ` · ${importResult.summary.needsReviewCount} need review`}
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setImportResult(null)}>Dismiss</Button>
+            </div>
+            {importResult.needsReview.length > 0 && (
+              <div className="mt-3 border-t pt-3">
+                <p className="text-sm font-medium text-amber-700 mb-2">Needs Review:</p>
+                {importResult.needsReview.map((r, i) => (
+                  <p key={i} className="text-xs text-amber-600">
+                    {r.description} — ${(r.amount).toFixed(2)} — {r.flags.join(", ")}
+                  </p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
