@@ -207,6 +207,7 @@ async function getStripeMRR() {
     let activeMrr = 0;
     let pausedMrr = 0;
     let terminalMrr = 0;
+    let collectibleThisMonth = 0;
     const subscriptions: Array<{
       clientName: string;
       email: string | null;
@@ -214,6 +215,10 @@ async function getStripeMRR() {
       status: string;
       isPaused: boolean;
       isTerminal: boolean;
+      chargeCents: number;
+      interval: string;
+      nextBillingDate: string | null;
+      billsThisMonth: boolean;
       canceledAt: string | null;
       cancelAt: string | null;
       cancelAtPeriodEnd: boolean;
@@ -300,13 +305,51 @@ async function getStripeMRR() {
       if (isPaused) pausedMrr += subMrr;
       if (isTerminal) terminalMrr += subMrr;
 
+      // Calculate next billing date and actual charge amount for collectible forecast
+      const billingAnchor = typeof subRaw.billing_cycle_anchor === "number" ? subRaw.billing_cycle_anchor : 0;
+      const interval = sub.items.data[0]?.price.recurring?.interval || "month";
+      const intervalCount = sub.items.data[0]?.price.recurring?.interval_count || 1;
+      const intervalMonths = interval === "year" ? 12 * intervalCount
+        : interval === "month" ? intervalCount
+        : interval === "week" ? 0 // handle separately
+        : 1;
+
+      // The actual charge amount (not normalized to monthly)
+      let chargeAmount = 0;
+      for (const item of sub.items.data) {
+        chargeAmount += (item.price.unit_amount || 0) * (item.quantity || 1);
+      }
+
+      // Find next billing date
+      let nextBillingDate: string | null = null;
+      let billsThisMonth = false;
+      const now = new Date();
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      if (billingAnchor > 0 && intervalMonths > 0 && countsTowardMrr) {
+        const anchor = new Date(billingAnchor * 1000);
+        const nextBill = new Date(anchor);
+        while (nextBill <= now) {
+          nextBill.setMonth(nextBill.getMonth() + intervalMonths);
+        }
+        nextBillingDate = nextBill.toISOString();
+        billsThisMonth = nextBill >= thisMonthStart && nextBill <= thisMonthEnd;
+      }
+
+      if (billsThisMonth) collectibleThisMonth += chargeAmount;
+
       subscriptions.push({
         clientName,
         email,
         mrrCents: subMrr,
+        chargeCents: chargeAmount,
+        interval: intervalMonths > 1 ? `${intervalMonths}mo` : "monthly",
         status: sub.status,
         isPaused,
         isTerminal,
+        nextBillingDate,
+        billsThisMonth,
         canceledAt: canceledAt ? new Date(canceledAt * 1000).toISOString() : null,
         cancelAt: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
         cancelAtPeriodEnd,
@@ -323,14 +366,18 @@ async function getStripeMRR() {
     const terminalCount = subscriptions.filter(s => s.isTerminal).length;
     const renewalsNeeded = subscriptions.filter(s => s.isTerminal);
 
+    const billingThisMonth = subscriptions.filter(s => s.billsThisMonth);
+
     return {
       activeMrr,
       pausedMrr,
       terminalMrr,
+      collectibleThisMonth,
       totalOnBooks: activeMrr + pausedMrr + terminalMrr,
       activeCount,
       pausedCount,
       terminalCount,
+      billingThisMonthCount: billingThisMonth.length,
       totalCount: subs.data.length,
       renewalsNeeded,
       subscriptions,
