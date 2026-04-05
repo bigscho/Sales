@@ -207,17 +207,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Method 2: If no invoice link found, check if customer has subscriptions
-    // and if this payment amount matches a subscription price
+    // Method 2: Look up the charge for this PI — charges have the invoice field more reliably
+    if (!isSubscription) {
+      try {
+        const charges = await stripe.charges.list({ payment_intent: pi.id, limit: 1 });
+        if (charges.data.length > 0) {
+          const charge = charges.data[0] as unknown as Record<string, unknown>;
+          const chargeInvoice = typeof charge.invoice === "string" ? charge.invoice
+            : (charge.invoice as Record<string, string> | null)?.id || null;
+          if (chargeInvoice && !pi.invoice) {
+            // Found invoice via charge that wasn't on the PI
+            try {
+              const invoice = await stripe.invoices.retrieve(chargeInvoice);
+              const invoiceData = invoice as unknown as Record<string, unknown>;
+              if (invoiceData.subscription) {
+                isSubscription = true;
+                subscriptionId = typeof invoiceData.subscription === "string"
+                  ? invoiceData.subscription
+                  : (invoiceData.subscription as Record<string, string>).id;
+              }
+            } catch { /* invoice lookup failed */ }
+          }
+        }
+      } catch { /* charge lookup failed */ }
+    }
+
+    // Method 3: If still no match, check if customer has subscriptions with matching amount
     if (!isSubscription && pi.customer) {
       try {
         const customerSubs = await stripe.subscriptions.list({
           customer: pi.customer,
+          status: "all" as "active",
           limit: 10,
         });
 
         for (const sub of customerSubs.data) {
-          // Check if any subscription's recurring amount matches this payment
+          if (sub.status !== "active" && sub.status !== "trialing" && sub.status !== "past_due") continue;
           let subAmount = 0;
           for (const item of sub.items.data) {
             subAmount += (item.price.unit_amount || 0) * (item.quantity || 1);
