@@ -93,7 +93,7 @@ export default function RevenuePage() {
   const [selectedRecoverable, setSelectedRecoverable] = useState<Set<string>>(new Set());
   const [showCollectedList, setShowCollectedList] = useState(false);
   const [showActiveList, setShowActiveList] = useState(false);
-  const [showBillingList, setShowBillingList] = useState(false);
+  const [showExpectedDetail, setShowExpectedDetail] = useState(false);
   const [showPausedList, setShowPausedList] = useState(false);
   const [showNewRevenue, setShowNewRevenue] = useState(false);
   const [showReturningRevenue, setShowReturningRevenue] = useState(false);
@@ -166,7 +166,7 @@ export default function RevenuePage() {
       ) : data ? (
         <>
           {/* === TOP ROW: The Numbers That Matter === */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowCollectedList(!showCollectedList)}>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">
@@ -187,25 +187,21 @@ export default function RevenuePage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowBillingList(!showBillingList)}>
+            <Card
+              className={`cursor-pointer hover:shadow-md transition-shadow ${projectedFromRecoveries > 0 ? "border-amber-200 bg-amber-50/30" : ""}`}
+              onClick={() => setShowExpectedDetail(!showExpectedDetail)}
+            >
               <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">{MONTH_NAMES[month - 1]} Expected</p>
-                <p className="text-2xl font-bold text-blue-600">{formatCents(collectible)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.stripeMrr.billingThisMonthCount} subs billing — click to view
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  {projectedFromRecoveries > 0 ? `Projected ${MONTH_NAMES[month - 1]}` : `${MONTH_NAMES[month - 1]} Expected`}
                 </p>
-              </CardContent>
-            </Card>
-            <Card className={projectedFromRecoveries > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
-              <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">Projected {MONTH_NAMES[month - 1]}</p>
-                <p className={`text-2xl font-bold ${projectedFromRecoveries > 0 ? "text-amber-600" : "text-gray-600"}`}>
+                <p className={`text-2xl font-bold ${projectedFromRecoveries > 0 ? "text-amber-600" : "text-blue-600"}`}>
                   {formatCents(projected)}
                 </p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
                   {projectedFromRecoveries > 0
-                    ? `+${formatCents(projectedFromRecoveries)} from ${selectedRecoverable.size} recovery`
-                    : "Select recoveries below"
+                    ? `${formatCents(collectible)} locked + ${formatCents(projectedFromRecoveries)} from recoveries`
+                    : `${data.stripeMrr.billingThisMonthCount} subs · +${formatCents(recoverableSubs.reduce((s, r) => s + r.mrrCents, 0))} recoverable`
                   }
                 </p>
               </CardContent>
@@ -315,121 +311,116 @@ export default function RevenuePage() {
             </Card>
           )}
 
-          {/* === BILLING THIS MONTH DRILL-DOWN === */}
-          {showBillingList && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Billing This Month</CardTitle></CardHeader>
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Client</th>
-                      <th className="text-left p-2 font-medium">Interval</th>
-                      <th className="text-left p-2 font-medium">Bills On</th>
-                      <th className="text-right p-2 font-medium">Charge</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.stripeMrr.subscriptions.filter(s => s.billsThisMonth).map((s, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="p-2 font-medium">{s.clientName}</td>
-                        <td className="p-2"><Badge variant="secondary">{s.interval}</Badge></td>
-                        <td className="p-2">{s.nextBillingDate ? formatDate(s.nextBillingDate) : "—"}</td>
-                        <td className="p-2 text-right font-medium text-blue-600">{formatCents(s.chargeCents)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="border-t">
-                    <tr>
-                      <td className="p-2 font-bold" colSpan={3}>Total Collectible</td>
-                      <td className="p-2 text-right font-bold text-blue-600">{formatCents(collectible)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* === SCENARIO PROJECTOR: Recoverable Revenue === */}
-          {recoverableSubs.length > 0 && (
-            <Card className="border-amber-200">
+          {/* === EXPECTED + RECOVERABLE SPLIT VIEW === */}
+          {showExpectedDetail && (
+            <Card className={projectedFromRecoveries > 0 ? "border-amber-200" : ""}>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Recoverable This Month</CardTitle>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                      Check the ones you expect to close — projected number updates above
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-[var(--muted-foreground)]">Selected</p>
-                    <p className="text-lg font-bold text-amber-600">
-                      +{formatCents(projectedFromRecoveries)}
-                    </p>
-                  </div>
+                  <CardTitle className="text-base">
+                    {MONTH_NAMES[month - 1]} Expected: {formatCents(collectible)} locked
+                    {projectedFromRecoveries > 0 && ` + ${formatCents(projectedFromRecoveries)} projected`}
+                  </CardTitle>
+                  <p className={`text-xl font-bold ${projectedFromRecoveries > 0 ? "text-amber-600" : "text-blue-600"}`}>
+                    {formatCents(projected)}
+                  </p>
                 </div>
               </CardHeader>
               <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="p-2 w-8"></th>
-                      <th className="text-left p-2 font-medium">Client</th>
-                      <th className="text-left p-2 font-medium">Status</th>
-                      <th className="text-left p-2 font-medium">Type</th>
-                      <th className="text-right p-2 font-medium">MRR</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recoverableSubs.map((s, i) => (
-                      <tr
-                        key={i}
-                        className={`border-b last:border-0 cursor-pointer transition-colors ${
-                          selectedRecoverable.has(s.clientName) ? "bg-amber-50" : "hover:bg-gray-50"
-                        }`}
-                        onClick={() => toggleRecoverable(s.clientName)}
-                      >
-                        <td className="p-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={selectedRecoverable.has(s.clientName)}
-                            onChange={(e) => { e.stopPropagation(); toggleRecoverable(s.clientName); }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="rounded cursor-pointer w-4 h-4"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <p className="font-medium">{s.clientName}</p>
-                          {s.email && <p className="text-xs text-[var(--muted-foreground)]">{s.email}</p>}
-                        </td>
-                        <td className="p-2">
-                          {s.isPaused && <Badge variant="warning">Paused</Badge>}
-                          {s.isTerminal && <Badge variant="danger">Needs Renewal</Badge>}
-                        </td>
-                        <td className="p-2">
-                          {s.cancelAt && (
-                            <span className="text-xs text-[var(--muted-foreground)]">
-                              Ended {formatDate(s.cancelAt)}
-                            </span>
-                          )}
-                          {s.isPaused && !s.cancelAt && (
-                            <span className="text-xs text-[var(--muted-foreground)]">Pending conversation</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-right font-medium text-amber-600">{formatCents(s.mrrCents)}/mo</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="border-t">
-                    <tr>
-                      <td></td>
-                      <td className="p-2 font-bold" colSpan={3}>Total Recoverable</td>
-                      <td className="p-2 text-right font-bold text-amber-600">
-                        {formatCents(recoverableSubs.reduce((sum, s) => sum + s.mrrCents, 0))}/mo
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* LEFT: Definite collections */}
+                  <div>
+                    <p className="text-sm font-semibold text-blue-600 mb-3">Locked In ({data.stripeMrr.billingThisMonthCount} subs)</p>
+                    <table className="w-full text-sm">
+                      <thead className="border-b">
+                        <tr>
+                          <th className="text-left p-1.5 font-medium">Client</th>
+                          <th className="text-left p-1.5 font-medium">Bills On</th>
+                          <th className="text-right p-1.5 font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.stripeMrr.subscriptions.filter(s => s.billsThisMonth).map((s, i) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="p-1.5">
+                              <span className="font-medium">{s.clientName}</span>
+                              {s.interval !== "monthly" && (
+                                <Badge variant="secondary" className="ml-1 text-[10px]">{s.interval}</Badge>
+                              )}
+                            </td>
+                            <td className="p-1.5 text-xs">{s.nextBillingDate ? formatDate(s.nextBillingDate) : "—"}</td>
+                            <td className="p-1.5 text-right font-medium text-blue-600">{formatCents(s.chargeCents)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="border-t">
+                        <tr>
+                          <td className="p-1.5 font-bold" colSpan={2}>Total Locked</td>
+                          <td className="p-1.5 text-right font-bold text-blue-600">{formatCents(collectible)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* RIGHT: Recoverable with checkboxes */}
+                  <div>
+                    <p className="text-sm font-semibold text-amber-600 mb-3">
+                      Recoverable ({recoverableSubs.length} conversations)
+                    </p>
+                    {recoverableSubs.length > 0 ? (
+                      <table className="w-full text-sm">
+                        <thead className="border-b">
+                          <tr>
+                            <th className="p-1.5 w-8"></th>
+                            <th className="text-left p-1.5 font-medium">Client</th>
+                            <th className="text-left p-1.5 font-medium">Status</th>
+                            <th className="text-right p-1.5 font-medium">MRR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recoverableSubs.map((s, i) => (
+                            <tr
+                              key={i}
+                              className={`border-b last:border-0 cursor-pointer transition-colors ${
+                                selectedRecoverable.has(s.clientName) ? "bg-amber-50" : "hover:bg-gray-50"
+                              }`}
+                              onClick={() => toggleRecoverable(s.clientName)}
+                            >
+                              <td className="p-1.5 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRecoverable.has(s.clientName)}
+                                  onChange={(e) => { e.stopPropagation(); toggleRecoverable(s.clientName); }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="rounded cursor-pointer w-4 h-4"
+                                />
+                              </td>
+                              <td className="p-1.5">
+                                <p className="font-medium">{s.clientName}</p>
+                                {s.email && <p className="text-xs text-[var(--muted-foreground)]">{s.email}</p>}
+                              </td>
+                              <td className="p-1.5">
+                                {s.isPaused && <Badge variant="warning">Paused</Badge>}
+                                {s.isTerminal && <Badge variant="danger">Renewal</Badge>}
+                              </td>
+                              <td className="p-1.5 text-right font-medium text-amber-600">{formatCents(s.mrrCents)}/mo</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t">
+                          <tr>
+                            <td></td>
+                            <td className="p-1.5 font-bold" colSpan={2}>Total Recoverable</td>
+                            <td className="p-1.5 text-right font-bold text-amber-600">
+                              +{formatCents(recoverableSubs.reduce((sum, s) => sum + s.mrrCents, 0))}/mo
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    ) : (
+                      <p className="text-sm text-[var(--muted-foreground)]">No recoverable subs this month</p>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
