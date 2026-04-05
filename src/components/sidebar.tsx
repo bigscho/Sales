@@ -31,6 +31,13 @@ const navItems: NavItem[] = [
   { href: "/settings", label: "Settings", icon: "⚙️", roles: ["admin"] },
 ];
 
+const ceoNavItems = [
+  { href: "/ceo", label: "CEO Home", icon: "🏦" },
+  { href: "/ceo/review", label: "Weekly Review", icon: "✅" },
+  { href: "/ceo/pnl", label: "CEO P&L", icon: "💹" },
+  { href: "/ceo/transactions", label: "Transactions", icon: "🔍" },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -100,6 +107,33 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {isAdmin && (
+          <>
+            <div className="border-t border-white/10 my-3" />
+            <p className="px-3 py-1 text-xs font-semibold text-white/40 uppercase tracking-wider">
+              CEO Finance
+            </p>
+            {ceoNavItems.map((item) => {
+              const isActive = item.href === "/ceo" ? pathname === "/ceo" : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
+                    isActive
+                      ? "bg-white/10 text-[var(--accent)] border-l-2 border-[var(--lime)]"
+                      : "text-white/60 hover:bg-white/10 hover:text-white border-l-2 border-transparent"
+                  )}
+                >
+                  <span className="text-base">{item.icon}</span>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
     </aside>
   );
