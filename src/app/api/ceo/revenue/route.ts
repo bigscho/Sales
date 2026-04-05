@@ -258,8 +258,33 @@ async function getStripeMRR() {
       const pauseCollection = subRaw.pause_collection as Record<string, unknown> | null;
       const isPaused = !!pauseCollection;
 
-      // Check if terminal: has a cancel_at date AND cancellation is confirmed (canceled_at exists)
-      const isTerminal = !!(cancelAt && canceledAt);
+      // Check if terminal: cancel_at is set and the next billing date would be
+      // after cancel_at — meaning no more payments will be collected.
+      // We estimate next billing by looking at the interval and last payment date.
+      let isTerminal = false;
+      if (cancelAt && canceledAt) {
+        const now = Math.floor(Date.now() / 1000);
+        const billingAnchor = typeof subRaw.billing_cycle_anchor === "number" ? subRaw.billing_cycle_anchor : 0;
+        const intervalMonths = sub.items.data[0]?.price.recurring?.interval === "year" ? 12
+          : sub.items.data[0]?.price.recurring?.interval === "month" ? (sub.items.data[0]?.price.recurring?.interval_count || 1)
+          : 1;
+
+        // Walk forward from billing anchor by interval until we find the next billing date after now
+        if (billingAnchor > 0) {
+          const anchorDate = new Date(billingAnchor * 1000);
+          const cancelDate = new Date(cancelAt * 1000);
+          const nowDate = new Date(now * 1000);
+
+          // Find next billing date after now
+          const nextBill = new Date(anchorDate);
+          while (nextBill <= nowDate) {
+            nextBill.setMonth(nextBill.getMonth() + intervalMonths);
+          }
+
+          // If next billing date is after cancel_at, no more payments — terminal
+          isTerminal = nextBill >= cancelDate;
+        }
+      }
 
       // Determine subscription type
       let subType: "auto-renew" | "fixed-term" | "canceling" | "paused" | "terminal" = "auto-renew";
