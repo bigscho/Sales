@@ -286,8 +286,9 @@ export default function RevenuePage() {
                           <input
                             type="checkbox"
                             checked={selectedRecoverable.has(s.clientName)}
-                            onChange={() => toggleRecoverable(s.clientName)}
-                            className="rounded"
+                            onChange={(e) => { e.stopPropagation(); toggleRecoverable(s.clientName); }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded cursor-pointer w-4 h-4"
                           />
                         </td>
                         <td className="p-2">
