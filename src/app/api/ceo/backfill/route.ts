@@ -137,6 +137,8 @@ export async function POST(req: NextRequest) {
     subscriptionId: string | null;
     refundedCents: number;
     action: string; // created | skipped_duplicate | dry_run
+    confidence: "high" | "medium" | "low";
+    flags: string[];
   }> = [];
 
   for (const pi of paymentIntents) {
@@ -159,6 +161,8 @@ export async function POST(req: NextRequest) {
         subscriptionId: existing.stripeSubscriptionId,
         refundedCents: existing.refundedCents,
         action: "skipped_duplicate",
+        confidence: "high",
+        flags: [],
       });
       continue;
     }
@@ -232,6 +236,36 @@ export async function POST(req: NextRequest) {
 
     const paidAt = new Date(pi.created * 1000);
 
+    // Build confidence and flags
+    const flags: string[] = [];
+
+    if (!customerName && !customerEmail) {
+      flags.push("NO_CUSTOMER_INFO: no name or email found in Stripe");
+    }
+    if (customerStatus === "unknown") {
+      flags.push("UNKNOWN_STATUS: couldn't determine new vs returning");
+    }
+    if (pi.invoice && !isSubscription) {
+      flags.push("INVOICE_BUT_NOT_SUBSCRIPTION: has invoice but no subscription attached — verify this is really one-time");
+    }
+    if (refundedCents > 0 && !isFullyRefunded) {
+      flags.push(`PARTIAL_REFUND: $${(refundedCents / 100).toFixed(2)} of $${(pi.amount / 100).toFixed(2)} refunded`);
+    }
+    if (isFullyRefunded) {
+      flags.push("FULLY_REFUNDED: entire payment was refunded");
+    }
+    if (isMisc) {
+      flags.push("MISC_PAYMENT: classified as non-revenue (fee, adjustment, credit)");
+    }
+    if (isSubscription && pi.amount > 500000) {
+      flags.push("LARGE_SUBSCRIPTION: subscription payment over $5,000 — verify amount");
+    }
+
+    const confidence: "high" | "medium" | "low" =
+      flags.length === 0 ? "high" :
+      flags.some(f => f.startsWith("NO_CUSTOMER") || f.startsWith("UNKNOWN_STATUS") || f.startsWith("INVOICE_BUT")) ? "low" :
+      "medium";
+
     if (dryRun) {
       results.push({
         piId: pi.id,
@@ -246,6 +280,8 @@ export async function POST(req: NextRequest) {
         subscriptionId,
         refundedCents,
         action: "dry_run",
+        confidence,
+        flags,
       });
       continue;
     }
@@ -295,12 +331,15 @@ export async function POST(req: NextRequest) {
       subscriptionId,
       refundedCents,
       action: "created",
+      confidence,
+      flags,
     });
   }
 
   const created = results.filter((r) => r.action === "created").length;
   const skipped = results.filter((r) => r.action === "skipped_duplicate").length;
   const previewed = results.filter((r) => r.action === "dry_run").length;
+  const needsReview = results.filter((r) => r.confidence !== "high" && r.action !== "skipped_duplicate");
 
   return NextResponse.json({
     period: { startDate, endDate, days: daysDiff },
@@ -311,7 +350,11 @@ export async function POST(req: NextRequest) {
       created,
       skipped,
       previewed,
+      needsReviewCount: needsReview.length,
     },
+    // Items that need your eyes — shown first
+    needsReview,
+    // All results
     results,
   });
 }
