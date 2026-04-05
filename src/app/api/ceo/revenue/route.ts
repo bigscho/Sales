@@ -182,20 +182,15 @@ export async function GET(req: NextRequest) {
   });
 }
 
-async function getStripeMRR(): Promise<{
-  activeMrr: number;
-  activeCount: number;
-  subscriptions: Array<{
-    clientName: string;
-    email: string | null;
-    mrrCents: number;
-    status: string;
-    currentPeriodEnd: string;
-  }>;
-  error?: string;
-}> {
+async function getStripeMRR() {
   if (!process.env.STRIPE_SECRET_KEY) {
-    return { activeMrr: 0, activeCount: 0, subscriptions: [], error: "STRIPE_SECRET_KEY not set" };
+    return {
+      activeMrr: 0, pausedMrr: 0, terminalMrr: 0, totalOnBooks: 0,
+      activeCount: 0, pausedCount: 0, terminalCount: 0, totalCount: 0,
+      renewalsNeeded: [] as Array<{ clientName: string; email: string | null; mrrCents: number; cancelAt: string | null }>,
+      subscriptions: [] as Array<Record<string, unknown>>,
+      error: "STRIPE_SECRET_KEY not set",
+    };
   }
 
   try {
@@ -210,15 +205,19 @@ async function getStripeMRR(): Promise<{
     });
 
     let activeMrr = 0;
+    let pausedMrr = 0;
+    let terminalMrr = 0;
     const subscriptions: Array<{
       clientName: string;
       email: string | null;
       mrrCents: number;
       status: string;
+      isPaused: boolean;
+      isTerminal: boolean;
       currentPeriodEnd: string;
       cancelAt: string | null;
       cancelAtPeriodEnd: boolean;
-      type: "auto-renew" | "fixed-term" | "canceling";
+      type: "auto-renew" | "fixed-term" | "canceling" | "paused" | "terminal";
       startDate: string;
     }> = [];
 
@@ -255,17 +254,34 @@ async function getStripeMRR(): Promise<{
       const cancelAtPeriodEnd = subRaw.cancel_at_period_end === true;
       const startDate = typeof subRaw.start_date === "number" ? subRaw.start_date : (typeof subRaw.created === "number" ? subRaw.created : 0);
 
-      // Determine subscription type
-      let subType: "auto-renew" | "fixed-term" | "canceling" = "auto-renew";
-      if (cancelAt) subType = "fixed-term";
-      if (cancelAtPeriodEnd) subType = "canceling";
+      // Check if paused
+      const pauseCollection = subRaw.pause_collection as Record<string, unknown> | null;
+      const isPaused = !!pauseCollection;
 
-      activeMrr += subMrr;
+      // Check if terminal (cancel_at exists and last billing already happened)
+      const isTerminal = !!(cancelAt && currentPeriodEnd && cancelAt <= currentPeriodEnd);
+
+      // Determine subscription type
+      let subType: "auto-renew" | "fixed-term" | "canceling" | "paused" | "terminal" = "auto-renew";
+      if (isPaused) subType = "paused";
+      else if (isTerminal) subType = "terminal";
+      else if (cancelAt) subType = "fixed-term";
+      else if (cancelAtPeriodEnd) subType = "canceling";
+
+      // Only count toward real MRR if actively billing
+      const countsTowardMrr = !isPaused && !isTerminal && sub.status === "active";
+
+      if (countsTowardMrr) activeMrr += subMrr;
+      if (isPaused) pausedMrr += subMrr;
+      if (isTerminal) terminalMrr += subMrr;
+
       subscriptions.push({
         clientName,
         email,
         mrrCents: subMrr,
         status: sub.status,
+        isPaused,
+        isTerminal,
         currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : "unknown",
         cancelAt: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
         cancelAtPeriodEnd,
@@ -277,7 +293,23 @@ async function getStripeMRR(): Promise<{
     // Sort by MRR descending
     subscriptions.sort((a, b) => b.mrrCents - a.mrrCents);
 
-    return { activeMrr, activeCount: subs.data.length, subscriptions };
+    const activeCount = subscriptions.filter(s => !s.isPaused && !s.isTerminal).length;
+    const pausedCount = subscriptions.filter(s => s.isPaused).length;
+    const terminalCount = subscriptions.filter(s => s.isTerminal).length;
+    const renewalsNeeded = subscriptions.filter(s => s.isTerminal);
+
+    return {
+      activeMrr,
+      pausedMrr,
+      terminalMrr,
+      totalOnBooks: activeMrr + pausedMrr + terminalMrr,
+      activeCount,
+      pausedCount,
+      terminalCount,
+      totalCount: subs.data.length,
+      renewalsNeeded,
+      subscriptions,
+    };
   } catch (err) {
     return {
       activeMrr: 0,
