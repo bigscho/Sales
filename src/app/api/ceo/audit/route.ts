@@ -209,6 +209,7 @@ export async function GET() {
       terminalCount++;
       terminalMrr += subMrr;
       terminalNames.push(`${name} ($${(subMrr/100).toFixed(2)}/mo)`);
+      alerts.push(`🔄 ${name} — subscription ended, $${(subMrr/100).toFixed(2)}/mo to recover`);
     } else {
       activeCount++;
       activeMrr += subMrr;
