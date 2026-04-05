@@ -127,9 +127,11 @@ model Payment {
   weekId                String?
   stripePaymentIntentId String?  @unique
   stripeCustomerId      String?
+  stripeSubscriptionId  String?  // set only if payment is from an actual subscription
   amountCents           Int
+  refundedCents         Int      @default(0)  // total refunded amount
   currency              String   @default("usd")
-  status                String   // succeeded | pending | failed
+  status                String   // succeeded | pending | failed | refunded | partially_refunded | disputed
   paidAt                DateTime
   isMonth1              Boolean  @default(false)
   isSubscription        Boolean  @default(false) // true = subscription, false = one-time

@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
   let mrrPayments = 0;
   let oneTimePayments = 0;
   let miscPayments = 0;
+  let totalRefunded = 0;
 
   const byCustomer: Record<string, {
     name: string;
@@ -63,15 +64,22 @@ export async function GET(req: NextRequest) {
   for (const p of payments) {
     const effectiveType = p.revenueTypeOverride || p.revenueType;
     const effectiveStatus = p.customerStatusOverride || p.customerStatus;
+    const netAmount = p.amountCents - (p.refundedCents || 0);
 
-    // By type
-    if (effectiveType === "mrr") mrrPayments += p.amountCents;
-    else if (effectiveType === "one_time") oneTimePayments += p.amountCents;
-    else miscPayments += p.amountCents;
+    // Track refunds
+    if (p.refundedCents > 0) totalRefunded += p.refundedCents;
+
+    // Skip fully refunded/disputed payments from revenue counts
+    if (p.status === "refunded" || p.status === "disputed") continue;
+
+    // By type (use net amount for partially refunded)
+    if (effectiveType === "mrr") mrrPayments += netAmount;
+    else if (effectiveType === "one_time") oneTimePayments += netAmount;
+    else miscPayments += netAmount;
 
     // By customer status
-    if (effectiveStatus === "new") newRevenue += p.amountCents;
-    else if (effectiveStatus === "returning") returningRevenue += p.amountCents;
+    if (effectiveStatus === "new") newRevenue += netAmount;
+    else if (effectiveStatus === "returning") returningRevenue += netAmount;
 
     // By customer
     const custKey = p.stripeCustomerId || p.customerEmail || p.customerName || "unknown";
@@ -86,7 +94,7 @@ export async function GET(req: NextRequest) {
         lastPaidAt: p.paidAt.toISOString(),
       };
     }
-    byCustomer[custKey].total += p.amountCents;
+    byCustomer[custKey].total += netAmount;
     byCustomer[custKey].payments++;
 
     // By week
@@ -102,14 +110,17 @@ export async function GET(req: NextRequest) {
           paymentCount: 0,
         };
       }
-      byWeek[p.weekId].total += p.amountCents;
+      byWeek[p.weekId].total += netAmount;
       byWeek[p.weekId].paymentCount++;
-      if (effectiveStatus === "new") byWeek[p.weekId].newRevenue += p.amountCents;
-      if (effectiveStatus === "returning") byWeek[p.weekId].returningRevenue += p.amountCents;
+      if (effectiveStatus === "new") byWeek[p.weekId].newRevenue += netAmount;
+      if (effectiveStatus === "returning") byWeek[p.weekId].returningRevenue += netAmount;
     }
   }
 
-  const totalRevenue = payments.reduce((sum, p) => sum + p.amountCents, 0);
+  const grossRevenue = payments
+    .filter((p) => p.status !== "refunded" && p.status !== "disputed")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+  const totalRevenue = grossRevenue - totalRefunded;
 
   // Previous period comparison
   const prevStart = new Date(dateFilter.gte);
@@ -128,7 +139,9 @@ export async function GET(req: NextRequest) {
     // Live Stripe MRR (from subscriptions API)
     stripeMrr,
     // Payment-based revenue for the period
-    totalRevenue,
+    grossRevenue,
+    totalRefunded,
+    totalRevenue, // net: gross - refunds
     newRevenue,
     returningRevenue,
     byType: {
@@ -143,7 +156,10 @@ export async function GET(req: NextRequest) {
     payments: payments.map((p) => ({
       id: p.id,
       amountCents: p.amountCents,
+      refundedCents: p.refundedCents || 0,
+      netCents: p.amountCents - (p.refundedCents || 0),
       paidAt: p.paidAt,
+      status: p.status,
       customerName: p.customerName,
       customerEmail: p.customerEmail,
       revenueType: p.revenueTypeOverride || p.revenueType,

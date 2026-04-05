@@ -3,17 +3,39 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchPaymentToDemo } from "@/lib/matching";
 
-// Determine if payment is subscription-based
-function isSubscriptionPayment(description: string | null, invoice: string | null): boolean {
-  const desc = (description || "").toLowerCase();
-  return !!(invoice || desc.includes("subscription"));
-}
-
 // Determine if payment is misc (not a real sale)
 function isMiscPayment(description: string | null): boolean {
   const desc = (description || "").toLowerCase();
-  const miscPatterns = ["delay fee", "refund", "adjustment", "credit"];
+  const miscPatterns = ["delay fee", "adjustment", "credit"];
   return miscPatterns.some((p) => desc.includes(p));
+}
+
+// Check if a payment intent is actually from a subscription by looking up the invoice
+async function checkSubscriptionViaInvoice(
+  invoiceId: string | null,
+  stripeKey: string
+): Promise<{ isSubscription: boolean; subscriptionId: string | null }> {
+  if (!invoiceId) return { isSubscription: false, subscriptionId: null };
+
+  try {
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeKey);
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+
+    // Only a real subscription if the invoice has a subscription attached
+    const invoiceData = invoice as unknown as Record<string, unknown>;
+    if (invoiceData.subscription) {
+      const subId = typeof invoiceData.subscription === "string"
+        ? invoiceData.subscription
+        : (invoiceData.subscription as Record<string, string>).id;
+      return { isSubscription: true, subscriptionId: subId };
+    }
+
+    return { isSubscription: false, subscriptionId: null };
+  } catch {
+    // If invoice lookup fails, don't assume subscription
+    return { isSubscription: false, subscriptionId: null };
+  }
 }
 
 // Check Stripe for prior payments from this customer to determine new vs returning
@@ -145,7 +167,7 @@ export async function POST(request: NextRequest) {
       const customerId = data.customer;
       const created = data.created;
       const description = data.description;
-      const invoice = data.invoice; // present for subscription payments
+      const invoice = data.invoice; // present for invoice-based payments (may or may not be subscription)
 
       // Check if already recorded
       const existing = await prisma.payment.findUnique({
@@ -155,8 +177,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ received: true, action: "duplicate_skipped" });
       }
 
-      // Classify payment type
-      const isSub = isSubscriptionPayment(description, invoice);
+      // Check if this is actually a subscription payment by verifying the invoice
+      const subCheck = process.env.STRIPE_SECRET_KEY
+        ? await checkSubscriptionViaInvoice(invoice, process.env.STRIPE_SECRET_KEY)
+        : { isSubscription: false, subscriptionId: null };
+
       const isMisc = isMiscPayment(description);
 
       // Get customer details
@@ -182,8 +207,8 @@ export async function POST(request: NextRequest) {
         customerName = description;
       }
 
-      // Revenue type: what kind of payment
-      const revenueType = isMisc ? "misc" : isSub ? "mrr" : "one_time";
+      // Revenue type: determined by actual subscription check, not invoice heuristic
+      const revenueType = isMisc ? "misc" : subCheck.isSubscription ? "mrr" : "one_time";
 
       // Customer status: new vs returning (check Stripe payment history)
       const customerStatus = isMisc ? "unknown" : await classifyNewVsReturning(customerId, piId);
@@ -198,13 +223,14 @@ export async function POST(request: NextRequest) {
         data: {
           stripePaymentIntentId: piId,
           stripeCustomerId: customerId,
+          stripeSubscriptionId: subCheck.subscriptionId,
           weekId,
           amountCents: amount,
           currency,
           status: "succeeded",
           paidAt,
           isMonth1: true,
-          isSubscription: isSub,
+          isSubscription: subCheck.isSubscription,
           revenueType,
           customerStatus,
           customerName,
@@ -227,7 +253,8 @@ export async function POST(request: NextRequest) {
           action: "stripe_webhook_created",
           newValue: JSON.stringify({
             piId, amount, customer: customerName,
-            revenueType, customerStatus, isSubscription: isSub,
+            revenueType, customerStatus, isSubscription: subCheck.isSubscription,
+            subscriptionId: subCheck.subscriptionId,
             matched: matchResult.matched,
           }),
           performedBy: "stripe_webhook",
@@ -267,7 +294,8 @@ export async function POST(request: NextRequest) {
           customer: customerName,
           revenueType,
           customerStatus,
-          isSubscription: isSub,
+          isSubscription: subCheck.isSubscription,
+          subscriptionId: subCheck.subscriptionId,
           matched: matchResult.matched,
         },
       });
@@ -286,6 +314,135 @@ export async function POST(request: NextRequest) {
         });
       }
       return NextResponse.json({ received: true, action: "marked_failed" });
+    }
+
+    // === charge.refunded (full or partial) ===
+    if (eventType === "charge.refunded") {
+      const piId = data.payment_intent;
+      const amountRefunded = data.amount_refunded; // total refunded in cents
+      const totalAmount = data.amount; // original charge amount
+
+      if (piId) {
+        const existing = await prisma.payment.findUnique({
+          where: { stripePaymentIntentId: piId },
+        });
+
+        if (existing) {
+          const isFullRefund = amountRefunded >= totalAmount;
+          await prisma.payment.update({
+            where: { id: existing.id },
+            data: {
+              refundedCents: amountRefunded,
+              status: isFullRefund ? "refunded" : "partially_refunded",
+            },
+          });
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              entityType: "payment",
+              entityId: existing.id,
+              action: "stripe_refund",
+              newValue: JSON.stringify({
+                piId,
+                amountRefunded,
+                totalAmount,
+                isFullRefund,
+                customer: existing.customerName,
+              }),
+              performedBy: "stripe_webhook",
+            },
+          });
+
+          // Slack alert for refunds
+          try {
+            const { sendSlackCEO } = await import("@/lib/slack");
+            const refundStr = `$${(amountRefunded / 100).toFixed(2)}`;
+            const label = isFullRefund ? "Full refund" : "Partial refund";
+            await sendSlackCEO(`⚠️ ${label}: ${refundStr} for ${existing.customerName || existing.customerEmail || "Unknown"}`);
+          } catch { /* Slack not configured */ }
+        }
+      }
+
+      return NextResponse.json({ received: true, action: "refund_recorded" });
+    }
+
+    // === charge.dispute.created ===
+    if (eventType === "charge.dispute.created") {
+      const piId = data.payment_intent;
+      const disputeAmount = data.amount;
+      const reason = data.reason;
+
+      if (piId) {
+        const existing = await prisma.payment.findUnique({
+          where: { stripePaymentIntentId: piId },
+        });
+
+        if (existing) {
+          await prisma.payment.update({
+            where: { id: existing.id },
+            data: { status: "disputed" },
+          });
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              entityType: "payment",
+              entityId: existing.id,
+              action: "stripe_dispute",
+              newValue: JSON.stringify({
+                piId,
+                disputeAmount,
+                reason,
+                customer: existing.customerName,
+              }),
+              performedBy: "stripe_webhook",
+            },
+          });
+
+          // Slack alert — disputes are urgent
+          try {
+            const { sendSlackCEO, sendSlackTeam } = await import("@/lib/slack");
+            const amountStr = `$${(disputeAmount / 100).toFixed(2)}`;
+            const msg = `🚨 DISPUTE: ${amountStr} from ${existing.customerName || existing.customerEmail || "Unknown"} — Reason: ${reason || "unknown"}`;
+            await sendSlackCEO(msg);
+            await sendSlackTeam(msg);
+          } catch { /* Slack not configured */ }
+        }
+      }
+
+      return NextResponse.json({ received: true, action: "dispute_recorded" });
+    }
+
+    // === charge.dispute.closed ===
+    if (eventType === "charge.dispute.closed") {
+      const piId = data.payment_intent;
+      const disputeStatus = data.status; // won | lost | warning_closed
+
+      if (piId) {
+        const existing = await prisma.payment.findUnique({
+          where: { stripePaymentIntentId: piId },
+        });
+
+        if (existing) {
+          // If we won the dispute, restore to succeeded
+          const newStatus = disputeStatus === "won" ? "succeeded" : "refunded";
+          const refundedCents = disputeStatus === "won" ? existing.refundedCents : existing.amountCents;
+
+          await prisma.payment.update({
+            where: { id: existing.id },
+            data: { status: newStatus, refundedCents },
+          });
+
+          try {
+            const { sendSlackCEO } = await import("@/lib/slack");
+            const outcome = disputeStatus === "won" ? "✅ WON" : "❌ LOST";
+            await sendSlackCEO(`Dispute ${outcome} for ${existing.customerName || "Unknown"} ($${(existing.amountCents / 100).toFixed(2)})`);
+          } catch { /* Slack not configured */ }
+        }
+      }
+
+      return NextResponse.json({ received: true, action: "dispute_closed" });
     }
 
     // === customer.subscription.created ===

@@ -20,6 +20,8 @@ interface RevenueData {
     }>;
     error?: string;
   };
+  grossRevenue: number;
+  totalRefunded: number;
   totalRevenue: number;
   newRevenue: number;
   returningRevenue: number;
@@ -45,7 +47,10 @@ interface RevenueData {
   payments: Array<{
     id: string;
     amountCents: number;
+    refundedCents: number;
+    netCents: number;
     paidAt: string;
+    status: string;
     customerName: string | null;
     customerEmail: string | null;
     revenueType: string;
@@ -170,9 +175,16 @@ export default function RevenuePage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">Total Revenue</p>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  {data.totalRefunded > 0 ? "Net Revenue" : "Total Revenue"}
+                </p>
                 <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
-                {data.comparison.prevTotal > 0 && (
+                {data.totalRefunded > 0 && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Gross: {formatCents(data.grossRevenue)} · Refunds: -{formatCents(data.totalRefunded)}
+                  </p>
+                )}
+                {data.comparison.prevTotal > 0 && data.totalRefunded === 0 && (
                   <p className={`text-xs mt-1 ${data.comparison.change >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {data.comparison.change >= 0 ? "+" : ""}{(data.comparison.change * 100).toFixed(1)}% vs prev period
                   </p>
@@ -364,7 +376,17 @@ export default function RevenuePage() {
                           {p.matchStatus === "unmatched" && <Badge variant="secondary">Unmatched</Badge>}
                           {p.matchStatus === "needs_review" && <Badge variant="danger">Review</Badge>}
                         </td>
-                        <td className="p-2 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
+                        <td className="p-2 text-right">
+                          <span className={`font-medium ${p.status === "refunded" || p.status === "disputed" ? "text-red-600 line-through" : "text-green-600"}`}>
+                            {formatCents(p.amountCents)}
+                          </span>
+                          {p.refundedCents > 0 && p.status !== "refunded" && (
+                            <span className="text-xs text-red-600 block">-{formatCents(p.refundedCents)} refunded</span>
+                          )}
+                          {p.status === "disputed" && (
+                            <span className="text-xs text-red-600 block">DISPUTED</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
