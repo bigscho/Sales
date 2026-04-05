@@ -6,18 +6,39 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCents, formatDate } from "@/lib/utils";
 
+interface Subscription {
+  clientName: string;
+  email: string | null;
+  mrrCents: number;
+  chargeCents: number;
+  interval: string;
+  status: string;
+  isPaused: boolean;
+  isTerminal: boolean;
+  nextBillingDate: string | null;
+  billsThisMonth: boolean;
+  canceledAt: string | null;
+  cancelAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  type: string;
+  startDate: string;
+}
+
 interface RevenueData {
   period: { month: number; year: number; view: string };
   stripeMrr: {
     activeMrr: number;
+    pausedMrr: number;
+    terminalMrr: number;
+    collectibleThisMonth: number;
+    totalOnBooks: number;
     activeCount: number;
-    subscriptions: Array<{
-      clientName: string;
-      email: string | null;
-      mrrCents: number;
-      status: string;
-      currentPeriodEnd: string;
-    }>;
+    pausedCount: number;
+    terminalCount: number;
+    billingThisMonthCount: number;
+    totalCount: number;
+    renewalsNeeded: Subscription[];
+    subscriptions: Subscription[];
     error?: string;
   };
   grossRevenue: number;
@@ -69,7 +90,9 @@ export default function RevenuePage() {
   const [year, setYear] = useState(now.getFullYear());
   const [data, setData] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showSubscriptions, setShowSubscriptions] = useState(false);
+  const [selectedRecoverable, setSelectedRecoverable] = useState<Set<string>>(new Set());
+  const [showActiveList, setShowActiveList] = useState(false);
+  const [showBillingList, setShowBillingList] = useState(false);
   const [showNewRevenue, setShowNewRevenue] = useState(false);
   const [showReturningRevenue, setShowReturningRevenue] = useState(false);
   const [showCustomers, setShowCustomers] = useState(false);
@@ -86,6 +109,30 @@ export default function RevenuePage() {
   }, [month, year]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Recoverable subs: paused monthly + terminal
+  const recoverableSubs = data ? [
+    ...data.stripeMrr.subscriptions.filter(s => s.isPaused && s.interval === "monthly"),
+    ...data.stripeMrr.subscriptions.filter(s => s.isTerminal),
+  ] : [];
+
+  const longerConversations = data ? data.stripeMrr.subscriptions.filter(s => s.isPaused && s.interval !== "monthly") : [];
+
+  const toggleRecoverable = (name: string) => {
+    setSelectedRecoverable(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const projectedFromRecoveries = recoverableSubs
+    .filter(s => selectedRecoverable.has(s.clientName))
+    .reduce((sum, s) => sum + s.mrrCents, 0);
+
+  const collectible = data?.stripeMrr.collectibleThisMonth || 0;
+  const projected = collectible + projectedFromRecoveries;
 
   return (
     <div className="space-y-6">
@@ -116,56 +163,79 @@ export default function RevenuePage() {
         </div>
       ) : data ? (
         <>
-          {/* Live MRR Banner */}
-          <Card className="border-green-200 bg-green-50/50">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-green-800">Live MRR (from Stripe Subscriptions)</p>
-                  <p className="text-3xl font-bold text-green-700">{formatCents(data.stripeMrr.activeMrr)}</p>
-                  <p className="text-sm text-green-600 mt-1">
-                    {data.stripeMrr.activeCount} active subscription{data.stripeMrr.activeCount !== 1 ? "s" : ""}
-                  </p>
-                  {data.stripeMrr.error && (
-                    <p className="text-xs text-red-600 mt-1">{data.stripeMrr.error}</p>
-                  )}
-                </div>
-                <Button size="sm" variant="outline" onClick={() => setShowSubscriptions(!showSubscriptions)}>
-                  {showSubscriptions ? "Hide" : "View"} Subscriptions
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Active Subscriptions Drill-down */}
-          {showSubscriptions && data.stripeMrr.subscriptions.length > 0 && (
+          {/* === TOP ROW: The Numbers That Matter === */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
-              <CardHeader><CardTitle className="text-base">Active Subscriptions</CardTitle></CardHeader>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">MRR</p>
+                <p className="text-2xl font-bold text-green-600">{formatCents(data.stripeMrr.activeMrr)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {data.stripeMrr.activeCount} active subs
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowBillingList(!showBillingList)}>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">{MONTH_NAMES[month - 1]} Collections</p>
+                <p className="text-2xl font-bold text-blue-600">{formatCents(collectible)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {data.stripeMrr.billingThisMonthCount} subs billing — click to view
+                </p>
+              </CardContent>
+            </Card>
+            <Card className={projectedFromRecoveries > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">Projected {MONTH_NAMES[month - 1]}</p>
+                <p className={`text-2xl font-bold ${projectedFromRecoveries > 0 ? "text-amber-600" : "text-gray-600"}`}>
+                  {formatCents(projected)}
+                </p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {projectedFromRecoveries > 0
+                    ? `+${formatCents(projectedFromRecoveries)} from ${selectedRecoverable.size} recovery`
+                    : "Select recoveries below to project"
+                  }
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">Paused</p>
+                <p className="text-2xl font-bold text-gray-500">{formatCents(data.stripeMrr.pausedMrr)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {data.stripeMrr.pausedCount} subs on hold
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* === BILLING THIS MONTH DRILL-DOWN === */}
+          {showBillingList && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Billing This Month</CardTitle></CardHeader>
               <CardContent>
                 <table className="w-full text-sm">
                   <thead className="border-b">
                     <tr>
                       <th className="text-left p-2 font-medium">Client</th>
-                      <th className="text-left p-2 font-medium">Email</th>
-                      <th className="text-right p-2 font-medium">Monthly MRR</th>
-                      <th className="text-left p-2 font-medium">Renews</th>
+                      <th className="text-left p-2 font-medium">Interval</th>
+                      <th className="text-left p-2 font-medium">Bills On</th>
+                      <th className="text-right p-2 font-medium">Charge</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.stripeMrr.subscriptions.map((sub, i) => (
+                    {data.stripeMrr.subscriptions.filter(s => s.billsThisMonth).map((s, i) => (
                       <tr key={i} className="border-b last:border-0">
-                        <td className="p-2 font-medium">{sub.clientName}</td>
-                        <td className="p-2 text-[var(--muted-foreground)]">{sub.email || "—"}</td>
-                        <td className="p-2 text-right font-medium text-green-600">{formatCents(sub.mrrCents)}</td>
-                        <td className="p-2">{formatDate(sub.currentPeriodEnd)}</td>
+                        <td className="p-2 font-medium">{s.clientName}</td>
+                        <td className="p-2"><Badge variant="secondary">{s.interval}</Badge></td>
+                        <td className="p-2">{s.nextBillingDate ? formatDate(s.nextBillingDate) : "—"}</td>
+                        <td className="p-2 text-right font-medium text-blue-600">{formatCents(s.chargeCents)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="border-t">
                     <tr>
-                      <td className="p-2 font-bold" colSpan={2}>Total MRR</td>
-                      <td className="p-2 text-right font-bold text-green-600">{formatCents(data.stripeMrr.activeMrr)}</td>
-                      <td></td>
+                      <td className="p-2 font-bold" colSpan={3}>Total Collectible</td>
+                      <td className="p-2 text-right font-bold text-blue-600">{formatCents(collectible)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -173,12 +243,176 @@ export default function RevenuePage() {
             </Card>
           )}
 
-          {/* Period Revenue Summary */}
+          {/* === SCENARIO PROJECTOR: Recoverable Revenue === */}
+          {recoverableSubs.length > 0 && (
+            <Card className="border-amber-200">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Recoverable This Month</CardTitle>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                      Check the ones you expect to close — projected number updates above
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-[var(--muted-foreground)]">Selected</p>
+                    <p className="text-lg font-bold text-amber-600">
+                      +{formatCents(projectedFromRecoveries)}
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <table className="w-full text-sm">
+                  <thead className="border-b">
+                    <tr>
+                      <th className="p-2 w-8"></th>
+                      <th className="text-left p-2 font-medium">Client</th>
+                      <th className="text-left p-2 font-medium">Status</th>
+                      <th className="text-left p-2 font-medium">Type</th>
+                      <th className="text-right p-2 font-medium">MRR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recoverableSubs.map((s, i) => (
+                      <tr
+                        key={i}
+                        className={`border-b last:border-0 cursor-pointer transition-colors ${
+                          selectedRecoverable.has(s.clientName) ? "bg-amber-50" : "hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleRecoverable(s.clientName)}
+                      >
+                        <td className="p-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedRecoverable.has(s.clientName)}
+                            onChange={() => toggleRecoverable(s.clientName)}
+                            className="rounded"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <p className="font-medium">{s.clientName}</p>
+                          {s.email && <p className="text-xs text-[var(--muted-foreground)]">{s.email}</p>}
+                        </td>
+                        <td className="p-2">
+                          {s.isPaused && <Badge variant="warning">Paused</Badge>}
+                          {s.isTerminal && <Badge variant="danger">Needs Renewal</Badge>}
+                        </td>
+                        <td className="p-2">
+                          {s.cancelAt && (
+                            <span className="text-xs text-[var(--muted-foreground)]">
+                              Ended {formatDate(s.cancelAt)}
+                            </span>
+                          )}
+                          {s.isPaused && !s.cancelAt && (
+                            <span className="text-xs text-[var(--muted-foreground)]">Pending conversation</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-right font-medium text-amber-600">{formatCents(s.mrrCents)}/mo</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t">
+                    <tr>
+                      <td></td>
+                      <td className="p-2 font-bold" colSpan={3}>Total Recoverable</td>
+                      <td className="p-2 text-right font-bold text-amber-600">
+                        {formatCents(recoverableSubs.reduce((sum, s) => sum + s.mrrCents, 0))}/mo
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Longer Conversations (paused quarterly) */}
+          {longerConversations.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Longer Conversations (Paused Quarterly)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <table className="w-full text-sm">
+                  <tbody>
+                    {longerConversations.map((s, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="p-2 font-medium">{s.clientName}</td>
+                        <td className="p-2"><Badge variant="secondary">{s.interval}</Badge></td>
+                        <td className="p-2 text-right font-medium">{formatCents(s.mrrCents)}/mo avg</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* === ACTIVE SUBSCRIPTIONS === */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Active Subscriptions ({data.stripeMrr.activeCount})</CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setShowActiveList(!showActiveList)}>
+                  {showActiveList ? "Collapse" : "Expand"}
+                </Button>
+              </div>
+            </CardHeader>
+            {showActiveList && (
+              <CardContent>
+                <table className="w-full text-sm">
+                  <thead className="border-b">
+                    <tr>
+                      <th className="text-left p-2 font-medium">Client</th>
+                      <th className="text-left p-2 font-medium">Interval</th>
+                      <th className="text-left p-2 font-medium">Type</th>
+                      <th className="text-left p-2 font-medium">Next Bill</th>
+                      <th className="text-right p-2 font-medium">MRR</th>
+                      <th className="text-right p-2 font-medium">Charge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.stripeMrr.subscriptions
+                      .filter(s => !s.isPaused && !s.isTerminal)
+                      .map((s, i) => (
+                        <tr key={i} className="border-b last:border-0">
+                          <td className="p-2">
+                            <p className="font-medium">{s.clientName}</p>
+                            {s.email && <p className="text-xs text-[var(--muted-foreground)]">{s.email}</p>}
+                          </td>
+                          <td className="p-2"><Badge variant="secondary">{s.interval}</Badge></td>
+                          <td className="p-2">
+                            <Badge variant={s.type === "auto-renew" ? "success" : "warning"}>
+                              {s.type === "auto-renew" ? "Auto" : s.type}
+                            </Badge>
+                          </td>
+                          <td className="p-2 text-xs">
+                            {s.nextBillingDate ? formatDate(s.nextBillingDate) : "—"}
+                            {s.billsThisMonth && <span className="text-green-600 ml-1">✓ this month</span>}
+                          </td>
+                          <td className="p-2 text-right font-medium">{formatCents(s.mrrCents)}</td>
+                          <td className="p-2 text-right text-[var(--muted-foreground)]">{formatCents(s.chargeCents)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                  <tfoot className="border-t">
+                    <tr>
+                      <td className="p-2 font-bold" colSpan={4}>Total Active MRR</td>
+                      <td className="p-2 text-right font-bold text-green-600">{formatCents(data.stripeMrr.activeMrr)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* === PERIOD REVENUE (Collected) === */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">
-                  {data.totalRefunded > 0 ? "Net Revenue" : "Total Revenue"}
+                  {data.totalRefunded > 0 ? "Net Collected" : "Collected"}
                 </p>
                 <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
                 {data.totalRefunded > 0 && (
@@ -198,7 +432,7 @@ export default function RevenuePage() {
                 <p className="text-sm text-[var(--muted-foreground)]">New Revenue</p>
                 <p className="text-2xl font-bold text-blue-600">{formatCents(data.newRevenue)}</p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.payments.filter(p => p.customerStatus === "new" && p.status !== "refunded").length} first-time payments — click to expand
+                  {data.payments.filter(p => p.customerStatus === "new" && p.status !== "refunded").length} payments — click to expand
                 </p>
               </CardContent>
             </Card>
@@ -207,7 +441,7 @@ export default function RevenuePage() {
                 <p className="text-sm text-[var(--muted-foreground)]">Returning Revenue</p>
                 <p className="text-2xl font-bold text-purple-600">{formatCents(data.returningRevenue)}</p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.payments.filter(p => p.customerStatus === "returning" && p.status !== "refunded").length} returning payments — click to expand
+                  {data.payments.filter(p => p.customerStatus === "returning" && p.status !== "refunded").length} payments — click to expand
                 </p>
               </CardContent>
             </Card>
@@ -333,41 +567,6 @@ export default function RevenuePage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Weekly Trend */}
-          {data.byWeek.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Weekly Revenue</CardTitle></CardHeader>
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Week</th>
-                      <th className="text-right p-2 font-medium">Total</th>
-                      <th className="text-right p-2 font-medium">New</th>
-                      <th className="text-right p-2 font-medium">Returning</th>
-                      <th className="text-right p-2 font-medium">Payments</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.byWeek.map((w) => (
-                      <tr key={w.weekId} className="border-b last:border-0">
-                        <td className="p-2">
-                          {new Date(w.weekStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          {" - "}
-                          {new Date(w.weekEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </td>
-                        <td className="p-2 text-right font-medium">{formatCents(w.total)}</td>
-                        <td className="p-2 text-right text-blue-600">{formatCents(w.newRevenue)}</td>
-                        <td className="p-2 text-right text-purple-600">{formatCents(w.returningRevenue)}</td>
-                        <td className="p-2 text-right">{w.paymentCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Revenue by Customer */}
           <Card>
