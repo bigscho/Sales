@@ -64,15 +64,17 @@ export async function GET(req: NextRequest) {
   for (const p of payments) {
     const effectiveType = p.revenueTypeOverride || p.revenueType;
     const effectiveStatus = p.customerStatusOverride || p.customerStatus;
-    const netAmount = p.amountCents - (p.refundedCents || 0);
 
-    // Track refunds
+    // Track refunds (count before skipping)
     if (p.refundedCents > 0) totalRefunded += p.refundedCents;
 
-    // Skip fully refunded/disputed payments from revenue counts
+    // For fully refunded/disputed: include in gross but not in type/status breakdowns
     if (p.status === "refunded" || p.status === "disputed") continue;
 
-    // By type (use net amount for partially refunded)
+    // Use net amount for partially refunded payments
+    const netAmount = p.amountCents - (p.refundedCents || 0);
+
+    // By type
     if (effectiveType === "mrr") mrrPayments += netAmount;
     else if (effectiveType === "one_time") oneTimePayments += netAmount;
     else miscPayments += netAmount;
@@ -117,8 +119,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Gross = all succeeded + partially refunded payments (full refunds still count toward gross)
   const grossRevenue = payments
-    .filter((p) => p.status !== "refunded" && p.status !== "disputed")
+    .filter((p) => p.status !== "failed")
     .reduce((sum, p) => sum + p.amountCents, 0);
   const totalRevenue = grossRevenue - totalRefunded;
 
