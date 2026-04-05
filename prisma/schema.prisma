@@ -211,3 +211,105 @@ model DayLock {
 
   @@unique([weekId, date])
 }
+
+// ── CEO Financial Dashboard Models ──────────────────────────────────
+
+model Transaction {
+  id               String    @id @default(cuid())
+  externalId       String?
+  source           String    // mercury | stripe | amex
+  date             DateTime
+  amountCents      Int       // positive = inflow, negative = outflow
+  merchantName     String?
+  description      String?
+  classification   String    @default("needs_review") // business | personal | payroll | internal_transfer | needs_review
+  categoryId       String?
+  status           String    @default("needs_review") // auto_categorized | needs_review | confirmed
+  confidenceScore  Float     @default(0)
+  stripePaymentId  String?
+  weeklyCloseId    String?
+  adjustmentForId  String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  category      FinancialCategory? @relation(fields: [categoryId], references: [id])
+  weeklyClose   WeeklyClose?       @relation(fields: [weeklyCloseId], references: [id])
+  adjustmentFor Transaction?       @relation("TransactionAdjustments", fields: [adjustmentForId], references: [id], onDelete: SetNull)
+  adjustments   Transaction[]      @relation("TransactionAdjustments")
+
+  @@unique([source, externalId])
+  @@index([date])
+  @@index([classification])
+  @@index([status])
+}
+
+model FinancialCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  type      String   @default("business") // business | personal | payroll
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  transactions    Transaction[]
+  merchantMappings MerchantMapping[]
+}
+
+model MerchantMapping {
+  id              String   @id @default(cuid())
+  merchantPattern String   @unique
+  classification  String   // business | personal | payroll | internal_transfer
+  categoryId      String?
+  confidence      Float    @default(0.5)
+  timesConfirmed  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  category FinancialCategory? @relation(fields: [categoryId], references: [id])
+}
+
+model WeeklyClose {
+  id               String    @id @default(cuid())
+  weekStart        DateTime
+  weekEnd          DateTime
+  status           String    @default("pending") // pending | confirmed
+  confirmedAt      DateTime?
+  transactionCount Int       @default(0)
+  reviewedCount    Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  transactions Transaction[]
+
+  @@unique([weekStart])
+}
+
+model MonthlyClose {
+  id                String    @id @default(cuid())
+  month             Int
+  year              Int
+  status            String    @default("open") // open | confirmed
+  confirmedAt       DateTime?
+  totalRevenueCents Int       @default(0)
+  totalExpensesCents Int      @default(0)
+  totalPayrollCents Int       @default(0)
+  totalPersonalCents Int      @default(0)
+  netProfitCents    Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([month, year])
+}
+
+model MrrEvent {
+  id                   String   @id @default(cuid())
+  type                 String   // new_subscription | churn | reactivation
+  clientName           String
+  mrrAmountCents       Int
+  effectiveDate        DateTime
+  stripeSubscriptionId String?
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}

@@ -14,6 +14,13 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
+const ceoNavItems = [
+  { href: "/ceo", label: "CEO Home", icon: "🏦" },
+  { href: "/ceo/review", label: "Weekly Review", icon: "✅" },
+  { href: "/ceo/pnl", label: "CEO P&L", icon: "💹" },
+  { href: "/ceo/transactions", label: "Transactions", icon: "🔍" },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
 
@@ -26,6 +33,29 @@ export function Sidebar() {
       <nav className="flex-1 p-2">
         {navItems.map((item) => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
+                isActive
+                  ? "bg-green-50 text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              )}
+            >
+              <span className="text-base">{item.icon}</span>
+              {item.label}
+            </Link>
+          );
+        })}
+
+        <div className="border-t border-[var(--border)] my-3" />
+        <p className="px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
+          CEO Finance
+        </p>
+        {ceoNavItems.map((item) => {
+          const isActive = item.href === "/ceo" ? pathname === "/ceo" : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
