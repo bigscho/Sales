@@ -472,8 +472,145 @@ export async function POST(request: NextRequest) {
 
     // === customer.subscription.created ===
     if (eventType === "customer.subscription.created") {
-      // Log for tracking — the actual payment comes via payment_intent.succeeded
-      return NextResponse.json({ received: true, action: "subscription_logged" });
+      const subRaw = data as Record<string, unknown>;
+      const customerId = typeof subRaw.customer === "string" ? subRaw.customer : null;
+
+      // Calculate MRR from subscription items
+      let mrrAmount = 0;
+      const items = (subRaw.items as Record<string, unknown>)?.data as Array<Record<string, unknown>> || [];
+      for (const item of items) {
+        const price = item.price as Record<string, unknown>;
+        const recurring = price?.recurring as Record<string, unknown> | null;
+        const unitAmount = (price?.unit_amount as number) || 0;
+        const quantity = (item.quantity as number) || 1;
+        if (recurring?.interval === "month") {
+          mrrAmount += unitAmount * quantity;
+        } else if (recurring?.interval === "year") {
+          mrrAmount += Math.round((unitAmount * quantity) / 12);
+        }
+      }
+
+      // Get customer name
+      let clientName = "Unknown";
+      if (customerId && process.env.STRIPE_SECRET_KEY) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+          const customer = await stripe.customers.retrieve(customerId);
+          if (!("deleted" in customer && customer.deleted)) {
+            clientName = customer.name || customer.email || "Unknown";
+          }
+        } catch { /* customer lookup failed */ }
+      }
+
+      // Create MRR event
+      await prisma.mrrEvent.create({
+        data: {
+          type: "new_subscription",
+          clientName,
+          mrrAmountCents: mrrAmount,
+          effectiveDate: new Date(),
+          stripeSubscriptionId: data.id,
+        },
+      });
+
+      try {
+        const { sendSlackCEO } = await import("@/lib/slack");
+        await sendSlackCEO(`📈 New subscription: ${clientName} at $${(mrrAmount / 100).toFixed(2)}/mo`);
+      } catch { /* Slack not configured */ }
+
+      return NextResponse.json({ received: true, action: "subscription_created", clientName, mrr: mrrAmount });
+    }
+
+    // === customer.subscription.deleted (CHURN) ===
+    if (eventType === "customer.subscription.deleted") {
+      const subRaw = data as Record<string, unknown>;
+      const customerId = typeof subRaw.customer === "string" ? subRaw.customer : null;
+
+      // Calculate MRR lost
+      let mrrAmount = 0;
+      const items = (subRaw.items as Record<string, unknown>)?.data as Array<Record<string, unknown>> || [];
+      for (const item of items) {
+        const price = item.price as Record<string, unknown>;
+        const recurring = price?.recurring as Record<string, unknown> | null;
+        const unitAmount = (price?.unit_amount as number) || 0;
+        const quantity = (item.quantity as number) || 1;
+        if (recurring?.interval === "month") {
+          mrrAmount += unitAmount * quantity;
+        } else if (recurring?.interval === "year") {
+          mrrAmount += Math.round((unitAmount * quantity) / 12);
+        }
+      }
+
+      let clientName = "Unknown";
+      if (customerId && process.env.STRIPE_SECRET_KEY) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+          const customer = await stripe.customers.retrieve(customerId);
+          if (!("deleted" in customer && customer.deleted)) {
+            clientName = customer.name || customer.email || "Unknown";
+          }
+        } catch { /* customer lookup failed */ }
+      }
+
+      await prisma.mrrEvent.create({
+        data: {
+          type: "churn",
+          clientName,
+          mrrAmountCents: mrrAmount,
+          effectiveDate: new Date(),
+          stripeSubscriptionId: data.id,
+        },
+      });
+
+      try {
+        const { sendSlackCEO, sendSlackTeam } = await import("@/lib/slack");
+        const msg = `🔴 Churn: ${clientName} canceled — lost $${(mrrAmount / 100).toFixed(2)}/mo MRR`;
+        await sendSlackCEO(msg);
+        await sendSlackTeam(msg);
+      } catch { /* Slack not configured */ }
+
+      return NextResponse.json({ received: true, action: "subscription_churned", clientName, mrrLost: mrrAmount });
+    }
+
+    // === customer.subscription.updated (downgrades, cancel_at_period_end, etc.) ===
+    if (eventType === "customer.subscription.updated") {
+      const subRaw = data as Record<string, unknown>;
+      const previousAttributes = (body.data?.previous_attributes || {}) as Record<string, unknown>;
+      const customerId = typeof subRaw.customer === "string" ? subRaw.customer : null;
+
+      let clientName = "Unknown";
+      if (customerId && process.env.STRIPE_SECRET_KEY) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+          const customer = await stripe.customers.retrieve(customerId);
+          if (!("deleted" in customer && customer.deleted)) {
+            clientName = customer.name || customer.email || "Unknown";
+          }
+        } catch { /* customer lookup failed */ }
+      }
+
+      // Detect cancel_at_period_end being set (early warning of churn)
+      if (subRaw.cancel_at_period_end === true && previousAttributes.cancel_at_period_end === false) {
+        try {
+          const { sendSlackCEO } = await import("@/lib/slack");
+          await sendSlackCEO(`⚠️ ${clientName} set to cancel at period end — churn incoming`);
+        } catch { /* Slack not configured */ }
+      }
+
+      return NextResponse.json({ received: true, action: "subscription_updated" });
+    }
+
+    // === customer.subscription.paused ===
+    if (eventType === "customer.subscription.paused") {
+      return NextResponse.json({ received: true, action: "subscription_paused" });
+    }
+
+    // === customer.subscription.resumed ===
+    if (eventType === "customer.subscription.resumed") {
+      return NextResponse.json({ received: true, action: "subscription_resumed" });
     }
 
     return NextResponse.json({ received: true, action: "unhandled_event", type: eventType });
