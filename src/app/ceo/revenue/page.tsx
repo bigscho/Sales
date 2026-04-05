@@ -136,25 +136,40 @@ export default function RevenuePage() {
 
   const [importResult, setImportResult] = useState<{
     summary: Record<string, number>;
+    perFile: Array<{ name: string; synced: number; skipped: number }>;
     needsReview: Array<{ description: string; amount: number; flags: string[] }>;
   } | null>(null);
   const [importing, setImporting] = useState(false);
 
-  const handleAmexUpload = async (e: React.ChangeEvent<HTMLInputElement>, dryRun: boolean) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleAmexUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     setImporting(true);
-    const csvData = await file.text();
-    const res = await fetch("/api/ceo/amex", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ csvData, dryRun }),
-    });
-    const data = await res.json();
-    setImportResult({ summary: data.summary, needsReview: data.needsReview || [] });
+
+    const totals = { synced: 0, skipped: 0, internalTransfers: 0, needsReviewCount: 0 };
+    const perFile: Array<{ name: string; synced: number; skipped: number }> = [];
+    const allNeedsReview: Array<{ description: string; amount: number; flags: string[] }> = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const csvData = await file.text();
+      const res = await fetch("/api/ceo/amex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csvData }),
+      });
+      const data = await res.json();
+      totals.synced += data.summary?.synced || 0;
+      totals.skipped += data.summary?.skipped || 0;
+      totals.internalTransfers += data.summary?.internalTransfers || 0;
+      totals.needsReviewCount += data.summary?.needsReviewCount || 0;
+      perFile.push({ name: file.name, synced: data.summary?.synced || 0, skipped: data.summary?.skipped || 0 });
+      if (data.needsReview) allNeedsReview.push(...data.needsReview);
+    }
+
+    setImportResult({ summary: totals, perFile, needsReview: allNeedsReview });
     setImporting(false);
-    if (!dryRun) loadData();
-    // Reset file input
+    loadData();
     e.target.value = "";
   };
 
@@ -174,7 +189,8 @@ export default function RevenuePage() {
             <input
               type="file"
               accept=".csv,.tsv,.txt"
-              onChange={(e) => handleAmexUpload(e, false)}
+              multiple
+              onChange={handleAmexUpload}
               className="hidden"
               disabled={importing}
             />
@@ -196,12 +212,17 @@ export default function RevenuePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-green-800">
-                  Amex Import: {importResult.summary.synced} transactions imported
+                  Amex Import: {importResult.summary.synced} transactions from {importResult.perFile.length} file{importResult.perFile.length !== 1 ? "s" : ""}
                 </p>
                 <p className="text-sm text-green-600">
-                  {importResult.summary.skipped} duplicates skipped · {importResult.summary.internalTransfers} internal transfers excluded
+                  {importResult.summary.skipped} duplicates · {importResult.summary.internalTransfers} internal transfers
                   {importResult.summary.needsReviewCount > 0 && ` · ${importResult.summary.needsReviewCount} need review`}
                 </p>
+                <div className="mt-2 flex flex-wrap gap-3 text-xs text-green-700">
+                  {importResult.perFile.map((f, i) => (
+                    <span key={i} className="bg-green-100 px-2 py-0.5 rounded">{f.name}: {f.synced} new, {f.skipped} skipped</span>
+                  ))}
+                </div>
               </div>
               <Button size="sm" variant="outline" onClick={() => setImportResult(null)}>Dismiss</Button>
             </div>
