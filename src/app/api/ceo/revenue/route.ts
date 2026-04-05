@@ -214,7 +214,7 @@ async function getStripeMRR() {
       status: string;
       isPaused: boolean;
       isTerminal: boolean;
-      currentPeriodEnd: string;
+      canceledAt: string | null;
       cancelAt: string | null;
       cancelAtPeriodEnd: boolean;
       type: "auto-renew" | "fixed-term" | "canceling" | "paused" | "terminal";
@@ -249,8 +249,8 @@ async function getStripeMRR() {
 
       // Access raw subscription fields via cast
       const subRaw = sub as unknown as Record<string, unknown>;
-      const currentPeriodEnd = typeof subRaw.current_period_end === "number" ? subRaw.current_period_end : 0;
       const cancelAt = typeof subRaw.cancel_at === "number" ? subRaw.cancel_at : null;
+      const canceledAt = typeof subRaw.canceled_at === "number" ? subRaw.canceled_at : null;
       const cancelAtPeriodEnd = subRaw.cancel_at_period_end === true;
       const startDate = typeof subRaw.start_date === "number" ? subRaw.start_date : (typeof subRaw.created === "number" ? subRaw.created : 0);
 
@@ -258,8 +258,8 @@ async function getStripeMRR() {
       const pauseCollection = subRaw.pause_collection as Record<string, unknown> | null;
       const isPaused = !!pauseCollection;
 
-      // Check if terminal (cancel_at exists and last billing already happened)
-      const isTerminal = !!(cancelAt && currentPeriodEnd && cancelAt <= currentPeriodEnd);
+      // Check if terminal: has a cancel_at date AND cancellation is confirmed (canceled_at exists)
+      const isTerminal = !!(cancelAt && canceledAt);
 
       // Determine subscription type
       let subType: "auto-renew" | "fixed-term" | "canceling" | "paused" | "terminal" = "auto-renew";
@@ -282,7 +282,7 @@ async function getStripeMRR() {
         status: sub.status,
         isPaused,
         isTerminal,
-        currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : "unknown",
+        canceledAt: canceledAt ? new Date(canceledAt * 1000).toISOString() : null,
         cancelAt: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
         cancelAtPeriodEnd,
         type: subType,
