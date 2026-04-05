@@ -91,8 +91,10 @@ export default function RevenuePage() {
   const [data, setData] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedRecoverable, setSelectedRecoverable] = useState<Set<string>>(new Set());
+  const [showCollectedList, setShowCollectedList] = useState(false);
   const [showActiveList, setShowActiveList] = useState(false);
   const [showBillingList, setShowBillingList] = useState(false);
+  const [showPausedList, setShowPausedList] = useState(false);
   const [showNewRevenue, setShowNewRevenue] = useState(false);
   const [showReturningRevenue, setShowReturningRevenue] = useState(false);
   const [showCustomers, setShowCustomers] = useState(false);
@@ -164,7 +166,18 @@ export default function RevenuePage() {
       ) : data ? (
         <>
           {/* === TOP ROW: The Numbers That Matter === */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowCollectedList(!showCollectedList)}>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  {data.totalRefunded > 0 ? "Collected (Net)" : "Collected"}
+                </p>
+                <p className="text-2xl font-bold text-green-600">{formatCents(data.totalRevenue)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {data.paymentCount} payments — click to view
+                </p>
+              </CardContent>
+            </Card>
             <Card>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">MRR</p>
@@ -176,7 +189,7 @@ export default function RevenuePage() {
             </Card>
             <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowBillingList(!showBillingList)}>
               <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">{MONTH_NAMES[month - 1]} Collections</p>
+                <p className="text-sm text-[var(--muted-foreground)]">{MONTH_NAMES[month - 1]} Expected</p>
                 <p className="text-2xl font-bold text-blue-600">{formatCents(collectible)}</p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
                   {data.stripeMrr.billingThisMonthCount} subs billing — click to view
@@ -192,21 +205,115 @@ export default function RevenuePage() {
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
                   {projectedFromRecoveries > 0
                     ? `+${formatCents(projectedFromRecoveries)} from ${selectedRecoverable.size} recovery`
-                    : "Select recoveries below to project"
+                    : "Select recoveries below"
                   }
                 </p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowPausedList(!showPausedList)}>
               <CardContent className="pt-6">
                 <p className="text-sm text-[var(--muted-foreground)]">Paused</p>
                 <p className="text-2xl font-bold text-gray-500">{formatCents(data.stripeMrr.pausedMrr)}</p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {data.stripeMrr.pausedCount} subs on hold
+                  {data.stripeMrr.pausedCount} subs on hold — click to view
                 </p>
               </CardContent>
             </Card>
           </div>
+
+          {/* === COLLECTED DRILL-DOWN === */}
+          {showCollectedList && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Collected This Month</CardTitle></CardHeader>
+              <CardContent>
+                <table className="w-full text-sm">
+                  <thead className="border-b">
+                    <tr>
+                      <th className="text-left p-2 font-medium">Date</th>
+                      <th className="text-left p-2 font-medium">Customer</th>
+                      <th className="text-left p-2 font-medium">Type</th>
+                      <th className="text-left p-2 font-medium">Status</th>
+                      <th className="text-right p-2 font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.payments.map((p) => (
+                      <tr key={p.id} className="border-b last:border-0">
+                        <td className="p-2">{formatDate(p.paidAt)}</td>
+                        <td className="p-2">{p.customerName || p.customerEmail || "Unknown"}</td>
+                        <td className="p-2">
+                          <Badge variant={p.revenueType === "mrr" ? "success" : "secondary"}>
+                            {p.revenueType === "mrr" ? "MRR" : p.revenueType === "one_time" ? "One-time" : p.revenueType}
+                          </Badge>
+                        </td>
+                        <td className="p-2">
+                          <Badge variant={p.customerStatus === "new" ? "warning" : "secondary"}>
+                            {p.customerStatus}
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-right">
+                          <span className={`font-medium ${p.status === "refunded" || p.status === "disputed" ? "text-red-600 line-through" : "text-green-600"}`}>
+                            {formatCents(p.amountCents)}
+                          </span>
+                          {p.refundedCents > 0 && (
+                            <span className="text-xs text-red-600 block">-{formatCents(p.refundedCents)} refunded</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {data.payments.length === 0 && (
+                      <tr><td colSpan={5} className="p-4 text-center text-[var(--muted-foreground)]">No payments yet this month</td></tr>
+                    )}
+                  </tbody>
+                  <tfoot className="border-t">
+                    <tr>
+                      <td className="p-2 font-bold" colSpan={4}>
+                        {data.totalRefunded > 0 ? `Gross: ${formatCents(data.grossRevenue)} · Refunds: -${formatCents(data.totalRefunded)}` : "Total"}
+                      </td>
+                      <td className="p-2 text-right font-bold text-green-600">{formatCents(data.totalRevenue)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* === PAUSED DRILL-DOWN === */}
+          {showPausedList && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Paused Subscriptions</CardTitle></CardHeader>
+              <CardContent>
+                <table className="w-full text-sm">
+                  <thead className="border-b">
+                    <tr>
+                      <th className="text-left p-2 font-medium">Client</th>
+                      <th className="text-left p-2 font-medium">Email</th>
+                      <th className="text-left p-2 font-medium">Interval</th>
+                      <th className="text-left p-2 font-medium">Started</th>
+                      <th className="text-right p-2 font-medium">MRR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.stripeMrr.subscriptions.filter(s => s.isPaused).map((s, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="p-2 font-medium">{s.clientName}</td>
+                        <td className="p-2 text-[var(--muted-foreground)]">{s.email || "—"}</td>
+                        <td className="p-2"><Badge variant="secondary">{s.interval}</Badge></td>
+                        <td className="p-2">{formatDate(s.startDate)}</td>
+                        <td className="p-2 text-right font-medium">{formatCents(s.mrrCents)}/mo</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t">
+                    <tr>
+                      <td className="p-2 font-bold" colSpan={4}>Total Paused MRR</td>
+                      <td className="p-2 text-right font-bold">{formatCents(data.stripeMrr.pausedMrr)}/mo</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </CardContent>
+            </Card>
+          )}
 
           {/* === BILLING THIS MONTH DRILL-DOWN === */}
           {showBillingList && (

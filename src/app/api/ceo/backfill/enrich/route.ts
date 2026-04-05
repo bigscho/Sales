@@ -162,9 +162,9 @@ export async function POST(req: NextRequest) {
       if (isFullyRefunded) newStatus = "refunded";
       else if (refundedCents > 0) newStatus = "partially_refunded";
 
-      // Determine new vs returning
+      // Always re-check new vs returning (old webhook may have gotten it wrong with bad API key)
       let customerStatus = payment.customerStatus;
-      if (customerStatus === "unknown" && customerId) {
+      if (customerId) {
         try {
           const priorPayments = await stripe.paymentIntents.list({ customer: customerId, limit: 5 });
           const priorSucceeded = priorPayments.data.filter(
