@@ -177,10 +177,35 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ received: true, action: "duplicate_skipped" });
       }
 
-      // Check if this is actually a subscription payment by verifying the invoice
-      const subCheck = process.env.STRIPE_SECRET_KEY
+      // Check if this is actually a subscription payment
+      // Method 1: Check via invoice → subscription link
+      let subCheck = process.env.STRIPE_SECRET_KEY
         ? await checkSubscriptionViaInvoice(invoice, process.env.STRIPE_SECRET_KEY)
         : { isSubscription: false, subscriptionId: null };
+
+      // Method 2: If no invoice link, check if customer has a subscription matching this amount
+      if (!subCheck.isSubscription && customerId && process.env.STRIPE_SECRET_KEY) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+          const customerSubs = await stripe.subscriptions.list({
+            customer: customerId,
+            limit: 10,
+          });
+          for (const sub of customerSubs.data) {
+            let subAmount = 0;
+            for (const item of sub.items.data) {
+              subAmount += (item.price.unit_amount || 0) * (item.quantity || 1);
+            }
+            if (subAmount === amount) {
+              subCheck = { isSubscription: true, subscriptionId: sub.id };
+              break;
+            }
+          }
+        } catch {
+          // Subscription lookup failed
+        }
+      }
 
       const isMisc = isMiscPayment(description);
 

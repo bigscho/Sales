@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
   while (hasMore) {
     const params: Record<string, unknown> = {
       limit: 100,
+      expand: ["data.invoice"],
       created: {
         gte: Math.floor(start.getTime() / 1000),
         lte: Math.floor(end.getTime() / 1000),
@@ -74,13 +75,22 @@ export async function POST(req: NextRequest) {
 
     for (const pi of batch.data) {
       if (pi.status === "succeeded") {
+        // Extract invoice — could be string ID, expanded object, or null
+        const piAny = pi as unknown as Record<string, unknown>;
+        let invoiceId: string | null = null;
+        if (typeof piAny.invoice === "string") {
+          invoiceId = piAny.invoice;
+        } else if (piAny.invoice && typeof piAny.invoice === "object") {
+          invoiceId = (piAny.invoice as Record<string, string>).id || null;
+        }
+
         paymentIntents.push({
           id: pi.id,
           amount: pi.amount,
           currency: pi.currency || "usd",
           customer: typeof pi.customer === "string" ? pi.customer : pi.customer?.id || null,
           description: pi.description,
-          invoice: (() => { const inv = (pi as unknown as Record<string, unknown>).invoice; return typeof inv === "string" ? inv : (inv as Record<string, string> | null)?.id || null; })(),
+          invoice: invoiceId,
           created: pi.created,
           status: pi.status,
         });
@@ -177,7 +187,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Check if this is a real subscription via invoice
+    // Check if this is a real subscription payment
+    // Method 1: Check via invoice → subscription link
     let isSubscription = false;
     let subscriptionId: string | null = null;
 
@@ -192,7 +203,34 @@ export async function POST(req: NextRequest) {
             : (invoiceData.subscription as Record<string, string>).id;
         }
       } catch {
-        // Invoice lookup failed — treat as non-subscription
+        // Invoice lookup failed
+      }
+    }
+
+    // Method 2: If no invoice link found, check if customer has subscriptions
+    // and if this payment amount matches a subscription price
+    if (!isSubscription && pi.customer) {
+      try {
+        const customerSubs = await stripe.subscriptions.list({
+          customer: pi.customer,
+          limit: 10,
+        });
+
+        for (const sub of customerSubs.data) {
+          // Check if any subscription's recurring amount matches this payment
+          let subAmount = 0;
+          for (const item of sub.items.data) {
+            subAmount += (item.price.unit_amount || 0) * (item.quantity || 1);
+          }
+
+          if (subAmount === pi.amount) {
+            isSubscription = true;
+            subscriptionId = sub.id;
+            break;
+          }
+        }
+      } catch {
+        // Subscription lookup failed
       }
     }
 
