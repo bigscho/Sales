@@ -51,11 +51,12 @@ export async function POST(req: NextRequest) {
   for (const tx of transactions) {
     if (tx.amountCents > 0) {
       totalRevenue += tx.amountCents;
-    } else {
+    } else if (tx.amountCents < 0) {
       const amt = Math.abs(tx.amountCents);
       if (tx.classification === "payroll") totalPayroll += amt;
       else if (tx.classification === "personal") totalPersonal += amt;
       else if (tx.classification === "business") totalExpenses += amt;
+      // internal_transfer and needs_review are excluded from P&L
     }
   }
 

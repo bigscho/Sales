@@ -168,6 +168,8 @@ function buildCategorySummary(transactions: TransactionWithCategory[]) {
     classification: string;
     categoryName: string | null;
     categoryId: string | null;
+    inflow: number;
+    outflow: number;
     total: number;
     count: number;
     needsReview: number;
@@ -181,11 +183,18 @@ function buildCategorySummary(transactions: TransactionWithCategory[]) {
         classification: tx.classification,
         categoryName: tx.category?.name || null,
         categoryId: tx.category?.id || null,
+        inflow: 0,
+        outflow: 0,
         total: 0,
         count: 0,
         needsReview: 0,
         autoConfirmed: 0,
       };
+    }
+    if (tx.amountCents > 0) {
+      summary[key].inflow += tx.amountCents;
+    } else {
+      summary[key].outflow += Math.abs(tx.amountCents);
     }
     summary[key].total += tx.amountCents;
     summary[key].count++;

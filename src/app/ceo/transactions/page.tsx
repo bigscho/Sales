@@ -86,11 +86,11 @@ export default function TransactionsPage() {
 
   // Group by merchant for review mode
   const merchantGroups = isReviewMode ? (() => {
-    const groups: Record<string, { merchant: string; total: number; count: number; txIds: string[]; dates: string[] }> = {};
+    const groups: Record<string, { merchant: string; total: number; count: number; txIds: string[]; dates: string[]; isInflow: boolean }> = {};
     for (const tx of transactions) {
       const key = tx.merchantName || "Unknown";
-      if (!groups[key]) groups[key] = { merchant: key, total: 0, count: 0, txIds: [], dates: [] };
-      groups[key].total += Math.abs(tx.amountCents);
+      if (!groups[key]) groups[key] = { merchant: key, total: 0, count: 0, txIds: [], dates: [], isInflow: tx.amountCents > 0 };
+      groups[key].total += tx.amountCents; // Keep signed
       groups[key].count++;
       groups[key].txIds.push(tx.id);
       groups[key].dates.push(tx.date);
@@ -268,7 +268,12 @@ export default function TransactionsPage() {
                 {/* Merchant card */}
                 <div className="text-center mb-6">
                   <p className="text-2xl font-bold mb-2">{currentMerchant.merchant}</p>
-                  <p className="text-3xl font-bold text-red-600">{formatCents(currentMerchant.total)}</p>
+                  <p className={`text-3xl font-bold ${currentMerchant.total > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {currentMerchant.total > 0 ? "+" : ""}{formatCents(Math.abs(currentMerchant.total))}
+                    <span className="text-sm font-normal text-[var(--muted-foreground)] ml-2">
+                      {currentMerchant.total > 0 ? "inflow" : "outflow"}
+                    </span>
+                  </p>
                   <p className="text-sm text-[var(--muted-foreground)] mt-2">
                     {currentMerchant.count} transaction{currentMerchant.count !== 1 ? "s" : ""}
                     {currentMerchant.count <= 5 && (
@@ -347,7 +352,7 @@ export default function TransactionsPage() {
                       <div className="flex-1">
                         <p className="font-medium">{group.merchant}</p>
                         <p className="text-xs text-[var(--muted-foreground)]">
-                          {formatCents(group.total)} · {group.count}x
+                          {group.total > 0 ? "+" : ""}{formatCents(Math.abs(group.total))} {group.total > 0 ? "inflow" : "outflow"} · {group.count}x
                         </p>
                       </div>
                       <div className="flex gap-1.5 flex-wrap">

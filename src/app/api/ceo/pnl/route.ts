@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
   for (const tx of transactions) {
     if (tx.amountCents > 0) {
-      // Revenue
+      // Revenue (inflows only)
       if (tx.source === "stripe" && tx.description?.includes("subscription")) {
         revenue.mrr += tx.amountCents;
       } else if (tx.source === "stripe") {
@@ -49,8 +49,8 @@ export async function GET(req: NextRequest) {
         revenue.other += tx.amountCents;
       }
       revenue.total += tx.amountCents;
-    } else {
-      // Expense
+    } else if (tx.amountCents < 0) {
+      // Expense (outflows only)
       const catName = tx.category?.name || tx.classification;
 
       if (tx.classification === "payroll") {
