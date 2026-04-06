@@ -64,17 +64,20 @@ export default function TransactionsPage() {
       .then((d) => setCategories(d.categories || []));
   }, []);
 
-  const categorizeBulk = async (merchantName: string, classification: string, categoryId?: string) => {
-    // Find all transactions with this merchant name
+  const categorizeBulk = async (merchantName: string, classification: string, categoryId?: string, note?: string) => {
     const matching = transactions.filter(t => t.merchantName === merchantName);
     for (const tx of matching) {
       await fetch("/api/ceo/categorize", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transactionId: tx.id, classification, categoryId: categoryId || null }),
+        body: JSON.stringify({
+          transactionId: tx.id,
+          classification,
+          categoryId: categoryId || null,
+          notes: note || null,
+        }),
       });
     }
-    // Remove all matching from list
     setTransactions(prev => prev.filter(t => t.merchantName !== merchantName));
     setTotal(prev => prev - matching.length);
   };
@@ -102,71 +105,71 @@ export default function TransactionsPage() {
   const currentMerchant = merchantGroups[currentIndex] || null;
   const totalMerchants = merchantGroups.length;
 
-  // Parse voice/text input into classification
-  const parseInput = (input: string): { classification: string; categoryId?: string } | null => {
-    const lower = input.toLowerCase().trim();
+  // Parse voice/text input into classification + optional note
+  const parseInput = (input: string): { classification: string; categoryId?: string; note?: string } | null => {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
 
-    if (["personal", "p"].includes(lower)) return { classification: "personal" };
-    if (["payroll", "pay"].includes(lower)) return { classification: "payroll" };
-    if (["transfer", "internal", "t"].includes(lower)) return { classification: "internal_transfer" };
-    if (["skip", "s", "next", "n"].includes(lower)) return null;
+    // Split on comma, period, or dash to separate classification from explanation
+    const parts = trimmed.split(/[,.\-—]+/).map(s => s.trim());
+    const command = parts[0].toLowerCase();
+    const note = parts.slice(1).join(", ").trim() || undefined;
 
-    // Business categories — match partial names
-    for (const cat of categories) {
-      const catLower = cat.name.toLowerCase();
-      if (lower === catLower || catLower.includes(lower) || lower.includes(catLower.split(" ")[0])) {
-        return { classification: "business", categoryId: cat.id };
+    if (["skip", "s", "next", "n"].includes(command)) return null;
+    if (["personal", "p"].includes(command)) return { classification: "personal", note };
+    if (["payroll", "pay"].includes(command)) return { classification: "payroll", note };
+    if (["transfer", "internal", "t"].includes(command)) return { classification: "internal_transfer", note };
+    if (["business", "biz", "b"].includes(command)) return { classification: "business", note };
+
+    // Business category matching
+    const categoryMatch = (keywords: string[]) => {
+      return keywords.some(k => command.includes(k));
+    };
+
+    const categoryMap: Array<{ keywords: string[]; search: string }> = [
+      { keywords: ["email", "inbox", "inboxes"], search: "email" },
+      { keywords: ["software", "soft", "sw"], search: "software" },
+      { keywords: ["data"], search: "data" },
+      { keywords: ["fees", "fee", "transaction fee"], search: "fees" },
+      { keywords: ["marketing", "mktg"], search: "marketing" },
+      { keywords: ["comm", "communication", "comms"], search: "communication" },
+      { keywords: ["verify", "verification"], search: "verification" },
+      { keywords: ["auto", "automation"], search: "automation" },
+      { keywords: ["accounting", "acct"], search: "accounting" },
+      { keywords: ["crm"], search: "crm" },
+      { keywords: ["education", "edu"], search: "education" },
+    ];
+
+    for (const { keywords, search } of categoryMap) {
+      if (categoryMatch(keywords)) {
+        const cat = categories.find(c => c.name.toLowerCase().includes(search));
+        return { classification: "business", categoryId: cat?.id, note };
       }
     }
 
-    // Common shortcuts
-    if (["email", "inbox", "inboxes"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("email"));
-      return { classification: "business", categoryId: cat?.id };
+    // Try matching category names directly
+    for (const cat of categories) {
+      const catLower = cat.name.toLowerCase();
+      if (command === catLower || catLower.includes(command) || command.includes(catLower.split(" ")[0])) {
+        return { classification: "business", categoryId: cat.id, note };
+      }
     }
-    if (["software", "soft", "sw"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("software"));
-      return { classification: "business", categoryId: cat?.id };
+
+    // If nothing matched but there's text, treat the whole thing as a note with "needs context"
+    // Try to infer from natural language
+    const lower = trimmed.toLowerCase();
+    if (lower.includes("restaurant") || lower.includes("food") || lower.includes("cafe") || lower.includes("coffee") ||
+        lower.includes("uber") || lower.includes("taxi") || lower.includes("gym") || lower.includes("barber") ||
+        lower.includes("personal") || lower.includes("grocery") || lower.includes("pharmacy") || lower.includes("living")) {
+      return { classification: "personal", note: trimmed };
     }
-    if (["data"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase() === "data");
-      return { classification: "business", categoryId: cat?.id };
+    if (lower.includes("salary") || lower.includes("contractor") || lower.includes("employee") || lower.includes("payroll") ||
+        lower.includes("hired") || lower.includes("team member")) {
+      return { classification: "payroll", note: trimmed };
     }
-    if (["fees", "fee"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("fees"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["marketing", "mktg"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("marketing"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["comm", "communication", "comms"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("communication"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["verify", "verification"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("verification"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["auto", "automation"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("automation"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["accounting", "acct"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("accounting"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["crm"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("crm"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    if (["education", "edu"].includes(lower)) {
-      const cat = categories.find(c => c.name.toLowerCase().includes("education"));
-      return { classification: "business", categoryId: cat?.id };
-    }
-    // Business with no specific category
-    if (["business", "biz", "b"].includes(lower)) {
-      return { classification: "business" };
+    if (lower.includes("legal") || lower.includes("incorporation") || lower.includes("filing") || lower.includes("registered agent") ||
+        lower.includes("corp") || lower.includes("llc")) {
+      return { classification: "business", note: trimmed };
     }
 
     return null;
@@ -183,9 +186,8 @@ export default function TransactionsPage() {
       return;
     }
 
-    await categorizeBulk(currentMerchant.merchant, parsed.classification, parsed.categoryId);
+    await categorizeBulk(currentMerchant.merchant, parsed.classification, parsed.categoryId, parsed.note);
     setInputValue("");
-    // Don't increment index since the array shrinks when we remove items
   };
 
   return (
