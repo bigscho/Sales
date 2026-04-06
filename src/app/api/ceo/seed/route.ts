@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 const CATEGORIES = [
-  { name: "Email Infrastructure", type: "business", sortOrder: 1 },
-  { name: "Software", type: "business", sortOrder: 2 },
-  { name: "Automation", type: "business", sortOrder: 3 },
-  { name: "Data", type: "business", sortOrder: 4 },
-  { name: "Internal Marketing", type: "business", sortOrder: 5 },
-  { name: "CRM", type: "business", sortOrder: 6 },
-  { name: "Communication", type: "business", sortOrder: 7 },
-  { name: "Accounting", type: "business", sortOrder: 8 },
-  { name: "Education", type: "business", sortOrder: 9 },
-  { name: "Verification", type: "business", sortOrder: 10 },
-  { name: "Fees", type: "business", sortOrder: 11 },
+  { name: "Email Infrastructure", type: "business", costPurpose: "cogs", sortOrder: 1 },
+  { name: "Software", type: "business", costPurpose: "overhead", sortOrder: 2 },
+  { name: "Automation", type: "business", costPurpose: "cogs", sortOrder: 3 },
+  { name: "Data", type: "business", costPurpose: "cogs", sortOrder: 4 },
+  { name: "Internal Marketing", type: "business", costPurpose: "cac", sortOrder: 5 },
+  { name: "CRM", type: "business", costPurpose: "cogs", sortOrder: 6 },
+  { name: "Communication", type: "business", costPurpose: "overhead", sortOrder: 7 },
+  { name: "Accounting", type: "business", costPurpose: "overhead", sortOrder: 8 },
+  { name: "Education", type: "business", costPurpose: "overhead", sortOrder: 9 },
+  { name: "Verification", type: "business", costPurpose: "cac", sortOrder: 10 },
+  { name: "Fees", type: "business", costPurpose: "overhead", sortOrder: 11 },
 ];
 
 const MERCHANT_MAPPINGS: Array<{ pattern: string; classification: string; category: string }> = [
@@ -93,7 +93,7 @@ export async function POST() {
   for (const cat of CATEGORIES) {
     await prisma.financialCategory.upsert({
       where: { name: cat.name },
-      update: { sortOrder: cat.sortOrder },
+      update: { sortOrder: cat.sortOrder, costPurpose: cat.costPurpose },
       create: cat,
     });
     categoriesCreated++;

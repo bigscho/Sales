@@ -18,12 +18,13 @@ interface Transaction {
   status: string;
   confidenceScore: number;
   notes: string | null;
-  category: { id: string; name: string } | null;
+  category: { id: string; name: string; costPurpose?: string } | null;
 }
 
 interface Category {
   id: string;
   name: string;
+  costPurpose: string;
 }
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -39,6 +40,9 @@ export default function ExpensesPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ synced: number; skipped: number; perFile: Array<{ name: string; synced: number; skipped: number }> } | null>(null);
   const [filter, setFilter] = useState<string>("all");
+
+  // Category config
+  const [showCategoryConfig, setShowCategoryConfig] = useState(false);
 
   // Selection state
   const [selectedAmex, setSelectedAmex] = useState<Set<string>>(new Set());
@@ -300,6 +304,40 @@ export default function ExpensesPage() {
     }
   };
 
+  // --- Cost purpose helpers ---
+  const updateCostPurpose = async (categoryId: string, costPurpose: string) => {
+    await fetch("/api/ceo/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categoryId, costPurpose }),
+    });
+    setCategories(prev => prev.map(c => c.id === categoryId ? { ...c, costPurpose } : c));
+  };
+
+  const purposeColor = (p: string) => {
+    switch (p) {
+      case "cogs": return "bg-red-100 text-red-700 border-red-200";
+      case "cac": return "bg-blue-100 text-blue-700 border-blue-200";
+      default: return "bg-gray-100 text-gray-600 border-gray-200";
+    }
+  };
+
+  const purposeLabel = (p: string) => {
+    switch (p) {
+      case "cogs": return "COGS";
+      case "cac": return "CAC";
+      default: return "Overhead";
+    }
+  };
+
+  // --- COGS / CAC / Overhead totals ---
+  const allTxns = [...amexTxns, ...mercuryTxns];
+  const cogsCategoryIds = new Set(categories.filter(c => c.costPurpose === "cogs").map(c => c.id));
+  const cacCategoryIds = new Set(categories.filter(c => c.costPurpose === "cac").map(c => c.id));
+  const cogsTotal = allTxns.filter(t => t.categoryId && cogsCategoryIds.has(t.categoryId)).reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const cacTotal = allTxns.filter(t => t.categoryId && cacCategoryIds.has(t.categoryId)).reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const payrollTotal = allTxns.filter(t => t.classification === "payroll").reduce((s, t) => s + Math.abs(t.amountCents), 0);
+
   // --- Categorization dropdown (works on every transaction) ---
   const renderDropdown = (txId: string, currentClassification: string) => (
     <select
@@ -314,7 +352,7 @@ export default function ExpensesPage() {
         <option value="internal_transfer">Transfer</option>
       </optgroup>
       <optgroup label="Business">
-        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        {categories.map(c => <option key={c.id} value={c.id}>{c.name} [{purposeLabel(c.costPurpose)}]</option>)}
       </optgroup>
       <optgroup label="Other">
         <option value="__note__">Add Note...</option>
@@ -344,7 +382,16 @@ export default function ExpensesPage() {
             <Badge variant={classColor(tx.classification)}>
               {tx.classification === "needs_review" ? "Review" : tx.classification}
             </Badge>
-            {tx.category && <span className="text-xs text-[var(--muted-foreground)]">{tx.category.name}</span>}
+            {tx.category && (
+              <span className="flex items-center gap-1">
+                <span className="text-xs text-[var(--muted-foreground)]">{tx.category.name}</span>
+                {tx.category.costPurpose && (
+                  <span className={`text-[10px] px-1 py-0 rounded border font-medium ${purposeColor(tx.category.costPurpose)}`}>
+                    {purposeLabel(tx.category.costPurpose)}
+                  </span>
+                )}
+              </span>
+            )}
             {tx.notes && <span className="text-xs text-blue-600 italic truncate max-w-[120px]" title={tx.notes}>{tx.notes}</span>}
           </div>
         </div>
@@ -522,62 +569,110 @@ export default function ExpensesPage() {
 
       {/* Summary Cards */}
       {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-[var(--muted-foreground)]">Total Expenses</p>
-              <p className="text-2xl font-bold text-red-600">{formatCents(amexTotal + mercuryTotal)}</p>
-              <p className="text-xs text-[var(--muted-foreground)] mt-1">Business + Payroll</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-[var(--muted-foreground)]">Amex</p>
-              <p className="text-2xl font-bold text-red-600">{formatCents(amexTotal)}</p>
-              <p className="text-xs text-[var(--muted-foreground)] mt-1">{amexTxns.length} transactions</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-[var(--muted-foreground)]">Mercury</p>
-              <p className="text-2xl font-bold text-red-600">{formatCents(mercuryTotal)}</p>
-              <p className="text-xs text-[var(--muted-foreground)] mt-1">{mercuryTxns.length} transactions</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-[var(--muted-foreground)]">Needs Review</p>
-              <p className={`text-2xl font-bold ${amexReview + mercuryReview > 0 ? "text-amber-600" : "text-green-600"}`}>
-                {amexReview + mercuryReview}
-              </p>
-              <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                {amexReview > 0 ? `${amexReview} Amex` : ""}{amexReview > 0 && mercuryReview > 0 ? " · " : ""}{mercuryReview > 0 ? `${mercuryReview} Mercury` : ""}
-                {amexReview + mercuryReview === 0 ? "All categorized" : ""}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">Total Expenses</p>
+                <p className="text-2xl font-bold text-red-600">{formatCents(amexTotal + mercuryTotal)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">Amex {formatCents(amexTotal)} · Mercury {formatCents(mercuryTotal)}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-red-200">
+              <CardContent className="pt-6">
+                <p className="text-sm text-red-700 font-medium">COGS</p>
+                <p className="text-2xl font-bold text-red-600">{formatCents(cogsTotal)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">Cost of delivery</p>
+              </CardContent>
+            </Card>
+            <Card className="border-blue-200">
+              <CardContent className="pt-6">
+                <p className="text-sm text-blue-700 font-medium">CAC Spend</p>
+                <p className="text-2xl font-bold text-blue-600">{formatCents(cacTotal + payrollTotal)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">Tools {formatCents(cacTotal)} · Payroll {formatCents(payrollTotal)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)]">Needs Review</p>
+                <p className={`text-2xl font-bold ${amexReview + mercuryReview > 0 ? "text-amber-600" : "text-green-600"}`}>
+                  {amexReview + mercuryReview}
+                </p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  {amexReview > 0 ? `${amexReview} Amex` : ""}{amexReview > 0 && mercuryReview > 0 ? " · " : ""}{mercuryReview > 0 ? `${mercuryReview} Mercury` : ""}
+                  {amexReview + mercuryReview === 0 ? "All categorized" : ""}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        {[
-          { value: "all", label: "All" },
-          { value: "needs_review", label: `Needs Review (${amexReview + mercuryReview})` },
-          { value: "business", label: "Business" },
-          { value: "payroll", label: "Payroll" },
-          { value: "personal", label: "Personal" },
-        ].map(f => (
-          <Button
-            key={f.value}
-            size="sm"
-            variant={filter === f.value ? "default" : "outline"}
-            onClick={() => setFilter(f.value)}
-          >
-            {f.label}
-          </Button>
-        ))}
+      {/* Filter + Config Toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {[
+            { value: "all", label: "All" },
+            { value: "needs_review", label: `Needs Review (${amexReview + mercuryReview})` },
+            { value: "business", label: "Business" },
+            { value: "payroll", label: "Payroll" },
+            { value: "personal", label: "Personal" },
+          ].map(f => (
+            <Button
+              key={f.value}
+              size="sm"
+              variant={filter === f.value ? "default" : "outline"}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setShowCategoryConfig(!showCategoryConfig)}>
+          {showCategoryConfig ? "Hide" : "Configure"} Cost Types
+        </Button>
       </div>
+
+      {/* Category Cost Purpose Config */}
+      {showCategoryConfig && (
+        <Card className="border-amber-200 bg-amber-50/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Category Cost Classification</CardTitle>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Tag each category as <span className="font-medium text-red-700">COGS</span> (cost to deliver service),{" "}
+              <span className="font-medium text-blue-700">CAC</span> (cost to acquire customers), or{" "}
+              <span className="font-medium text-gray-600">Overhead</span> (general business). This drives your unit economics.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {categories.map(cat => (
+                <div key={cat.id} className="flex items-center justify-between py-1.5 px-2 rounded bg-white border">
+                  <span className="text-sm font-medium">{cat.name}</span>
+                  <div className="flex gap-1">
+                    {(["cogs", "cac", "overhead"] as const).map(purpose => (
+                      <button
+                        key={purpose}
+                        onClick={() => updateCostPurpose(cat.id, purpose)}
+                        className={`text-xs px-2 py-0.5 rounded border font-medium transition-all ${
+                          cat.costPurpose === purpose
+                            ? purposeColor(purpose)
+                            : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        {purposeLabel(purpose)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-[var(--muted-foreground)] mt-3">
+              Payroll is automatically counted as CAC (setter/closer pay = acquisition cost).
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Keyboard shortcuts hint */}
       {totalSelected > 0 && (

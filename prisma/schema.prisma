@@ -494,9 +494,10 @@ model Transaction {
 model FinancialCategory {
   id        String   @id @default(cuid())
   name      String   @unique
-  type      String   @default("business") // business | personal | payroll
-  isActive  Boolean  @default(true)
-  sortOrder Int      @default(0)
+  type        String   @default("business") // business | personal | payroll
+  costPurpose String   @default("overhead") // cogs | cac | overhead
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
   createdAt DateTime @default(now())
 
   transactions    Transaction[]
