@@ -104,6 +104,19 @@ export default function ExpensesPage() {
     setMercuryTxns(update);
   };
 
+  const togglePayroll = async (txId: string, currentClassification: string) => {
+    const newClassification = currentClassification === "payroll" ? "business" : "payroll";
+    await fetch("/api/ceo/categorize", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transactionId: txId, classification: newClassification }),
+    });
+    const update = (txns: Transaction[]) =>
+      txns.map(t => t.id === txId ? { ...t, classification: newClassification, status: "confirmed" } : t);
+    setAmexTxns(update);
+    setMercuryTxns(update);
+  };
+
   const handleSingleCategorize = async (txId: string, value: string) => {
     if (value === "personal" || value === "internal_transfer") {
       await categorizeTxns([txId], value);
@@ -364,9 +377,6 @@ export default function ExpensesPage() {
       <optgroup label="Business">
         {categories.filter(c => c.type !== "payroll").map(c => <option key={c.id} value={c.id}>{c.name} [{purposeLabel(c.costPurpose)}]</option>)}
       </optgroup>
-      <optgroup label="Payroll">
-        {categories.filter(c => c.type === "payroll").map(c => <option key={c.id} value={c.id}>{c.name} [{purposeLabel(c.costPurpose)}]</option>)}
-      </optgroup>
       <optgroup label="Other">
         <option value="__note__">Add Note...</option>
       </optgroup>
@@ -399,10 +409,16 @@ export default function ExpensesPage() {
               if (purpose === "personal") return <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium bg-purple-100 text-purple-700 border-purple-200">Personal</span>;
               return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${purposeColor(purpose)}`}>{purposeLabel(purpose)}</span>;
             })()}
-            {/* Payroll extra tag */}
-            {tx.classification === "payroll" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium bg-orange-100 text-orange-700 border-orange-200">Payroll</span>
-            )}
+            {/* Payroll toggle */}
+            <label className={`flex items-center gap-0.5 cursor-pointer text-[10px] px-1.5 py-0.5 rounded border font-medium ${tx.classification === "payroll" ? "bg-orange-100 text-orange-700 border-orange-200" : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"}`}>
+              <input
+                type="checkbox"
+                checked={tx.classification === "payroll"}
+                onChange={() => togglePayroll(tx.id, tx.classification)}
+                className="w-3 h-3 rounded"
+              />
+              Payroll
+            </label>
             {/* Category name */}
             {tx.category && <span className="text-xs text-[var(--muted-foreground)]">{tx.category.name}</span>}
             {tx.notes && <span className="text-xs text-blue-600 italic truncate max-w-[120px]" title={tx.notes}>{tx.notes}</span>}
@@ -503,14 +519,14 @@ export default function ExpensesPage() {
                 <option value="" disabled>Business...</option>
                 {categories.filter(c => c.type !== "payroll").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <select
-                className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700 border-0 cursor-pointer"
-                value=""
-                onChange={(e) => { if (e.target.value) { setBulkTarget(source); handleBulkCategorize(e.target.value); } }}
-              >
-                <option value="" disabled>Payroll...</option>
-                {categories.filter(c => c.type === "payroll").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <button onClick={async () => {
+                const ids = [...selected];
+                for (const id of ids) {
+                  const allTx = [...amexTxns, ...mercuryTxns];
+                  const tx = allTx.find(t => t.id === id);
+                  if (tx) await togglePayroll(id, tx.classification);
+                }
+              }} className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700 hover:bg-orange-200">Toggle Payroll</button>
               <button onClick={() => { setBulkTarget(source); setShowNoteInput("bulk"); setNoteText(""); }} className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200">Add Note</button>
             </div>
           )}
