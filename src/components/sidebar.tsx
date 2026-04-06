@@ -37,7 +37,6 @@ const ceoNavItems = [
   { href: "/ceo/revenue", label: "Revenue", icon: "💰" },
   { href: "/ceo/expenses", label: "Expenses", icon: "📤" },
   { href: "/ceo/pnl", label: "CEO P&L", icon: "💹" },
-  { href: "/ceo/transactions", label: "Transactions", icon: "🔍" },
 ];
 
 export function Sidebar() {
