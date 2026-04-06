@@ -299,6 +299,7 @@ export default function ExpensesPage() {
     if (filter === "all") return txns;
     if (filter === "needs_review") return txns.filter(t => t.status === "needs_review");
     if (filter === "personal") return txns.filter(t => getTxPurpose(t) === "personal");
+    if (filter === "payroll") return txns.filter(t => t.classification === "payroll");
     if (filter === "cogs" || filter === "cac" || filter === "overhead") {
       return txns.filter(t => getTxPurpose(t) === filter);
     }
@@ -642,6 +643,7 @@ export default function ExpensesPage() {
             { value: "cogs", label: "COGS" },
             { value: "cac", label: "CAC" },
             { value: "overhead", label: "Overhead" },
+            { value: "payroll", label: "Payroll" },
             { value: "personal", label: "Personal" },
           ].map(f => (
             <Button
