@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     orderBy: { date: "asc" },
   });
 
-  // Revenue: positive amounts from mercury/stripe that aren't internal transfers
+  // === REVENUE: Stripe payments (source of truth) + non-Stripe Mercury inflows ===
   const revenue = {
     mrr: 0,
     oneTime: 0,
@@ -32,25 +32,39 @@ export async function GET(req: NextRequest) {
     total: 0,
   };
 
-  // Expenses by category
+  // Stripe revenue from Payment table
+  const stripePayments = await prisma.payment.findMany({
+    where: {
+      paidAt: { gte: startDate, lte: effectiveEnd },
+      status: { in: ["succeeded", "partially_refunded"] },
+    },
+  });
+
+  for (const p of stripePayments) {
+    const effectiveType = p.revenueTypeOverride || p.revenueType;
+    const netAmount = p.amountCents - (p.refundedCents || 0);
+    if (effectiveType === "mrr") revenue.mrr += netAmount;
+    else if (effectiveType === "one_time") revenue.oneTime += netAmount;
+    else revenue.other += netAmount;
+    revenue.total += netAmount;
+  }
+
+  // Non-Stripe revenue from Transaction table (Mercury ACH, etc.)
+  for (const tx of transactions) {
+    if (tx.amountCents > 0) {
+      revenue.other += tx.amountCents;
+      revenue.total += tx.amountCents;
+    }
+  }
+
+  // === EXPENSES: from Transaction table (Amex + Mercury outflows) ===
   const expensesByCategory: Record<string, { total: number; items: number }> = {};
   let totalBusiness = 0;
   let totalPayroll = 0;
   let totalPersonal = 0;
 
   for (const tx of transactions) {
-    if (tx.amountCents > 0) {
-      // Revenue (inflows only)
-      if (tx.source === "stripe" && tx.description?.includes("subscription")) {
-        revenue.mrr += tx.amountCents;
-      } else if (tx.source === "stripe") {
-        revenue.oneTime += tx.amountCents;
-      } else {
-        revenue.other += tx.amountCents;
-      }
-      revenue.total += tx.amountCents;
-    } else if (tx.amountCents < 0) {
-      // Expense (outflows only)
+    if (tx.amountCents < 0) {
       const catName = tx.category?.name || tx.classification;
 
       if (tx.classification === "payroll") {
