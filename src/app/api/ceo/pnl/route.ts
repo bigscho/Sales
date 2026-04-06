@@ -66,7 +66,45 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const netProfit = revenue.total - totalBusiness - totalPayroll;
+  // Stripe processing fees — pull from balance transactions
+  let stripeFees = 0;
+  if (process.env.STRIPE_SECRET_KEY) {
+    try {
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      let hasMore = true;
+      let startingAfter: string | undefined;
+
+      while (hasMore) {
+        const params: Record<string, unknown> = {
+          limit: 100,
+          created: {
+            gte: Math.floor(startDate.getTime() / 1000),
+            lte: Math.floor(effectiveEnd.getTime() / 1000),
+          },
+        };
+        if (startingAfter) params.starting_after = startingAfter;
+
+        const batch = await stripe.balanceTransactions.list(
+          params as Parameters<typeof stripe.balanceTransactions.list>[0]
+        );
+
+        for (const bt of batch.data) {
+          // fee is always positive, represents Stripe's cut
+          if (bt.fee > 0) stripeFees += bt.fee;
+        }
+
+        hasMore = batch.has_more;
+        if (batch.data.length > 0) {
+          startingAfter = batch.data[batch.data.length - 1].id;
+        }
+      }
+    } catch { /* Stripe API unavailable */ }
+  }
+
+  const totalExpenses = totalBusiness + stripeFees;
+  const netProfit = revenue.total - totalExpenses - totalPayroll;
   const margin = revenue.total > 0 ? netProfit / revenue.total : 0;
 
   // Get monthly close status
@@ -105,11 +143,16 @@ export async function GET(req: NextRequest) {
     revenue,
     expenses: {
       business: totalBusiness,
+      stripeFees,
+      totalBusinessWithFees: totalExpenses,
       payroll: totalPayroll,
       personal: totalPersonal,
-      byCategory: Object.entries(expensesByCategory)
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.total - a.total),
+      byCategory: [
+        ...Object.entries(expensesByCategory)
+          .map(([name, data]) => ({ name, ...data }))
+          .sort((a, b) => b.total - a.total),
+        ...(stripeFees > 0 ? [{ name: "Stripe Processing Fees", total: stripeFees, items: 0 }] : []),
+      ],
     },
     netProfit,
     margin,

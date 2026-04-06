@@ -84,10 +84,17 @@ export async function POST(req: NextRequest) {
     const merchantName = appearsAs || rawDescription;
 
     // Detect internal transfers (Amex payment from Mercury)
-    const isInternalTransfer = amount < 0 ||
-      rawDescription.toLowerCase().includes("mobile payment") ||
-      rawDescription.toLowerCase().includes("thank you") ||
-      rawDescription.toLowerCase().includes("payment received");
+    // Only Mercury payments are internal transfers — NOT vendor refunds/credits
+    const descLower = rawDescription.toLowerCase();
+    const isInternalTransfer =
+      descLower.includes("mobile payment") ||
+      descLower.includes("thank you") ||
+      descLower.includes("payment received") ||
+      descLower.includes("autopay");
+
+    // Vendor refunds/credits are negative amounts but NOT internal transfers
+    // They should be recorded as positive amountCents (reduces expenses)
+    const isVendorRefund = amount < 0 && !isInternalTransfer;
 
     if (isInternalTransfer) {
       internalTransfers++;
@@ -105,8 +112,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Amex charges are expenses — store as negative cents
-    const amountCents = Math.round(amount * -100);
+    // Amex charges are expenses (negative cents), vendor refunds are credits (positive cents)
+    const amountCents = isVendorRefund ? Math.round(Math.abs(amount) * 100) : Math.round(amount * -100);
 
     // Build unique ID from reference or date+description+amount
     const externalId = reference
