@@ -286,7 +286,12 @@ export default function ExpensesPage() {
   const filterTxns = (txns: Transaction[]) => {
     if (filter === "all") return txns;
     if (filter === "needs_review") return txns.filter(t => t.status === "needs_review");
-    return txns.filter(t => t.classification === filter);
+    if (filter === "personal") return txns.filter(t => t.classification === "personal");
+    if (filter === "cogs" || filter === "cac" || filter === "overhead") {
+      const purposeCatIds = new Set(categories.filter(c => c.costPurpose === filter).map(c => c.id));
+      return txns.filter(t => t.categoryId && purposeCatIds.has(t.categoryId));
+    }
+    return txns;
   };
 
   const filteredAmex = filterTxns(amexTxns);
@@ -300,13 +305,14 @@ export default function ExpensesPage() {
 
   const totalSelected = selectedAmex.size + selectedMercury.size;
 
-  const classColor = (c: string): "success" | "warning" | "danger" | "secondary" => {
-    switch (c) {
-      case "business": return "success";
-      case "personal": return "warning";
-      case "payroll": return "warning";
-      default: return "danger";
+  // Get the effective cost purpose for a transaction
+  const getTxPurpose = (tx: Transaction): string => {
+    if (tx.classification === "personal") return "personal";
+    if (tx.categoryId) {
+      const cat = categories.find(c => c.id === tx.categoryId);
+      if (cat) return cat.costPurpose;
     }
+    return "needs_review";
   };
 
   // --- Cost purpose helpers ---
@@ -386,19 +392,19 @@ export default function ExpensesPage() {
           <p className="font-medium text-sm truncate">{tx.merchantName || "Unknown"}</p>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className="text-xs text-[var(--muted-foreground)]">{formatDate(tx.date)}</span>
-            <Badge variant={classColor(tx.classification)}>
-              {tx.classification === "needs_review" ? "Review" : tx.classification}
-            </Badge>
-            {tx.category && (
-              <span className="flex items-center gap-1">
-                <span className="text-xs text-[var(--muted-foreground)]">{tx.category.name}</span>
-                {tx.category.costPurpose && (
-                  <span className={`text-[10px] px-1 py-0 rounded border font-medium ${purposeColor(tx.category.costPurpose)}`}>
-                    {purposeLabel(tx.category.costPurpose)}
-                  </span>
-                )}
-              </span>
+            {/* Primary badge: cost purpose */}
+            {(() => {
+              const purpose = getTxPurpose(tx);
+              if (purpose === "needs_review") return <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium bg-amber-100 text-amber-700 border-amber-200">Review</span>;
+              if (purpose === "personal") return <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium bg-purple-100 text-purple-700 border-purple-200">Personal</span>;
+              return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${purposeColor(purpose)}`}>{purposeLabel(purpose)}</span>;
+            })()}
+            {/* Payroll extra tag */}
+            {tx.classification === "payroll" && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium bg-orange-100 text-orange-700 border-orange-200">Payroll</span>
             )}
+            {/* Category name */}
+            {tx.category && <span className="text-xs text-[var(--muted-foreground)]">{tx.category.name}</span>}
             {tx.notes && <span className="text-xs text-blue-600 italic truncate max-w-[120px]" title={tx.notes}>{tx.notes}</span>}
           </div>
         </div>
@@ -628,8 +634,9 @@ export default function ExpensesPage() {
           {[
             { value: "all", label: "All" },
             { value: "needs_review", label: `Needs Review (${amexReview + mercuryReview})` },
-            { value: "business", label: "Business" },
-            { value: "payroll", label: "Payroll" },
+            { value: "cogs", label: "COGS" },
+            { value: "cac", label: "CAC" },
+            { value: "overhead", label: "Overhead" },
             { value: "personal", label: "Personal" },
           ].map(f => (
             <Button
