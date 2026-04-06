@@ -184,6 +184,13 @@ If using Enterprise Claude (without MCP tools), it needs:
 | Onboarding team payroll | COGS | Client delivery |
 | GoDaddy | CAC | Own domains, not client infra |
 
+### Open Questions for Next Session
+1. **COGS/CAC accuracy timing problem**: Expense charges don't all land in the same month as the service. COGS and CAC totals for a given month will be incomplete until all bills come in. The only truly real-time trustworthy metrics are revenue-based (cash collected, MRR, new revenue). Cost-based metrics (CAC, gross margin, contribution margin) are only accurate after monthly close. **Possible approaches**: (a) only show cost metrics for closed/past months, (b) show current month with a "provisional" flag, (c) use trailing averages (last 3 months of COGS / last 3 months of customers = smoothed CAC). Need to decide before building the metrics page.
+
+2. **Payments that cross month boundaries**: Some payments go out in April for March work (e.g., Danielle, Belayneh, Ming, Venmo). Should we attribute expenses to the month they're paid or the month they're for? This affects P&L accuracy. Options: (a) use transaction date as-is (simple, matches bank statements), (b) let user override the "effective month" on specific transactions, (c) use accrual-basis with a `serviceMonth` field. Same question applies to revenue — if a client pays in April for March service, which month gets credit?
+
+3. **Revenue method consistency across sales pages**: The CEO revenue dashboard pulls from Stripe/Payment table. The main sales dashboard pulls from Deal.month1Cash + Payment.amountCents. Need to verify these are consistent and that changes to the CEO financial system haven't broken the sales-facing KPIs (cash collected, cash/booking, cash/show, cash/close on the main dashboard).
+
 ### Post-deploy required
 - Hit `POST /api/ceo/seed` to apply costPurpose defaults to existing categories
 - User should review/adjust via "Configure Cost Types" on Expenses page
