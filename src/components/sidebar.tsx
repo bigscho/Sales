@@ -35,6 +35,7 @@ const ceoNavItems = [
   { href: "/ceo", label: "CEO Home", icon: "🏦" },
   { href: "/ceo/review", label: "Weekly Review", icon: "✅" },
   { href: "/ceo/revenue", label: "Revenue", icon: "💰" },
+  { href: "/ceo/expenses", label: "Expenses", icon: "📤" },
   { href: "/ceo/pnl", label: "CEO P&L", icon: "💹" },
   { href: "/ceo/transactions", label: "Transactions", icon: "🔍" },
 ];
