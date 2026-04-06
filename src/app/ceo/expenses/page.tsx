@@ -290,7 +290,6 @@ export default function ExpensesPage() {
   const mercuryReview = mercuryTxns.filter(t => t.status === "needs_review").length;
 
   const totalSelected = selectedAmex.size + selectedMercury.size;
-  const activeSource: "amex" | "mercury" | null = selectedAmex.size > 0 ? "amex" : selectedMercury.size > 0 ? "mercury" : null;
 
   const classColor = (c: string): "success" | "warning" | "danger" | "secondary" => {
     switch (c) {
