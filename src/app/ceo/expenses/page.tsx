@@ -282,20 +282,13 @@ export default function ExpensesPage() {
     loadData();
   };
 
-  // --- Filtering ---
+  // --- Filtering (uses getTxPurpose so cards, badges, and filters always match) ---
   const filterTxns = (txns: Transaction[]) => {
     if (filter === "all") return txns;
     if (filter === "needs_review") return txns.filter(t => t.status === "needs_review");
-    if (filter === "personal") return txns.filter(t => t.classification === "personal");
+    if (filter === "personal") return txns.filter(t => getTxPurpose(t) === "personal");
     if (filter === "cogs" || filter === "cac" || filter === "overhead") {
-      const purposeCatIds = new Set(categories.filter(c => c.costPurpose === filter).map(c => c.id));
-      return txns.filter(t => {
-        // If it has a category, check the category's costPurpose
-        if (t.categoryId && purposeCatIds.has(t.categoryId)) return true;
-        // Uncategorized payroll defaults to CAC filter (most payroll is acquisition)
-        if (!t.categoryId && t.classification === "payroll" && filter === "cac") return true;
-        return false;
-      });
+      return txns.filter(t => getTxPurpose(t) === filter);
     }
     return txns;
   };
@@ -304,8 +297,6 @@ export default function ExpensesPage() {
   const filteredMercury = filterTxns(mercuryTxns);
 
   // --- Totals ---
-  const amexTotal = amexTxns.filter(t => t.classification === "business" || t.classification === "payroll").reduce((s, t) => s + Math.abs(t.amountCents), 0);
-  const mercuryTotal = mercuryTxns.filter(t => t.classification === "business" || t.classification === "payroll").reduce((s, t) => s + Math.abs(t.amountCents), 0);
   const amexReview = amexTxns.filter(t => t.status === "needs_review").length;
   const mercuryReview = mercuryTxns.filter(t => t.status === "needs_review").length;
 
@@ -349,13 +340,13 @@ export default function ExpensesPage() {
     }
   };
 
-  // --- COGS / CAC / Overhead totals ---
+  // --- COGS / CAC / Overhead / Personal totals (using getTxPurpose for consistency) ---
   const allTxns = [...amexTxns, ...mercuryTxns];
-  const cogsCategoryIds = new Set(categories.filter(c => c.costPurpose === "cogs").map(c => c.id));
-  const cacCategoryIds = new Set(categories.filter(c => c.costPurpose === "cac").map(c => c.id));
-  const cogsTotal = allTxns.filter(t => t.categoryId && cogsCategoryIds.has(t.categoryId)).reduce((s, t) => s + Math.abs(t.amountCents), 0);
-  const cacTotal = allTxns.filter(t => t.categoryId && cacCategoryIds.has(t.categoryId)).reduce((s, t) => s + Math.abs(t.amountCents), 0);
-  const payrollTotal = allTxns.filter(t => t.classification === "payroll").reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const cogsTotal = allTxns.filter(t => getTxPurpose(t) === "cogs").reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const cacTotal = allTxns.filter(t => getTxPurpose(t) === "cac").reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const overheadTotal = allTxns.filter(t => getTxPurpose(t) === "overhead").reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const personalTotal = allTxns.filter(t => getTxPurpose(t) === "personal").reduce((s, t) => s + Math.abs(t.amountCents), 0);
+  const grandTotal = cogsTotal + cacTotal + overheadTotal + personalTotal;
 
   // --- Categorization dropdown (works on every transaction) ---
   const renderDropdown = (txId: string, currentClassification: string) => (
@@ -598,26 +589,33 @@ export default function ExpensesPage() {
       {/* Summary Cards */}
       {!loading && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-[var(--muted-foreground)]">Total Expenses</p>
-                <p className="text-2xl font-bold text-red-600">{formatCents(amexTotal + mercuryTotal)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">Amex {formatCents(amexTotal)} · Mercury {formatCents(mercuryTotal)}</p>
+                <p className="text-sm text-[var(--muted-foreground)]">Total</p>
+                <p className="text-2xl font-bold text-red-600">{formatCents(grandTotal)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">{allTxns.length} transactions</p>
               </CardContent>
             </Card>
-            <Card className="border-red-200">
+            <Card className="border-red-200 cursor-pointer hover:bg-red-50/30" onClick={() => setFilter("cogs")}>
               <CardContent className="pt-6">
                 <p className="text-sm text-red-700 font-medium">COGS</p>
                 <p className="text-2xl font-bold text-red-600">{formatCents(cogsTotal)}</p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">Cost of delivery</p>
               </CardContent>
             </Card>
-            <Card className="border-blue-200">
+            <Card className="border-blue-200 cursor-pointer hover:bg-blue-50/30" onClick={() => setFilter("cac")}>
               <CardContent className="pt-6">
-                <p className="text-sm text-blue-700 font-medium">CAC Spend</p>
-                <p className="text-2xl font-bold text-blue-600">{formatCents(cacTotal + payrollTotal)}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">Tools {formatCents(cacTotal)} · Payroll {formatCents(payrollTotal)}</p>
+                <p className="text-sm text-blue-700 font-medium">CAC</p>
+                <p className="text-2xl font-bold text-blue-600">{formatCents(cacTotal)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">Acquisition cost</p>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:bg-gray-50/50" onClick={() => setFilter("overhead")}>
+              <CardContent className="pt-6">
+                <p className="text-sm text-[var(--muted-foreground)] font-medium">Overhead</p>
+                <p className="text-2xl font-bold">{formatCents(overheadTotal)}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">General ops</p>
               </CardContent>
             </Card>
             <Card>
@@ -627,8 +625,7 @@ export default function ExpensesPage() {
                   {amexReview + mercuryReview}
                 </p>
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  {amexReview > 0 ? `${amexReview} Amex` : ""}{amexReview > 0 && mercuryReview > 0 ? " · " : ""}{mercuryReview > 0 ? `${mercuryReview} Mercury` : ""}
-                  {amexReview + mercuryReview === 0 ? "All categorized" : ""}
+                  {amexReview + mercuryReview === 0 ? "All categorized" : `${amexReview + mercuryReview} to review`}
                 </p>
               </CardContent>
             </Card>
