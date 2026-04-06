@@ -7,12 +7,15 @@ const CATEGORIES = [
   { name: "Automation", type: "business", costPurpose: "cogs", sortOrder: 3 },
   { name: "Data", type: "business", costPurpose: "cogs", sortOrder: 4 },
   { name: "Internal Marketing", type: "business", costPurpose: "cac", sortOrder: 5 },
-  { name: "CRM", type: "business", costPurpose: "cogs", sortOrder: 6 },
+  { name: "CRM", type: "business", costPurpose: "cac", sortOrder: 6 },
   { name: "Communication", type: "business", costPurpose: "overhead", sortOrder: 7 },
   { name: "Accounting", type: "business", costPurpose: "overhead", sortOrder: 8 },
   { name: "Education", type: "business", costPurpose: "overhead", sortOrder: 9 },
-  { name: "Verification", type: "business", costPurpose: "cac", sortOrder: 10 },
+  { name: "Verification", type: "business", costPurpose: "cogs", sortOrder: 10 },
   { name: "Fees", type: "business", costPurpose: "overhead", sortOrder: 11 },
+  { name: "Payroll - Sales", type: "payroll", costPurpose: "cac", sortOrder: 12 },
+  { name: "Payroll - Fulfillment", type: "payroll", costPurpose: "cogs", sortOrder: 13 },
+  { name: "Payroll - Misc", type: "payroll", costPurpose: "overhead", sortOrder: 14 },
 ];
 
 const MERCHANT_MAPPINGS: Array<{ pattern: string; classification: string; category: string }> = [
@@ -22,7 +25,7 @@ const MERCHANT_MAPPINGS: Array<{ pattern: string; classification: string; catego
   { pattern: "ZAPMAIL", classification: "business", category: "Email Infrastructure" },
   { pattern: "CHEAP INBOXES", classification: "business", category: "Email Infrastructure" },
   { pattern: "SENDSENTRY", classification: "business", category: "Email Infrastructure" },
-  { pattern: "GODADDY", classification: "business", category: "Email Infrastructure" },
+  { pattern: "GODADDY", classification: "business", category: "Internal Marketing" },
   // Software
   { pattern: "MARUNO", classification: "business", category: "Software" },
   { pattern: "CLICKUP", classification: "business", category: "Software" },

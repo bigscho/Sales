@@ -24,6 +24,7 @@ interface Transaction {
 interface Category {
   id: string;
   name: string;
+  type: string;
   costPurpose: string;
 }
 
@@ -97,20 +98,22 @@ export default function ExpensesPage() {
         categoryId: categoryId || t.categoryId,
         status: "confirmed",
         notes: notes || t.notes,
-        category: categoryId ? categories.find(c => c.id === categoryId) ? { id: categoryId, name: categories.find(c => c.id === categoryId)!.name } : t.category : classification !== "business" ? null : t.category,
+        category: categoryId ? (() => { const found = categories.find(c => c.id === categoryId); return found ? { id: categoryId, name: found.name, costPurpose: found.costPurpose } : t.category; })() : (classification !== "business" && classification !== "payroll") ? null : t.category,
       } : t);
     setAmexTxns(update);
     setMercuryTxns(update);
   };
 
   const handleSingleCategorize = async (txId: string, value: string) => {
-    if (value === "personal" || value === "payroll" || value === "internal_transfer") {
+    if (value === "personal" || value === "internal_transfer") {
       await categorizeTxns([txId], value);
     } else if (value === "__note__") {
       setShowNoteInput(txId);
       setNoteText("");
     } else if (value) {
-      await categorizeTxns([txId], "business", value);
+      const cat = categories.find(c => c.id === value);
+      const classification = cat?.type === "payroll" ? "payroll" : "business";
+      await categorizeTxns([txId], classification, value);
     }
   };
 
@@ -118,14 +121,16 @@ export default function ExpensesPage() {
     const ids = bulkTarget === "amex" ? [...selectedAmex] : [...selectedMercury];
     if (ids.length === 0) return;
 
-    if (value === "personal" || value === "payroll" || value === "internal_transfer") {
+    if (value === "personal" || value === "internal_transfer") {
       await categorizeTxns(ids, value);
     } else if (value === "__note__") {
       setShowNoteInput("bulk");
       setNoteText("");
       return;
     } else if (value) {
-      await categorizeTxns(ids, "business", value);
+      const cat = categories.find(c => c.id === value);
+      const classification = cat?.type === "payroll" ? "payroll" : "business";
+      await categorizeTxns(ids, classification, value);
     }
     if (bulkTarget === "amex") setSelectedAmex(new Set());
     else setSelectedMercury(new Set());
@@ -348,11 +353,13 @@ export default function ExpensesPage() {
       <option value="" disabled>{currentClassification === "needs_review" ? "Classify" : "Re-classify"}</option>
       <optgroup label="Quick">
         <option value="personal">Personal</option>
-        <option value="payroll">Payroll</option>
         <option value="internal_transfer">Transfer</option>
       </optgroup>
       <optgroup label="Business">
-        {categories.map(c => <option key={c.id} value={c.id}>{c.name} [{purposeLabel(c.costPurpose)}]</option>)}
+        {categories.filter(c => c.type !== "payroll").map(c => <option key={c.id} value={c.id}>{c.name} [{purposeLabel(c.costPurpose)}]</option>)}
+      </optgroup>
+      <optgroup label="Payroll">
+        {categories.filter(c => c.type === "payroll").map(c => <option key={c.id} value={c.id}>{c.name} [{purposeLabel(c.costPurpose)}]</option>)}
       </optgroup>
       <optgroup label="Other">
         <option value="__note__">Add Note...</option>
@@ -481,7 +488,6 @@ export default function ExpensesPage() {
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               <span className="text-xs font-medium text-blue-700">{selected.size} selected:</span>
               <button onClick={() => { setBulkTarget(source); handleBulkCategorize("personal"); }} className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-700 hover:bg-purple-200">Personal</button>
-              <button onClick={() => { setBulkTarget(source); handleBulkCategorize("payroll"); }} className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700 hover:bg-orange-200">Payroll</button>
               <button onClick={() => { setBulkTarget(source); handleBulkCategorize("internal_transfer"); }} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 hover:bg-gray-200">Transfer</button>
               <select
                 className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-700 border-0 cursor-pointer"
@@ -489,7 +495,15 @@ export default function ExpensesPage() {
                 onChange={(e) => { if (e.target.value) { setBulkTarget(source); handleBulkCategorize(e.target.value); } }}
               >
                 <option value="" disabled>Business...</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.filter(c => c.type !== "payroll").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select
+                className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700 border-0 cursor-pointer"
+                value=""
+                onChange={(e) => { if (e.target.value) { setBulkTarget(source); handleBulkCategorize(e.target.value); } }}
+              >
+                <option value="" disabled>Payroll...</option>
+                {categories.filter(c => c.type === "payroll").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <button onClick={() => { setBulkTarget(source); setShowNoteInput("bulk"); setNoteText(""); }} className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200">Add Note</button>
             </div>
