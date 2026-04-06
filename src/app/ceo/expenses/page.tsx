@@ -282,6 +282,18 @@ export default function ExpensesPage() {
     loadData();
   };
 
+  // Get the effective cost purpose for a transaction
+  const getTxPurpose = (tx: Transaction): string => {
+    if (tx.classification === "personal") return "personal";
+    if (tx.categoryId) {
+      const cat = categories.find(c => c.id === tx.categoryId);
+      if (cat) return cat.costPurpose;
+    }
+    // Uncategorized payroll defaults to CAC (most payroll = acquisition)
+    if (tx.classification === "payroll") return "cac";
+    return "needs_review";
+  };
+
   // --- Filtering (uses getTxPurpose so cards, badges, and filters always match) ---
   const filterTxns = (txns: Transaction[]) => {
     if (filter === "all") return txns;
@@ -301,18 +313,6 @@ export default function ExpensesPage() {
   const mercuryReview = mercuryTxns.filter(t => t.status === "needs_review").length;
 
   const totalSelected = selectedAmex.size + selectedMercury.size;
-
-  // Get the effective cost purpose for a transaction
-  const getTxPurpose = (tx: Transaction): string => {
-    if (tx.classification === "personal") return "personal";
-    if (tx.categoryId) {
-      const cat = categories.find(c => c.id === tx.categoryId);
-      if (cat) return cat.costPurpose;
-    }
-    // Uncategorized payroll defaults to CAC (most payroll = acquisition)
-    if (tx.classification === "payroll") return "cac";
-    return "needs_review";
-  };
 
   // --- Cost purpose helpers ---
   const updateCostPurpose = async (categoryId: string, costPurpose: string) => {
