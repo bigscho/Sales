@@ -289,7 +289,13 @@ export default function ExpensesPage() {
     if (filter === "personal") return txns.filter(t => t.classification === "personal");
     if (filter === "cogs" || filter === "cac" || filter === "overhead") {
       const purposeCatIds = new Set(categories.filter(c => c.costPurpose === filter).map(c => c.id));
-      return txns.filter(t => t.categoryId && purposeCatIds.has(t.categoryId));
+      return txns.filter(t => {
+        // If it has a category, check the category's costPurpose
+        if (t.categoryId && purposeCatIds.has(t.categoryId)) return true;
+        // Uncategorized payroll defaults to CAC filter (most payroll is acquisition)
+        if (!t.categoryId && t.classification === "payroll" && filter === "cac") return true;
+        return false;
+      });
     }
     return txns;
   };
@@ -312,6 +318,8 @@ export default function ExpensesPage() {
       const cat = categories.find(c => c.id === tx.categoryId);
       if (cat) return cat.costPurpose;
     }
+    // Uncategorized payroll defaults to CAC (most payroll = acquisition)
+    if (tx.classification === "payroll") return "cac";
     return "needs_review";
   };
 
