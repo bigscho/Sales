@@ -83,18 +83,110 @@ export default function TransactionsPage() {
 
   // Group by merchant for review mode
   const merchantGroups = isReviewMode ? (() => {
-    const groups: Record<string, { merchant: string; total: number; count: number; txIds: string[] }> = {};
+    const groups: Record<string, { merchant: string; total: number; count: number; txIds: string[]; dates: string[] }> = {};
     for (const tx of transactions) {
       const key = tx.merchantName || "Unknown";
-      if (!groups[key]) groups[key] = { merchant: key, total: 0, count: 0, txIds: [] };
+      if (!groups[key]) groups[key] = { merchant: key, total: 0, count: 0, txIds: [], dates: [] };
       groups[key].total += Math.abs(tx.amountCents);
       groups[key].count++;
       groups[key].txIds.push(tx.id);
+      groups[key].dates.push(tx.date);
     }
     return Object.values(groups).sort((a, b) => b.total - a.total);
   })() : [];
 
-  const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [inputValue, setInputValue] = useState("");
+  const [mode, setMode] = useState<"tinder" | "list">("tinder");
+
+  const currentMerchant = merchantGroups[currentIndex] || null;
+  const totalMerchants = merchantGroups.length;
+
+  // Parse voice/text input into classification
+  const parseInput = (input: string): { classification: string; categoryId?: string } | null => {
+    const lower = input.toLowerCase().trim();
+
+    if (["personal", "p"].includes(lower)) return { classification: "personal" };
+    if (["payroll", "pay"].includes(lower)) return { classification: "payroll" };
+    if (["transfer", "internal", "t"].includes(lower)) return { classification: "internal_transfer" };
+    if (["skip", "s", "next", "n"].includes(lower)) return null;
+
+    // Business categories — match partial names
+    for (const cat of categories) {
+      const catLower = cat.name.toLowerCase();
+      if (lower === catLower || catLower.includes(lower) || lower.includes(catLower.split(" ")[0])) {
+        return { classification: "business", categoryId: cat.id };
+      }
+    }
+
+    // Common shortcuts
+    if (["email", "inbox", "inboxes"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("email"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["software", "soft", "sw"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("software"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["data"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase() === "data");
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["fees", "fee"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("fees"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["marketing", "mktg"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("marketing"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["comm", "communication", "comms"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("communication"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["verify", "verification"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("verification"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["auto", "automation"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("automation"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["accounting", "acct"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("accounting"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["crm"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("crm"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    if (["education", "edu"].includes(lower)) {
+      const cat = categories.find(c => c.name.toLowerCase().includes("education"));
+      return { classification: "business", categoryId: cat?.id };
+    }
+    // Business with no specific category
+    if (["business", "biz", "b"].includes(lower)) {
+      return { classification: "business" };
+    }
+
+    return null;
+  };
+
+  const handleSubmit = async () => {
+    if (!currentMerchant || !inputValue.trim()) return;
+
+    const parsed = parseInput(inputValue);
+    if (!parsed) {
+      // Skip — move to next
+      setCurrentIndex(prev => prev + 1);
+      setInputValue("");
+      return;
+    }
+
+    await categorizeBulk(currentMerchant.merchant, parsed.classification, parsed.categoryId);
+    setInputValue("");
+    // Don't increment index since the array shrinks when we remove items
+  };
 
   return (
     <div className="space-y-6">
@@ -141,79 +233,137 @@ export default function TransactionsPage() {
         </select>
       </div>
 
-      {/* Review Mode: Grouped by merchant with big buttons */}
+      {/* Review Mode */}
       {isReviewMode && merchantGroups.length > 0 && (
-        <div className="space-y-2">
-          {merchantGroups.map((group) => (
-            <Card key={group.merchant} className="border-amber-100">
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between gap-4">
-                  {/* Merchant info */}
-                  <div
-                    className="flex-1 cursor-pointer"
-                    onClick={() => setExpandedMerchant(expandedMerchant === group.merchant ? null : group.merchant)}
-                  >
-                    <p className="font-medium">{group.merchant}</p>
-                    <p className="text-xs text-[var(--muted-foreground)]">
-                      {formatCents(group.total)} · {group.count} transaction{group.count !== 1 ? "s" : ""}
-                    </p>
-                  </div>
+        <>
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <Button size="sm" variant={mode === "tinder" ? "default" : "outline"} onClick={() => setMode("tinder")}>
+              Card View
+            </Button>
+            <Button size="sm" variant={mode === "list" ? "default" : "outline"} onClick={() => setMode("list")}>
+              List View
+            </Button>
+          </div>
 
-                  {/* Quick classify buttons */}
-                  <div className="flex gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => categorizeBulk(group.merchant, "personal")}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
-                    >
-                      Personal
-                    </button>
-                    <button
-                      onClick={() => categorizeBulk(group.merchant, "payroll")}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
-                    >
-                      Payroll
-                    </button>
-                    <button
-                      onClick={() => categorizeBulk(group.merchant, "internal_transfer")}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                    >
-                      Transfer
-                    </button>
-
-                    {/* Business sub-categories */}
-                    <select
-                      className="px-2 py-1.5 text-xs font-medium rounded-lg bg-blue-100 text-blue-700 border-0 cursor-pointer"
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          categorizeBulk(group.merchant, "business", e.target.value);
-                          e.target.value = "";
-                        }
-                      }}
-                    >
-                      <option value="" disabled>Business ▾</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+          {/* Tinder-style card view */}
+          {mode === "tinder" && currentMerchant && (
+            <Card className="border-amber-200 max-w-2xl mx-auto">
+              <CardContent className="pt-8 pb-6 px-8">
+                {/* Progress */}
+                <div className="flex items-center justify-between mb-6">
+                  <p className="text-sm text-[var(--muted-foreground)]">
+                    {currentIndex + 1} of {totalMerchants} merchants
+                  </p>
+                  <div className="w-48 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-amber-500 h-2 rounded-full transition-all"
+                      style={{ width: `${((totalMerchants - merchantGroups.length) / Math.max(totalMerchants, 1)) * 100}%` }}
+                    />
                   </div>
                 </div>
 
-                {/* Expanded: show individual transactions */}
-                {expandedMerchant === group.merchant && (
-                  <div className="mt-3 border-t pt-2">
-                    {transactions.filter(t => t.merchantName === group.merchant).map((tx) => (
-                      <div key={tx.id} className="flex items-center justify-between py-1 text-xs text-[var(--muted-foreground)]">
-                        <span>{formatDate(tx.date)}</span>
-                        <span className="font-medium">{formatCents(Math.abs(tx.amountCents))}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Merchant card */}
+                <div className="text-center mb-6">
+                  <p className="text-2xl font-bold mb-2">{currentMerchant.merchant}</p>
+                  <p className="text-3xl font-bold text-red-600">{formatCents(currentMerchant.total)}</p>
+                  <p className="text-sm text-[var(--muted-foreground)] mt-2">
+                    {currentMerchant.count} transaction{currentMerchant.count !== 1 ? "s" : ""}
+                    {currentMerchant.count <= 5 && (
+                      <span> · {currentMerchant.dates.map(d => formatDate(d)).join(", ")}</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Input */}
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+                  className="mb-4"
+                >
+                  <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Type: personal, payroll, software, data, fees, skip..."
+                    className="w-full border-2 border-amber-300 rounded-xl px-4 py-3 text-lg text-center focus:outline-none focus:border-amber-500"
+                    autoFocus
+                  />
+                </form>
+
+                {/* Quick buttons as backup */}
+                <div className="flex gap-2 justify-center flex-wrap">
+                  <button
+                    onClick={() => { categorizeBulk(currentMerchant.merchant, "personal"); }}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200"
+                  >
+                    Personal
+                  </button>
+                  <button
+                    onClick={() => { categorizeBulk(currentMerchant.merchant, "payroll"); }}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200"
+                  >
+                    Payroll
+                  </button>
+                  <button
+                    onClick={() => { categorizeBulk(currentMerchant.merchant, "internal_transfer"); }}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  >
+                    Transfer
+                  </button>
+                  {categories.slice(0, 6).map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => { categorizeBulk(currentMerchant.merchant, "business", c.id); }}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setCurrentIndex(prev => prev + 1)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-white border text-gray-500 hover:bg-gray-50"
+                  >
+                    Skip
+                  </button>
+                </div>
+
+                {/* Shortcuts hint */}
+                <p className="text-xs text-center text-[var(--muted-foreground)] mt-4">
+                  Shortcuts: personal · payroll · software · data · email · fees · verification · communication · skip
+                </p>
               </CardContent>
             </Card>
-          ))}
-        </div>
+          )}
+
+          {/* List view */}
+          {mode === "list" && (
+            <div className="space-y-2">
+              {merchantGroups.map((group) => (
+                <Card key={group.merchant} className="border-amber-100">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="font-medium">{group.merchant}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">
+                          {formatCents(group.total)} · {group.count}x
+                        </p>
+                      </div>
+                      <div className="flex gap-1.5 flex-wrap">
+                        <button onClick={() => categorizeBulk(group.merchant, "personal")} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200">Personal</button>
+                        <button onClick={() => categorizeBulk(group.merchant, "payroll")} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200">Payroll</button>
+                        <button onClick={() => categorizeBulk(group.merchant, "internal_transfer")} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Transfer</button>
+                        <select className="px-2 py-1.5 text-xs font-medium rounded-lg bg-blue-100 text-blue-700 border-0 cursor-pointer" defaultValue="" onChange={(e) => { if (e.target.value) categorizeBulk(group.merchant, "business", e.target.value); }}>
+                          <option value="" disabled>Business ▾</option>
+                          {categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                        </select>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {isReviewMode && merchantGroups.length === 0 && !loading && (
