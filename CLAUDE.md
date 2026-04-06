@@ -155,6 +155,40 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Merge back to main promptly** — don't leave work on feature branches for days
 - **Delete old branches after merge** — stale `claude/*` branches cause confusion across sessions
 
+## What Was Built (Apr 6-7 session)
+- **Expenses page overhaul** (`/ceo/expenses`): Merged redundant Transactions page into Expenses. Added checkboxes + Select All per column, bulk action bar, re-categorize dropdown on ALL transactions, free-form notes input, natural language quick input per column
+- **Deleted `/ceo/transactions`** page and sidebar link (redundant with Expenses)
+- **Cost purpose system**: Added `costPurpose` field (cogs | cac | overhead) to `FinancialCategory` schema. Each expense category gets a purpose tag that drives unit economics
+- **Expenses UI**: COGS/CAC/Overhead as primary badges on each transaction. Payroll is a separate checkbox toggle (not a classification). Clickable summary cards drill down to filtered view. Filters: All | Needs Review | COGS | CAC | Overhead | Payroll | Personal
+- **"Configure Cost Types" panel**: Inline on Expenses page — toggle each category between COGS/CAC/Overhead with one click
+- **3 payroll sub-categories**: Payroll - Sales (CAC), Payroll - Fulfillment (COGS), Payroll - Misc (Overhead)
+- **PATCH `/api/ceo/categories`**: Update costPurpose per category
+- **Seed defaults**: Email Infra/Automation/Data = COGS, Internal Marketing/Verification/CRM = CAC, Software/Communication/Accounting/Education/Fees = Overhead. GoDaddy moved from Email Infra to Internal Marketing (CAC). OmniVerifier = COGS (used for clients)
+- **Metrics plan**: `METRICS-PLAN.md` in project root — 4-phase roadmap for unit economics
+
+### Cost Purpose Classifications (confirmed with user)
+| Category | Purpose | Notes |
+|---|---|---|
+| Email Infrastructure | COGS | Smartlead, PuzzleInboxes = client campaigns |
+| Automation | COGS | Zapier/Make flows for client delivery |
+| Data | COGS | BatchData/PropertyShark for client campaigns |
+| Verification | COGS | OmniVerifier for client email verification |
+| Internal Marketing | CAC | HighLevel, Calendly, Webflow, Wistia = lead gen |
+| CRM | CAC | Airtable for internal sales tracking |
+| Software | Overhead | ClickUp, Fireflies, Anthropic, Docusign etc |
+| Communication | Overhead | Slack, Loom |
+| Accounting | Overhead | QuickBooks |
+| Education | Overhead | Hormozi, Affirm |
+| Fees | Overhead | Bank/processing fees |
+| All setter/closer payroll | CAC | Their job is acquisition |
+| Onboarding team payroll | COGS | Client delivery |
+| GoDaddy | CAC | Own domains, not client infra |
+
+### Post-deploy required
+- Hit `POST /api/ceo/seed` to apply costPurpose defaults to existing categories
+- User should review/adjust via "Configure Cost Types" on Expenses page
+- Payroll transactions need payroll checkbox checked + category assigned on Expenses page
+
 ## What Was Built (Apr 3 session)
 - **Closer verification cron**: `/api/slack/closer/verify` at 8 PM ET → `#closer-tpds`, per-closer pending demos + WTD show rate + link to demos page
 - **Setter verification env var fix**: `SLACK_DATAVERIFICATION_WEBHOOK_URL` (was mismatched as `SLACK_VERIFY_WEBHOOK_URL`)
@@ -164,11 +198,14 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Calendly guard**: cherry-picked — invitee.canceled only cancels pending demos
 
 ## Remaining Pillars (in order)
-1. **Pillar 3: CEO Slack Deep Dive** — P&L summary, anomaly detection, cash flow week-over-week. User said "let's dive deeper when we do it"
-2. **Pillar 4: UI Cleanup** — user will provide example UIs. Cleaner typography, mobile, cards
-3. **Pillar 5: Admin/Auth** — no auth currently. Admin sees all, closers see their stuff, setters see bookings. Also filter returning revenue from sales team view
-4. **Pillar 6: Weekly Video Coaching** — aggregate Fireflies transcripts, AI coaching highlights. User wants it "SICK" with Tuff Pigeon Doctor moments at the end
-5. **Historical data import** — user will dump 2026 data "at the very end". Includes demos/sales data AND financial backfill via `/api/ceo/backfill` (Stripe payments by date range with subscription detection, refund tracking, and confidence scoring). March 2026 already backfilled and reconciled.
+1. **Metrics Phase 1: Sales Efficiency** — NO schema changes needed. Build `GET /api/ceo/sales-efficiency` + `/ceo/metrics` page. Revenue per setter, cost per show/close, setter/closer ROI, outbound ROI, deal cycle time. Add trailing 30/60/90 day time dimensions. See `METRICS-PLAN.md` for full spec.
+2. **Metrics Phase 3: Customer Model** — New `Customer` Prisma model. Backfill from existing Deal/Payment data. Enables LTV, LTV:CAC ratio, per-client P&L, cohort analysis, payback period. See `METRICS-PLAN.md`.
+3. **Metrics Phase 4: MRR/Churn** — Add `reason` field to MrrEvent, support expansion/contraction events. Enables NRR, churn reasons, avg customer lifespan.
+4. **Pillar 3: CEO Slack Deep Dive** — P&L summary, anomaly detection, cash flow week-over-week. User said "let's dive deeper when we do it"
+5. **Pillar 4: UI Cleanup** — user will provide example UIs. Cleaner typography, mobile, cards
+6. **Pillar 5: Admin/Auth** — no auth currently. Admin sees all, closers see their stuff, setters see bookings. Also filter returning revenue from sales team view
+7. **Pillar 6: Weekly Video Coaching** — aggregate Fireflies transcripts, AI coaching highlights. User wants it "SICK" with Tuff Pigeon Doctor moments at the end
+8. **Historical data import** — user will dump 2026 data "at the very end". Includes demos/sales data AND financial backfill via `/api/ceo/backfill` (Stripe payments by date range with subscription detection, refund tracking, and confidence scoring). March 2026 already backfilled and reconciled.
 
 ## Backlog (lower priority improvements)
 - **Day-focused dashboard view** — main dashboard could have a "today" mode showing today's demos + cash instead of full week
