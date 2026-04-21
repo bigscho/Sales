@@ -161,12 +161,13 @@ export default function VerifyPage() {
   const unlockedDemos = demos.filter(d => !d.isLocked);
   const lockedDemos = demos.filter(d => d.isLocked);
 
-  // Stats
+  // Stats — cancels count against show rate (they sat on the calendar)
   const showCount = demos.filter(d => d.status === "showed").length;
   const noShowCount = demos.filter(d => d.status === "no_show").length;
   const pendingCount = demos.filter(d => d.status === "pending").length;
-  const confirmed = showCount + noShowCount;
-  const showRate = confirmed > 0 ? ((showCount / confirmed) * 100).toFixed(0) : "--";
+  const cancelledCount = demos.filter(d => d.status === "cancelled").length;
+  const srDenom = showCount + noShowCount + cancelledCount;
+  const showRate = srDenom > 0 ? ((showCount / srDenom) * 100).toFixed(0) : "--";
 
   const toggleConfirm = (demoId: string) => {
     const next = new Set(confirmedIds);

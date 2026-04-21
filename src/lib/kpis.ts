@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { computeShowRate } from "./utils";
 
 export interface WeeklyKPIs {
   weekId: string;
@@ -9,8 +10,9 @@ export interface WeeklyKPIs {
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
-  showRate: number;
-  confirmedShowRate: number; // shows / (shows + noShows)
+  totalCancelled: number;
+  showRate: number; // shows / (shows + noShows + cancelled) — cancels count against us
+  confirmedShowRate: number; // shows / (shows + noShows) — excludes cancels, for reference
   totalConfirmed: number; // shows + noShows
   totalCloses: number;
   totalHeld: number;
@@ -33,6 +35,7 @@ export interface SetterKPI {
   shows: number;
   noShows: number;
   pending: number;
+  cancelled: number;
   pendingTotal: number;
   showRate: number;
 }
@@ -75,7 +78,8 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const totalShows = allDemos.filter((d) => d.status === "showed").length;
   const totalNoShows = allDemos.filter((d) => d.status === "no_show").length;
   const totalPending = allDemos.filter((d) => d.status === "pending").length;
-  const showRate = (totalShows + totalNoShows) > 0 ? totalShows / (totalShows + totalNoShows) : 0;
+  const totalCancelled = allDemos.filter((d) => d.status === "cancelled").length;
+  const showRate = computeShowRate(totalShows, totalNoShows, totalCancelled);
   const totalConfirmed = totalShows + totalNoShows;
   const confirmedShowRate = totalConfirmed > 0 ? totalShows / totalConfirmed : 0;
 
@@ -156,6 +160,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
         shows: 0,
         noShows: 0,
         pending: 0,
+        cancelled: 0,
         pendingTotal: pendingTotalBySetter[setter.id] || 0,
         showRate: 0,
       });
@@ -164,9 +169,10 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     if (demo.status === "showed") s.shows++;
     else if (demo.status === "no_show") s.noShows++;
     else if (demo.status === "pending") s.pending++;
+    else if (demo.status === "cancelled") s.cancelled++;
   }
   for (const s of setterMap.values()) {
-    s.showRate = (s.shows + s.noShows) > 0 ? s.shows / (s.shows + s.noShows) : 0;
+    s.showRate = computeShowRate(s.shows, s.noShows, s.cancelled);
   }
 
   // Closer stats
@@ -208,6 +214,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     totalShows,
     totalNoShows,
     totalPending,
+    totalCancelled,
     showRate,
     confirmedShowRate,
     totalConfirmed,

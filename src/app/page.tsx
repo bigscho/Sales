@@ -16,6 +16,7 @@ interface KPIData {
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
+  totalCancelled: number;
   showRate: number;
   confirmedShowRate: number;
   totalConfirmed: number;
@@ -29,7 +30,7 @@ interface KPIData {
   cashPerShow: number;
   newRevenue: number;
   returningRevenue: number;
-  setterStats: { setterId: string; setterName: string; newBookings: number; shows: number; noShows: number; pending: number; pendingTotal: number; showRate: number }[];
+  setterStats: { setterId: string; setterName: string; newBookings: number; shows: number; noShows: number; pending: number; cancelled: number; pendingTotal: number; showRate: number }[];
   closerStats: { closerId: string; closerName: string; shows: number; closes: number; held: number; lost: number; closeRate: number; cashCollected: number }[];
 }
 
@@ -41,8 +42,8 @@ interface DemoRecord {
 }
 
 interface ScoreboardData {
-  scoreboard: { id: string; name: string; tier: number; activity: { newBookings: number }; results: { shows: number; noShows: number; pending: number; showRate: number }; pendingTotal: number }[];
-  unattributed: { activity: { newBookings: number }; results: { shows: number; noShows: number; pending: number; showRate: number }; pendingTotal: number };
+  scoreboard: { id: string; name: string; tier: number; activity: { newBookings: number }; results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number }; pendingTotal: number }[];
+  unattributed: { activity: { newBookings: number }; results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number }; pendingTotal: number };
 }
 
 export default function Dashboard() {
@@ -125,7 +126,7 @@ export default function Dashboard() {
             <KPICard
               title="Demos on Calendar"
               value={String(kpis.totalBookings)}
-              subtitle={`${kpis.totalShows} showed · ${kpis.totalNoShows} no-show · ${kpis.totalPending} pending`}
+              subtitle={`${kpis.totalShows} showed · ${kpis.totalNoShows} no-show${kpis.totalCancelled > 0 ? ` · ${kpis.totalCancelled} cancelled` : ""} · ${kpis.totalPending} pending`}
               detail={
                 <div className="space-y-1">
                   {demos.map((d) => (
@@ -180,9 +181,9 @@ export default function Dashboard() {
 
         <KPICard
           title="Show Rate"
-          value={kpis.totalConfirmed > 0 ? formatPercent(kpis.confirmedShowRate) : "\u2014"}
-          valueClassName={kpis.totalConfirmed > 0 ? showRateColor(kpis.confirmedShowRate) : undefined}
-          subtitle={`${kpis.totalShows}/${kpis.totalConfirmed} confirmed · ${kpis.totalPending} pending`}
+          value={(kpis.totalShows + kpis.totalNoShows + kpis.totalCancelled) > 0 ? formatPercent(kpis.showRate) : "\u2014"}
+          valueClassName={(kpis.totalShows + kpis.totalNoShows + kpis.totalCancelled) > 0 ? showRateColor(kpis.showRate) : undefined}
+          subtitle={`${kpis.totalShows}/${kpis.totalShows + kpis.totalNoShows + kpis.totalCancelled} of calendar${kpis.totalCancelled > 0 ? ` · ${kpis.totalCancelled} cancelled` : ""} · ${kpis.totalPending} pending`}
         />
         <KPICard
           title="Close Rate"

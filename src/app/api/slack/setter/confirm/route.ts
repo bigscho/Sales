@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackVerify, sendSlackCEO } from "@/lib/slack";
 import { formatMention, isWeekday, getWeeklyShowStats } from "@/lib/setter-game";
-import { getWeekRange } from "@/lib/utils";
+import { getWeekRange, computeShowRate } from "@/lib/utils";
 
 const BASE_URL = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -45,8 +45,9 @@ export async function POST() {
     const shows = demos.filter(d => d.status === "showed").length;
     const noShows = demos.filter(d => d.status === "no_show").length;
     const pending = demos.filter(d => d.status === "pending").length;
-    const confirmed = shows + noShows;
-    const showRate = confirmed > 0 ? ((shows / confirmed) * 100).toFixed(0) : "--";
+    const cancelled = demos.filter(d => d.status === "cancelled").length;
+    const denom = shows + noShows + cancelled;
+    const showRate = denom > 0 ? (computeShowRate(shows, noShows, cancelled) * 100).toFixed(0) : "--";
 
     const reviewLink = `${BASE_URL}/verify?weekId=${week.id}&setter=${setter.id}`;
 
@@ -58,9 +59,10 @@ export async function POST() {
       ? existingVerification.status === "confirmed" ? " ✅ Confirmed" : " 🚩 Has flags"
       : "";
 
+    const cancelledPart = cancelled > 0 ? ` | ${cancelled} cancelled` : "";
     const message = [
       `${mention}${confirmStatus}`,
-      `*Week-to-date:* ${newBookings} booked | ${shows} showed | ${noShows} no-show | ${pending} pending`,
+      `*Week-to-date:* ${newBookings} booked | ${shows} showed | ${noShows} no-show${cancelledPart} | ${pending} pending`,
       `*Show rate:* ${showRate}%`,
       existingVerification ? `<${reviewLink}|Update Verification>` : `<${reviewLink}|Review & Confirm Your Demos>`,
     ].join("\n");
@@ -68,17 +70,17 @@ export async function POST() {
     await sendSlackVerify(message);
 
     const statusLabel = existingVerification ? ` [${existingVerification.status}]` : " [not confirmed]";
-    setterSummaries.push(`${setter.name}: ${newBookings} booked, ${shows}/${confirmed} showed (${showRate}%), ${pending} pending${statusLabel}`);
+    setterSummaries.push(`${setter.name}: ${newBookings} booked, ${shows}/${denom} showed (${showRate}%), ${pending} pending${statusLabel}`);
   }
 
-  // Team totals for CEO summary
-  const { totalShows, totalNoShows, totalPending } = await getWeeklyShowStats();
-  const teamConfirmed = totalShows + totalNoShows;
-  const teamShowRate = teamConfirmed > 0 ? ((totalShows / teamConfirmed) * 100).toFixed(0) : "--";
+  // Team totals for CEO summary — cancels count against show rate
+  const { totalShows, totalNoShows, totalPending, totalCancelled } = await getWeeklyShowStats();
+  const teamDenom = totalShows + totalNoShows + totalCancelled;
+  const teamShowRate = teamDenom > 0 ? (computeShowRate(totalShows, totalNoShows, totalCancelled) * 100).toFixed(0) : "--";
 
   const ceoMessage = [
     `*Daily Setter Verification Summary*`,
-    `Team show rate: ${teamShowRate}% (${totalShows}/${teamConfirmed})${totalPending > 0 ? ` | ${totalPending} pending` : ""}`,
+    `Team show rate: ${teamShowRate}% (${totalShows}/${teamDenom})${totalPending > 0 ? ` | ${totalPending} pending` : ""}${totalCancelled > 0 ? ` | ${totalCancelled} cancelled` : ""}`,
     ``,
     ...setterSummaries,
   ].join("\n");

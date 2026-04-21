@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackTeam } from "@/lib/slack";
-import { formatCents } from "@/lib/utils";
+import { formatCents, computeShowRate } from "@/lib/utils";
 
 export async function POST() {
   const now = new Date();
@@ -25,8 +25,9 @@ export async function POST() {
   const showed = todayDemos.filter((d) => d.status === "showed").length;
   const noShow = todayDemos.filter((d) => d.status === "no_show").length;
   const pending = todayDemos.filter((d) => d.status === "pending").length;
-  const confirmed = showed + noShow;
-  const showRate = confirmed > 0 ? ((showed / confirmed) * 100).toFixed(1) : "0.0";
+  const cancelled = todayDemos.filter((d) => d.status === "cancelled").length;
+  const denom = showed + noShow + cancelled;
+  const showRate = denom > 0 ? (computeShowRate(showed, noShow, cancelled) * 100).toFixed(1) : "0.0";
 
   // Cash collected today
   const todayPayments = await prisma.payment.findMany({
@@ -56,7 +57,7 @@ export async function POST() {
   const lines = [
     `📊 *UNOFFICIAL ${dayName} Stats (awaiting official admin confirmation):*`,
     "",
-    `Today's demos: *${total}* booked, *${showed}* showed, *${noShow}* no-show, *${pending}* pending`,
+    `Today's demos: *${total}* booked, *${showed}* showed, *${noShow}* no-show${cancelled > 0 ? `, *${cancelled}* cancelled` : ""}, *${pending}* pending`,
     `Show rate: *${showRate}%*${pending > 0 ? ` (${pending} demos still pending)` : ""}`,
     `Cash collected today: *${formatCents(cashCents)}*`,
     `💵 New Revenue: *${formatCents(newRevenueCents)}* | Returning: *${formatCents(returningRevenueCents)}*`,

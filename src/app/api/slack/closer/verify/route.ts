@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackCloser, sendSlackCEO } from "@/lib/slack";
 import { formatMention, isWeekday, getETDateBounds } from "@/lib/setter-game";
-import { getWeekRange } from "@/lib/utils";
+import { getWeekRange, computeShowRate } from "@/lib/utils";
 
 const BASE_URL = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -54,8 +54,9 @@ export async function POST() {
 
     const wtdShowed = wtdDemos.filter(d => d.status === "showed").length;
     const wtdNoShow = wtdDemos.filter(d => d.status === "no_show").length;
-    const wtdConfirmed = wtdShowed + wtdNoShow;
-    const wtdShowRate = wtdConfirmed > 0 ? ((wtdShowed / wtdConfirmed) * 100).toFixed(0) : "--";
+    const wtdCancelled = wtdDemos.filter(d => d.status === "cancelled").length;
+    const wtdDenom = wtdShowed + wtdNoShow + wtdCancelled;
+    const wtdShowRate = wtdDenom > 0 ? (computeShowRate(wtdShowed, wtdNoShow, wtdCancelled) * 100).toFixed(0) : "--";
     const wtdPending = wtdDemos.filter(d => d.status === "pending").length;
 
     const demosLink = `${BASE_URL}/demos?weekId=${week.id}`;
@@ -82,12 +83,12 @@ export async function POST() {
       lines.push(pendingList);
     }
 
-    lines.push(`*Week-to-date:* ${wtdShowRate}% show rate (${wtdShowed}/${wtdConfirmed})${wtdPending > 0 ? ` | ${wtdPending} still pending` : ""}`);
+    lines.push(`*Week-to-date:* ${wtdShowRate}% show rate (${wtdShowed}/${wtdDenom})${wtdCancelled > 0 ? ` | ${wtdCancelled} cancelled` : ""}${wtdPending > 0 ? ` | ${wtdPending} still pending` : ""}`);
     lines.push(`<${demosLink}|Open Demos Page to Verify>`);
 
     await sendSlackCloser(lines.join("\n"));
 
-    closerSummaries.push(`${closer.name}: today ${todayShowed}/${todayDemos.length} showed, ${todayPending.length} pending | WTD ${wtdShowRate}% (${wtdShowed}/${wtdConfirmed})`);
+    closerSummaries.push(`${closer.name}: today ${todayShowed}/${todayDemos.length} showed, ${todayPending.length} pending | WTD ${wtdShowRate}% (${wtdShowed}/${wtdDenom})`);
   }
 
   // CEO summary

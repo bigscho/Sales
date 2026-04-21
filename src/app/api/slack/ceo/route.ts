@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackCEO } from "@/lib/slack";
-import { getWeekRange, formatCents } from "@/lib/utils";
+import { getWeekRange, formatCents, computeShowRate } from "@/lib/utils";
 
 export async function POST() {
   const { start } = getWeekRange(new Date());
@@ -34,8 +34,9 @@ export async function POST() {
   const showed = demos.filter((d) => d.status === "showed").length;
   const noShows = demos.filter((d) => d.status === "no_show").length;
   const pending = demos.filter((d) => d.status === "pending").length;
-  const confirmed = showed + noShows;
-  const showRate = confirmed > 0 ? ((showed / confirmed) * 100).toFixed(1) : "0.0";
+  const cancelled = demos.filter((d) => d.status === "cancelled").length;
+  const denom = showed + noShows + cancelled;
+  const showRate = denom > 0 ? (computeShowRate(showed, noShows, cancelled) * 100).toFixed(1) : "0.0";
 
   // Closes
   const deals = await prisma.deal.findMany({
@@ -82,7 +83,7 @@ export async function POST() {
     "",
     `*Revenue:* ${formatCents(totalRevenue)} (${formatCents(mrrRevenue)} MRR + ${formatCents(oneTimeRevenue)} one-time)`,
     `*New Revenue:* ${formatCents(newRevenue)} | *Returning:* ${formatCents(returningRevenue)}`,
-    `*Demos:* ${booked} booked, ${showed} showed (${showRate}% show rate)${pending > 0 ? ` (${pending} pending)` : ""}`,
+    `*Demos:* ${booked} booked, ${showed} showed (${showRate}% show rate)${cancelled > 0 ? ` (${cancelled} cancelled)` : ""}${pending > 0 ? ` (${pending} pending)` : ""}`,
     `*Closes:* ${closeCount} closed (${closeRate}% close rate)`,
     `*Cash/booking:* ${formatCents(cashPerBooking)}`,
   ];

@@ -29,6 +29,7 @@ interface SetterSummary {
   shows: number;
   noShows: number;
   pending: number;
+  cancelled: number;
   showRate: number;
   verification: { status: string; confirmedAt: string } | null;
   openFlags: FlagItem[];
@@ -158,15 +159,16 @@ export default function VerifyAdminPage() {
   const allConfirmed = setters.every(s => s.verification !== null);
   const canLock = pendingDemoCount === 0 && totalFlags === 0;
 
-  // Calculate team totals
+  // Calculate team totals — cancels count against show rate
   const teamTotals = setters.reduce((acc, s) => ({
     demos: acc.demos + s.totalDemos,
     shows: acc.shows + s.shows,
     noShows: acc.noShows + s.noShows,
     pending: acc.pending + s.pending,
-  }), { demos: 0, shows: 0, noShows: 0, pending: 0 });
-  const teamConfirmed = teamTotals.shows + teamTotals.noShows;
-  const teamShowRate = teamConfirmed > 0 ? teamTotals.shows / teamConfirmed : 0;
+    cancelled: acc.cancelled + (s.cancelled || 0),
+  }), { demos: 0, shows: 0, noShows: 0, pending: 0, cancelled: 0 });
+  const teamDenom = teamTotals.shows + teamTotals.noShows + teamTotals.cancelled;
+  const teamShowRate = teamDenom > 0 ? teamTotals.shows / teamDenom : 0;
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -235,7 +237,7 @@ export default function VerifyAdminPage() {
         <Card>
           <CardContent className="pt-3 pb-2 px-3 text-center">
             <p className={`text-2xl font-bold ${teamShowRate >= 0.6 ? "text-green-600" : teamShowRate >= 0.4 ? "text-yellow-600" : "text-[var(--muted-foreground)]"}`}>
-              {teamConfirmed > 0 ? formatPercent(teamShowRate) : "--"}
+              {teamDenom > 0 ? formatPercent(teamShowRate) : "--"}
             </p>
             <p className="text-xs text-[var(--muted-foreground)]">Show Rate</p>
           </CardContent>
@@ -250,7 +252,7 @@ export default function VerifyAdminPage() {
 
       {/* Per-Setter Cards */}
       {setters.map(setter => {
-        const confirmed = setter.shows + setter.noShows;
+        const confirmed = setter.shows + setter.noShows + (setter.cancelled || 0);
         return (
           <Card key={setter.id} className={
             setter.openFlags.length > 0 ? "border-orange-300" :
@@ -280,6 +282,7 @@ export default function VerifyAdminPage() {
                   <span>{setter.totalDemos} demos</span>
                   <span className="text-green-600">{setter.shows} showed</span>
                   <span className="text-red-600">{setter.noShows} no-show</span>
+                  {setter.cancelled > 0 && <span className="text-red-600">{setter.cancelled} cancelled</span>}
                   {setter.pending > 0 && <span className="text-yellow-600">{setter.pending} pending</span>}
                   <span className={`font-bold ${
                     setter.showRate >= 0.6 ? "text-green-600" : setter.showRate >= 0.4 ? "text-yellow-600" : confirmed === 0 ? "text-[var(--muted-foreground)]/70" : "text-red-600"

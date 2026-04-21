@@ -16,6 +16,15 @@ export function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+// Show rate denominator = everything on the calendar that didn't get rescheduled
+// (showed + no_show + cancelled). Cancels count against us — they sat on the
+// calendar and we failed to get them to show. Pending is excluded since it's
+// still TBD; rescheduled is excluded since it moved to a different date.
+export function computeShowRate(shows: number, noShows: number, cancelled: number): number {
+  const denom = shows + noShows + cancelled;
+  return denom > 0 ? shows / denom : 0;
+}
+
 export function getWeekRange(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
   const day = d.getUTCDay();

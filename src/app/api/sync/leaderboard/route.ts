@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackMessage } from "@/lib/slack";
-import { getWeekRange, formatPercent } from "@/lib/utils";
+import { getWeekRange, formatPercent, computeShowRate } from "@/lib/utils";
 
 export async function POST() {
   const { start } = getWeekRange(new Date());
@@ -15,7 +15,7 @@ export async function POST() {
     where: { role: "setter", isActive: true },
   });
 
-  const stats: { name: string; bookings: number; shows: number; noShows: number; showRate: number }[] = [];
+  const stats: { name: string; bookings: number; shows: number; noShows: number; cancelled: number; showRate: number }[] = [];
 
   for (const setter of setters) {
     const bookings = await prisma.booking.count({
@@ -35,12 +35,20 @@ export async function POST() {
         status: "no_show",
       },
     });
+    const cancelled = await prisma.demo.count({
+      where: {
+        weekId: week.id,
+        booking: { setterId: setter.id },
+        status: "cancelled",
+      },
+    });
     stats.push({
       name: setter.name,
       bookings,
       shows,
       noShows,
-      showRate: (shows + noShows) > 0 ? shows / (shows + noShows) : 0,
+      cancelled,
+      showRate: computeShowRate(shows, noShows, cancelled),
     });
   }
 
@@ -51,7 +59,8 @@ export async function POST() {
   const totalBookings = stats.reduce((s, st) => s + st.bookings, 0);
   const totalShows = stats.reduce((s, st) => s + st.shows, 0);
   const totalNoShows = stats.reduce((s, st) => s + st.noShows, 0);
-  const teamShowRate = (totalShows + totalNoShows) > 0 ? totalShows / (totalShows + totalNoShows) : 0;
+  const totalCancelled = stats.reduce((s, st) => s + st.cancelled, 0);
+  const teamShowRate = computeShowRate(totalShows, totalNoShows, totalCancelled);
 
   // Get day of week for context
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

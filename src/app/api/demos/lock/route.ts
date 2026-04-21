@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
   const demoCount = dayDemos.length;
   const showCount = dayDemos.filter((d) => d.status === "showed").length;
   const noShowCount = dayDemos.filter((d) => d.status === "no_show").length;
+  const cancelledCount = dayDemos.filter((d) => d.status === "cancelled").length;
 
   // Cash from deals closed on demos from this day
   const cashCents = dayDemos.reduce((sum, d) => {
@@ -166,13 +167,15 @@ export async function POST(request: NextRequest) {
     const dayLabel = lockDate.toLocaleDateString("en-US", {
       weekday: "long", month: "short", day: "numeric", timeZone: "UTC",
     });
-    const showRateVal = (showCount + noShowCount) > 0
-      ? ((showCount / (showCount + noShowCount)) * 100).toFixed(1)
+    const { computeShowRate } = await import("@/lib/utils");
+    const srDenom = showCount + noShowCount + cancelledCount;
+    const showRateVal = srDenom > 0
+      ? (computeShowRate(showCount, noShowCount, cancelledCount) * 100).toFixed(1)
       : "0.0";
 
     await sendSlackTeam(
       `📊 *OFFICIAL Daily Recap — ${dayLabel}* 🔒\n\n` +
-      `Demos: *${demoCount}* | Shows: *${showCount}* | No-shows: *${noShowCount}*\n` +
+      `Demos: *${demoCount}* | Shows: *${showCount}* | No-shows: *${noShowCount}*${cancelledCount > 0 ? ` | Cancelled: *${cancelledCount}*` : ""}\n` +
       `Show rate: *${showRateVal}%*\n` +
       `Cash collected: *${formatCents(cashCents + unlinkedCash)}*`
     );

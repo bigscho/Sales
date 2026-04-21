@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { computeShowRate } from "./utils";
 
 interface SetterPayResult {
   teamMemberId: string;
@@ -126,12 +127,17 @@ export async function calculateShowRateBonus(weekId: string): Promise<ShowRateRe
   });
   if (!rep) return null;
 
-  const totalBooked = await prisma.demo.count({ where: { weekId } });
   const totalShowed = await prisma.demo.count({
     where: { weekId, status: "showed" },
   });
+  const totalNoShow = await prisma.demo.count({
+    where: { weekId, status: "no_show" },
+  });
+  const totalCancelled = await prisma.demo.count({
+    where: { weekId, status: "cancelled" },
+  });
 
-  const showRate = totalBooked > 0 ? totalShowed / totalBooked : 0;
+  const showRate = computeShowRate(totalShowed, totalNoShow, totalCancelled);
 
   let bonus = 0;
   let tier = "Below 50%";

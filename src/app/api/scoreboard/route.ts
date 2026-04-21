@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { type TimeDimension, getDateRange } from "@/lib/time-range";
-import { getWeekRange } from "@/lib/utils";
+import { getWeekRange, computeShowRate } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
@@ -63,15 +63,16 @@ export async function GET(request: NextRequest) {
     include: { booking: { select: { setterId: true } } },
   });
 
-  const resultsBySetterId: Record<string, { shows: number; noShows: number; pending: number }> = {};
-  const resultsTotal = { shows: 0, noShows: 0, pending: 0 };
+  const resultsBySetterId: Record<string, { shows: number; noShows: number; pending: number; cancelled: number }> = {};
+  const resultsTotal = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
 
   for (const demo of resultsDemos) {
     const sid = demo.booking.setterId || "unattributed";
-    if (!resultsBySetterId[sid]) resultsBySetterId[sid] = { shows: 0, noShows: 0, pending: 0 };
+    if (!resultsBySetterId[sid]) resultsBySetterId[sid] = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
     if (demo.status === "showed") { resultsBySetterId[sid].shows++; resultsTotal.shows++; }
     else if (demo.status === "no_show") { resultsBySetterId[sid].noShows++; resultsTotal.noShows++; }
     else if (demo.status === "pending") { resultsBySetterId[sid].pending++; resultsTotal.pending++; }
+    else if (demo.status === "cancelled") { resultsBySetterId[sid].cancelled++; resultsTotal.cancelled++; }
   }
 
   // === PENDING TOTAL: pending demos from current period forward (not historical) ===
@@ -94,9 +95,8 @@ export async function GET(request: NextRequest) {
   // Build scoreboard entries
   const scoreboard = setters.map((s) => {
     const activity = activityBySetterId[s.id] || 0;
-    const results = resultsBySetterId[s.id] || { shows: 0, noShows: 0, pending: 0 };
+    const results = resultsBySetterId[s.id] || { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
     const pendingTotal = pendingTotalBySetterId[s.id] || 0;
-    const confirmed = results.shows + results.noShows;
     return {
       id: s.id,
       name: s.name,
@@ -105,20 +105,17 @@ export async function GET(request: NextRequest) {
       activity: { newBookings: activity },
       results: {
         ...results,
-        showRate: confirmed > 0 ? results.shows / confirmed : 0,
+        showRate: computeShowRate(results.shows, results.noShows, results.cancelled),
       },
       pendingTotal,
     };
   });
 
-  const teamShowRate = (resultsTotal.shows + resultsTotal.noShows) > 0
-    ? resultsTotal.shows / (resultsTotal.shows + resultsTotal.noShows)
-    : 0;
+  const teamShowRate = computeShowRate(resultsTotal.shows, resultsTotal.noShows, resultsTotal.cancelled);
 
   // Unattributed
   const unattributedActivity = activityBySetterId["unattributed"] || 0;
-  const unattributedResults = resultsBySetterId["unattributed"] || { shows: 0, noShows: 0, pending: 0 };
-  const unattributedConfirmed = unattributedResults.shows + unattributedResults.noShows;
+  const unattributedResults = resultsBySetterId["unattributed"] || { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
   const unattributedPendingTotal = pendingTotalBySetterId["unattributed"] || 0;
 
   return NextResponse.json({
@@ -132,7 +129,7 @@ export async function GET(request: NextRequest) {
       activity: { newBookings: unattributedActivity },
       results: {
         ...unattributedResults,
-        showRate: unattributedConfirmed > 0 ? unattributedResults.shows / unattributedConfirmed : 0,
+        showRate: computeShowRate(unattributedResults.shows, unattributedResults.noShows, unattributedResults.cancelled),
       },
       pendingTotal: unattributedPendingTotal,
     },

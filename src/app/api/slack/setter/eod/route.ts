@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAllSetterScoresToday, formatSetterMention, formatMention, getPipelineCount, isWeekday, PIGEON_GIFS, getSetterWeeklyShows, getTierForCount, getWeeklyShowStats } from "@/lib/setter-game";
 import { sendSlackSetter } from "@/lib/slack";
 import { prisma } from "@/lib/db";
-import { getWeekRange } from "@/lib/utils";
+import { getWeekRange, computeShowRate } from "@/lib/utils";
 
 export async function POST() {
   if (!isWeekday()) {
@@ -36,19 +36,21 @@ export async function POST() {
       gif = PIGEON_GIFS.sad_pigeon;
     }
 
-    // Personal show rate for this setter
+    // Personal show rate for this setter — cancels count against us
     const setterShowStats = await getSetterWeeklyShows(setter.setterId);
     const { start: weekStart } = getWeekRange(new Date());
     const setterWeek = await prisma.week.findFirst({ where: { weekStart } });
     let setterNoShows = 0;
+    let setterCancelled = 0;
     if (setterWeek) {
       const setterDemos = await prisma.demo.findMany({
         where: { weekId: setterWeek.id, booking: { setterId: setter.setterId } },
       });
       setterNoShows = setterDemos.filter(d => d.status === "no_show").length;
+      setterCancelled = setterDemos.filter(d => d.status === "cancelled").length;
     }
-    const setterConfirmed = setterShowStats.shows + setterNoShows;
-    const setterShowRate = setterConfirmed > 0 ? ((setterShowStats.shows / setterConfirmed) * 100).toFixed(0) : "—";
+    const setterDenom = setterShowStats.shows + setterNoShows + setterCancelled;
+    const setterShowRate = setterDenom > 0 ? (computeShowRate(setterShowStats.shows, setterNoShows, setterCancelled) * 100).toFixed(0) : "—";
 
     const showRateLine = `\nYour demos showed at ${setterShowRate}% this week (${setterShowStats.shows} showed, ${setterShowStats.pending} pending)`;
     message += showRateLine;
@@ -61,12 +63,12 @@ export async function POST() {
     await sendSlackSetter(message, blocks);
   }
 
-  // Team show rate summary
-  const { totalShows: wkShows, totalNoShows: wkNoShows, totalPending: wkPending } = await getWeeklyShowStats();
-  const wkConfirmed = wkShows + wkNoShows;
-  const wkShowRate = wkConfirmed > 0 ? ((wkShows / wkConfirmed) * 100).toFixed(0) : "—";
+  // Team show rate summary — cancels count against us
+  const { totalShows: wkShows, totalNoShows: wkNoShows, totalPending: wkPending, totalCancelled: wkCancelled } = await getWeeklyShowStats();
+  const wkDenom = wkShows + wkNoShows + wkCancelled;
+  const wkShowRate = wkDenom > 0 ? (computeShowRate(wkShows, wkNoShows, wkCancelled) * 100).toFixed(0) : "—";
 
-  await sendSlackSetter(`*Show rate to date: ${wkShowRate}%* (${wkShows} showed, ${wkNoShows} no-show${wkPending > 0 ? `, ${wkPending} pending` : ""})`);
+  await sendSlackSetter(`*Show rate to date: ${wkShowRate}%* (${wkShows} showed, ${wkNoShows} no-show${wkCancelled > 0 ? `, ${wkCancelled} cancelled` : ""}${wkPending > 0 ? `, ${wkPending} pending` : ""})`);
 
   // Team pipeline post
   const pipelineCount = await getPipelineCount();
@@ -137,10 +139,10 @@ export async function POST() {
       return `${medal} ${mention} — ${r.bookings} bookings (${r.tierLabel})`;
     });
 
-    // Team show rate
-    const { totalShows: lbShows, totalNoShows: lbNoShows } = await getWeeklyShowStats();
-    const lbConfirmed = lbShows + lbNoShows;
-    const lbShowRate = lbConfirmed > 0 ? ((lbShows / lbConfirmed) * 100).toFixed(0) : "—";
+    // Team show rate — cancels count against us
+    const { totalShows: lbShows, totalNoShows: lbNoShows, totalCancelled: lbCancelled } = await getWeeklyShowStats();
+    const lbDenom = lbShows + lbNoShows + lbCancelled;
+    const lbShowRate = lbDenom > 0 ? (computeShowRate(lbShows, lbNoShows, lbCancelled) * 100).toFixed(0) : "—";
 
     const setterNote = teamTotal > setterTotal ? ` (${setterTotal} by setters)` : "";
     const leaderboardMessage = `🏆 WEEKLY LEADERBOARD 🏆\n\n${leaderLines.join("\n")}\n\nTeam total: ${teamTotal} bookings${setterNote} | Show rate: ${lbShowRate}%`;

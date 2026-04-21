@@ -10,7 +10,7 @@ interface SetterScore {
   name: string;
   tier: number;
   activity: { newBookings: number };
-  results: { shows: number; noShows: number; pending: number; showRate: number };
+  results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
   pendingTotal: number;
 }
 
@@ -18,7 +18,7 @@ interface SetterLeaderboardsProps {
   scoreboard: SetterScore[];
   unattributed: {
     activity: { newBookings: number };
-    results: { shows: number; noShows: number; pending: number; showRate: number };
+    results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
     pendingTotal: number;
   };
   dimLabel?: string;
@@ -123,14 +123,14 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
               </div>
               <div className="w-16 text-right flex-shrink-0">
                 <p className={`text-lg font-bold ${
-                  (setter.results.shows + setter.results.noShows) > 0 ? showRateColor(setter.results.showRate) : "text-[var(--muted-foreground)]"
+                  (setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 ? showRateColor(setter.results.showRate) : "text-[var(--muted-foreground)]"
                 }`}>
-                  {(setter.results.shows + setter.results.noShows) > 0 ? formatPercent(setter.results.showRate) : "—"}
+                  {(setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 ? formatPercent(setter.results.showRate) : "—"}
                 </p>
               </div>
             </div>
           ))}
-          {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.pending) > 0 && (
+          {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.pending + unattributed.results.cancelled) > 0 && (
             <div className="flex items-center gap-3 p-2.5 rounded-lg bg-yellow-50/50 border border-yellow-200">
               <div className="w-8 text-center flex-shrink-0"><span className="text-lg">❓</span></div>
               <div className="w-20 flex-shrink-0">
@@ -141,7 +141,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
               </div>
               <div className="w-16 text-right flex-shrink-0">
                 <p className="text-lg font-bold text-yellow-600">
-                  {(unattributed.results.shows + unattributed.results.noShows) > 0 ? formatPercent(unattributed.results.showRate) : "—"}
+                  {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled) > 0 ? formatPercent(unattributed.results.showRate) : "—"}
                 </p>
               </div>
             </div>

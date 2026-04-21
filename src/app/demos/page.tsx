@@ -914,12 +914,14 @@ export default function DemosPage() {
                     const dayShowed = dayDemos.filter((d) => d.status === "showed").length;
                     const dayNoShow = dayDemos.filter((d) => d.status === "no_show").length;
                     const dayPending = dayDemos.filter((d) => d.status === "pending").length;
+                    const dayCancelled = dayDemos.filter((d) => d.status === "cancelled").length;
                     const dayCloses = dayDemos.filter((d) => d.deal?.status === "closed_won").length;
                     const isExpanded = expandedDays.has(dayIndex);
                     const dayPayments = payments.filter((p) => weekDateKeys[dayIndex] && toDateKey(p.paidAt) === weekDateKeys[dayIndex]);
                     const dayCash = dayPayments.reduce((s, p) => s + p.amountCents, 0);
-                    const dayShowRate = (dayShowed + dayNoShow) > 0
-                      ? `${((dayShowed / (dayShowed + dayNoShow)) * 100).toFixed(0)}%`
+                    const dayDenom = dayShowed + dayNoShow + dayCancelled;
+                    const dayShowRate = dayDenom > 0
+                      ? `${((dayShowed / dayDenom) * 100).toFixed(0)}%`
                       : "—";
 
                     const toggleDay = () => {

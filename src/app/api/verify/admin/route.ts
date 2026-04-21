@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackVerify } from "@/lib/slack";
+import { computeShowRate } from "@/lib/utils";
 
 // GET: Load full verification overview for a week (CEO view)
 export async function GET(request: NextRequest) {
@@ -58,8 +59,8 @@ export async function GET(request: NextRequest) {
     const shows = setterDemos.filter(d => d.status === "showed").length;
     const noShows = setterDemos.filter(d => d.status === "no_show").length;
     const pending = setterDemos.filter(d => d.status === "pending").length;
-    const confirmed = shows + noShows;
-    const showRate = confirmed > 0 ? shows / confirmed : 0;
+    const cancelled = setterDemos.filter(d => d.status === "cancelled").length;
+    const showRate = computeShowRate(shows, noShows, cancelled);
 
     const verification = verifications.find(v => v.setterId === setter.id);
     const openFlags = verification?.flags.filter(f => f.ceoAction === "pending") || [];
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
       shows,
       noShows,
       pending,
+      cancelled,
       showRate,
       verification: verification ? {
         status: verification.status,

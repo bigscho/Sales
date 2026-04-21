@@ -15,7 +15,7 @@ interface SetterScore {
   name: string;
   tier: number;
   activity: { newBookings: number };
-  results: { shows: number; noShows: number; pending: number; showRate: number };
+  results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
   pendingTotal: number;
 }
 
@@ -23,12 +23,12 @@ interface ScoreboardData {
   scoreboard: SetterScore[];
   teamTotals: {
     activity: { newBookings: number };
-    results: { shows: number; noShows: number; pending: number; showRate: number };
+    results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
     pendingTotal: number;
   };
   unattributed: {
     activity: { newBookings: number };
-    results: { shows: number; noShows: number; pending: number; showRate: number };
+    results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
     pendingTotal: number;
   };
   showRateRep: { id: string; name: string; showRate: number } | null;
@@ -106,9 +106,9 @@ export default function ScoreboardPage() {
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate</p>
             <p className={`text-3xl font-bold tracking-tight mt-1 ${
-              (teamTotals.results.shows + teamTotals.results.noShows) > 0 ? showRateColor(teamTotals.results.showRate) : "text-[var(--muted-foreground)]"
+              (teamTotals.results.shows + teamTotals.results.noShows + teamTotals.results.cancelled) > 0 ? showRateColor(teamTotals.results.showRate) : "text-[var(--muted-foreground)]"
             }`}>
-              {(teamTotals.results.shows + teamTotals.results.noShows) > 0 ? formatPercent(teamTotals.results.showRate) : "—"}
+              {(teamTotals.results.shows + teamTotals.results.noShows + teamTotals.results.cancelled) > 0 ? formatPercent(teamTotals.results.showRate) : "—"}
             </p>
             <p className="text-xs text-[var(--muted-foreground)]">team average</p>
           </CardContent>
@@ -147,7 +147,7 @@ export default function ScoreboardPage() {
                   showRateRep.showRate >= 0.6 ? "text-green-600" :
                   showRateRep.showRate >= 0.4 ? "text-yellow-600" : "text-red-600"
                 }`}>
-                  {(teamTotals.results.shows + teamTotals.results.noShows) > 0 ? formatPercent(showRateRep.showRate) : "—"}
+                  {(teamTotals.results.shows + teamTotals.results.noShows + teamTotals.results.cancelled) > 0 ? formatPercent(showRateRep.showRate) : "—"}
                 </p>
               </div>
               <div className="text-sm text-[var(--muted-foreground)] max-w-xs">

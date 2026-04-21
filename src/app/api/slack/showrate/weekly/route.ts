@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { formatMention } from "@/lib/setter-game";
 import { sendSlackShowRate } from "@/lib/slack";
-import { getWeekRange } from "@/lib/utils";
+import { getWeekRange, computeShowRate } from "@/lib/utils";
 
 export async function POST() {
   const { start: weekStart } = getWeekRange(new Date());
@@ -19,16 +19,19 @@ export async function POST() {
     shows: number;
     noShows: number;
     pending: number;
+    cancelled: number;
     showRate: string;
   }> = [];
 
   let teamShows = 0;
   let teamNoShows = 0;
+  let teamCancelled = 0;
 
   for (const setter of activeSetters) {
     let shows = 0;
     let noShows = 0;
     let pending = 0;
+    let cancelled = 0;
 
     if (week) {
       const demos = await prisma.demo.findMany({
@@ -37,10 +40,11 @@ export async function POST() {
       shows = demos.filter(d => d.status === "showed").length;
       noShows = demos.filter(d => d.status === "no_show").length;
       pending = demos.filter(d => d.status === "pending").length;
+      cancelled = demos.filter(d => d.status === "cancelled").length;
     }
 
-    const confirmed = shows + noShows;
-    const showRate = confirmed > 0 ? ((shows / confirmed) * 100).toFixed(0) : "—";
+    const denom = shows + noShows + cancelled;
+    const showRate = denom > 0 ? (computeShowRate(shows, noShows, cancelled) * 100).toFixed(0) : "—";
 
     setterStats.push({
       setterId: setter.id,
@@ -49,11 +53,13 @@ export async function POST() {
       shows,
       noShows,
       pending,
+      cancelled,
       showRate,
     });
 
     teamShows += shows;
     teamNoShows += noShows;
+    teamCancelled += cancelled;
   }
 
   // Sort by show rate descending (setters with data first)
@@ -65,11 +71,12 @@ export async function POST() {
 
   const lines = setterStats.map(s => {
     const mention = formatMention({ id: s.setterId, name: s.name, slackUserId: s.slackUserId });
-    return `${mention} — ${s.showRate}% (${s.shows} showed, ${s.noShows} no-show, ${s.pending} pending)`;
+    const cancelledPart = s.cancelled > 0 ? `, ${s.cancelled} cancelled` : "";
+    return `${mention} — ${s.showRate}% (${s.shows} showed, ${s.noShows} no-show${cancelledPart}, ${s.pending} pending)`;
   });
 
-  const teamConfirmed = teamShows + teamNoShows;
-  const teamShowRate = teamConfirmed > 0 ? ((teamShows / teamConfirmed) * 100).toFixed(0) : "—";
+  const teamDenom = teamShows + teamNoShows + teamCancelled;
+  const teamShowRate = teamDenom > 0 ? (computeShowRate(teamShows, teamNoShows, teamCancelled) * 100).toFixed(0) : "—";
 
   const message = `📊 WEEKLY SHOW RATE REPORT\n\n${lines.join("\n")}\n\nTeam average: ${teamShowRate}% show rate to date`;
 
