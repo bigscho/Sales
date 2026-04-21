@@ -120,6 +120,8 @@ async function syncGoogleCalendar(): Promise<number> {
   url.searchParams.set("maxResults", "100");
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("orderBy", "startTime");
+  // Include cancelled events so they hit the show-rate denominator.
+  url.searchParams.set("showDeleted", "true");
 
   const res = await fetch(url.toString());
   if (!res.ok) return 0;
@@ -129,17 +131,32 @@ async function syncGoogleCalendar(): Promise<number> {
 
   let count = 0;
   for (const event of events) {
+    const isCancelled = event.status === "cancelled";
+
+    // Cancelled events from showDeleted=true often come back with minimal fields
+    // (no description). Look them up by event id first so we can flip the demo to cancelled.
+    const existing = await prisma.booking.findUnique({
+      where: { calendarEventId: event.id },
+      include: { demo: true },
+    });
+    if (existing) {
+      if (isCancelled && existing.demo && existing.demo.status === "pending") {
+        await prisma.demo.update({
+          where: { id: existing.demo.id },
+          data: { status: "cancelled" },
+        });
+      }
+      continue;
+    }
+
+    // New event: need enough metadata to attribute it. Skip cancelled events we've never seen
+    // (nothing to attribute) and non-Calendly events.
     const desc = event.description || "";
+    if (isCancelled) continue;
     if (!desc.includes("Calendly") && !desc.includes("Booked by")) continue;
 
     const parsed = parseCalendlyEvent(event);
     if (!parsed) continue;
-
-    // Check if already synced
-    const existing = await prisma.booking.findUnique({
-      where: { calendarEventId: event.id },
-    });
-    if (existing) continue;
 
     // Find the week
     const { start } = getWeekRange(new Date(parsed.demoDate));

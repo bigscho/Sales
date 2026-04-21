@@ -12,6 +12,8 @@ interface KPIData {
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
+  totalCancelled: number;
+  totalRescheduled: number;
   showRate: number;
   totalCloses: number;
   totalHeld: number;
@@ -21,7 +23,7 @@ interface KPIData {
   avgCashPerClose: number;
   cashPerBooking: number;
   cashPerShow: number;
-  setterStats: { setterId: string; setterName: string; bookings: number; shows: number; noShows: number; showRate: number }[];
+  setterStats: { setterId: string; setterName: string; bookings: number; shows: number; noShows: number; cancelled: number; showRate: number }[];
   closerStats: { closerId: string; closerName: string; shows: number; closes: number; held: number; lost: number; closeRate: number; cashCollected: number }[];
 }
 
@@ -141,7 +143,11 @@ export default function Dashboard() {
         <KPICard
           title="Show Rate"
           value={formatPercent(kpis.showRate)}
-          subtitle={`${kpis.totalShows} of ${kpis.totalBookings} booked`}
+          subtitle={
+            kpis.totalCancelled > 0
+              ? `${kpis.totalShows} of ${kpis.totalBookings} (${kpis.totalCancelled} cancelled count)`
+              : `${kpis.totalShows} of ${kpis.totalBookings} booked`
+          }
         />
         <KPICard
           title="Close Rate"
@@ -183,6 +189,7 @@ export default function Dashboard() {
                   <th className="text-right p-3 font-medium">Bookings</th>
                   <th className="text-right p-3 font-medium">Shows</th>
                   <th className="text-right p-3 font-medium">No-Shows</th>
+                  <th className="text-right p-3 font-medium">Cancelled</th>
                   <th className="text-right p-3 font-medium">Show Rate</th>
                 </tr>
               </thead>
@@ -193,6 +200,7 @@ export default function Dashboard() {
                     <td className="p-3 text-right">{s.bookings}</td>
                     <td className="p-3 text-right">{s.shows}</td>
                     <td className="p-3 text-right">{s.noShows}</td>
+                    <td className="p-3 text-right text-gray-500">{s.cancelled}</td>
                     <td className="p-3 text-right font-medium">{formatPercent(s.showRate)}</td>
                   </tr>
                 ))}

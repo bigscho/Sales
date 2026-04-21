@@ -18,8 +18,14 @@ export async function POST() {
   const stats: { name: string; bookings: number; shows: number; showRate: number }[] = [];
 
   for (const setter of setters) {
-    const bookings = await prisma.booking.count({
-      where: { weekId: week.id, setterId: setter.id },
+    // Bookings denominator: everything on the calendar except rescheduled.
+    // Cancels count against the show rate — we failed to get them to show.
+    const bookings = await prisma.demo.count({
+      where: {
+        weekId: week.id,
+        booking: { setterId: setter.id },
+        status: { not: "rescheduled" },
+      },
     });
     const shows = await prisma.demo.count({
       where: {

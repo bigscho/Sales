@@ -126,7 +126,11 @@ export async function calculateShowRateBonus(weekId: string): Promise<ShowRateRe
   });
   if (!rep) return null;
 
-  const totalBooked = await prisma.demo.count({ where: { weekId } });
+  // Denominator = everything on the calendar that didn't get rescheduled.
+  // Cancels count against us because we failed to get them to show.
+  const totalBooked = await prisma.demo.count({
+    where: { weekId, status: { not: "rescheduled" } },
+  });
   const totalShowed = await prisma.demo.count({
     where: { weekId, status: "showed" },
   });

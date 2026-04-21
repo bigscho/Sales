@@ -61,9 +61,11 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  const demoCount = dayDemos.length;
-  const showCount = dayDemos.filter((d) => d.status === "showed").length;
-  const noShowCount = dayDemos.filter((d) => d.status === "no_show").length;
+  // Exclude rescheduled from counts; cancels stay in so they count against show rate.
+  const countedDemos = dayDemos.filter((d) => d.status !== "rescheduled");
+  const demoCount = countedDemos.length;
+  const showCount = countedDemos.filter((d) => d.status === "showed").length;
+  const noShowCount = countedDemos.filter((d) => d.status === "no_show").length;
 
   // Cash from deals closed on demos from this day
   const cashCents = dayDemos.reduce((sum, d) => {

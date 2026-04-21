@@ -8,7 +8,9 @@ export interface WeeklyKPIs {
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
-  showRate: number;
+  totalCancelled: number;
+  totalRescheduled: number;
+  showRate: number; // shows / totalBookings (cancels count against us; rescheduled don't)
   totalCloses: number;
   totalHeld: number;
   totalLost: number;
@@ -27,6 +29,7 @@ export interface SetterKPI {
   bookings: number;
   shows: number;
   noShows: number;
+  cancelled: number;
   showRate: number;
 }
 
@@ -53,10 +56,15 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     },
   });
 
-  const totalBookings = allDemos.length;
-  const totalShows = allDemos.filter((d) => d.status === "showed").length;
-  const totalNoShows = allDemos.filter((d) => d.status === "no_show").length;
-  const totalPending = allDemos.filter((d) => d.status === "pending").length;
+  // Rescheduled demos moved to a new date and are not on the calendar for this week — exclude from denominator.
+  // Cancels stay in the denominator: they sat on the calendar and we failed to get them to show.
+  const countedDemos = allDemos.filter((d) => d.status !== "rescheduled");
+  const totalBookings = countedDemos.length;
+  const totalShows = countedDemos.filter((d) => d.status === "showed").length;
+  const totalNoShows = countedDemos.filter((d) => d.status === "no_show").length;
+  const totalPending = countedDemos.filter((d) => d.status === "pending").length;
+  const totalCancelled = countedDemos.filter((d) => d.status === "cancelled").length;
+  const totalRescheduled = allDemos.filter((d) => d.status === "rescheduled").length;
   const showRate = totalBookings > 0 ? totalShows / totalBookings : 0;
 
   const deals = await prisma.deal.findMany({
@@ -77,9 +85,9 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const cashPerBooking = totalBookings > 0 ? Math.round(cashCollected / totalBookings) : 0;
   const cashPerShow = totalShows > 0 ? Math.round(cashCollected / totalShows) : 0;
 
-  // Setter stats
+  // Setter stats — cancels count in the denominator, rescheduled do not.
   const setterMap = new Map<string, SetterKPI>();
-  for (const demo of allDemos) {
+  for (const demo of countedDemos) {
     const setter = demo.booking?.setter;
     if (!setter) continue;
     if (!setterMap.has(setter.id)) {
@@ -89,6 +97,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
         bookings: 0,
         shows: 0,
         noShows: 0,
+        cancelled: 0,
         showRate: 0,
       });
     }
@@ -96,6 +105,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     s.bookings++;
     if (demo.status === "showed") s.shows++;
     if (demo.status === "no_show") s.noShows++;
+    if (demo.status === "cancelled") s.cancelled++;
   }
   for (const s of setterMap.values()) {
     s.showRate = s.bookings > 0 ? s.shows / s.bookings : 0;
@@ -139,6 +149,8 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     totalShows,
     totalNoShows,
     totalPending,
+    totalCancelled,
+    totalRescheduled,
     showRate,
     totalCloses,
     totalHeld,

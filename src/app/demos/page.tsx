@@ -209,11 +209,14 @@ export default function DemosPage() {
     if (!weekDates[day]) weekDates[day] = demo.booking.demoDate;
   }
 
-  // Overall stats
-  const totalBooked = demos.length;
-  const totalShowed = demos.filter((d) => d.status === "showed").length;
-  const totalNoShow = demos.filter((d) => d.status === "no_show").length;
-  const totalPending = demos.filter((d) => d.status === "pending").length;
+  // Show rate denominator = everything on the calendar except rescheduled.
+  // Cancels stay in — they sat on the calendar and we failed to get them to show.
+  const countedDemos = demos.filter((d) => d.status !== "rescheduled");
+  const totalBooked = countedDemos.length;
+  const totalShowed = countedDemos.filter((d) => d.status === "showed").length;
+  const totalNoShow = countedDemos.filter((d) => d.status === "no_show").length;
+  const totalPending = countedDemos.filter((d) => d.status === "pending").length;
+  const totalCancelled = countedDemos.filter((d) => d.status === "cancelled").length;
 
   // Selected day data
   const selectedDemos = demosByDay[selectedDay] || [];
@@ -226,9 +229,11 @@ export default function DemosPage() {
     return pDay === selectedDay;
   });
 
-  const selectedShowed = selectedDemos.filter((d) => d.status === "showed").length;
-  const selectedNoShow = selectedDemos.filter((d) => d.status === "no_show").length;
-  const selectedPending = selectedDemos.filter((d) => d.status === "pending").length;
+  const selectedCounted = selectedDemos.filter((d) => d.status !== "rescheduled");
+  const selectedShowed = selectedCounted.filter((d) => d.status === "showed").length;
+  const selectedNoShow = selectedCounted.filter((d) => d.status === "no_show").length;
+  const selectedPending = selectedCounted.filter((d) => d.status === "pending").length;
+  const selectedCancelled = selectedCounted.filter((d) => d.status === "cancelled").length;
 
   return (
     <div className="space-y-6">
@@ -240,6 +245,7 @@ export default function DemosPage() {
             <span>{totalBooked} booked</span>
             <span className="text-green-600 font-medium">{totalShowed} showed</span>
             <span className="text-red-600 font-medium">{totalNoShow} no-show</span>
+            {totalCancelled > 0 && <span className="text-gray-500 font-medium">{totalCancelled} cancelled</span>}
             {totalPending > 0 && <span className="text-yellow-600 font-medium">{totalPending} pending</span>}
             <span className="text-gray-500">{dayLocks.length}/7 days locked</span>
           </div>
@@ -287,8 +293,11 @@ export default function DemosPage() {
               const isSelected = selectedDay === dayIndex;
               const lock = locksByDay[dayIndex];
               const dateLabel = weekDates[dayIndex] ? getDateLabel(weekDates[dayIndex]) : "";
-              const dayShowed = dayDemos.filter((d) => d.status === "showed").length;
-              const dayTotal = dayDemos.length;
+              // Exclude rescheduled from the day's total; cancels still count.
+              const dayCounted = dayDemos.filter((d) => d.status !== "rescheduled");
+              const dayShowed = dayCounted.filter((d) => d.status === "showed").length;
+              const dayCancelled = dayCounted.filter((d) => d.status === "cancelled").length;
+              const dayTotal = dayCounted.length;
 
               return (
                 <div
@@ -362,7 +371,7 @@ export default function DemosPage() {
                   {/* Day footer stats */}
                   {dayTotal > 0 && !lock && (
                     <div className="px-2 py-1 border-t text-[10px] text-gray-500 flex justify-between">
-                      <span>{dayShowed}✓ {dayTotal - dayShowed - dayDemos.filter(d => d.status === "cancelled").length}?</span>
+                      <span>{dayShowed}✓ {dayTotal - dayShowed - dayCancelled}? {dayCancelled > 0 && <span className="text-gray-400">{dayCancelled}✕</span>}</span>
                     </div>
                   )}
                 </div>
@@ -403,7 +412,7 @@ export default function DemosPage() {
             <div className="flex gap-6">
               <div>
                 <p className="text-xs text-gray-500">Demos</p>
-                <p className="text-xl font-bold">{selectedDemos.length}</p>
+                <p className="text-xl font-bold">{selectedCounted.length}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Showed</p>
@@ -413,10 +422,16 @@ export default function DemosPage() {
                 <p className="text-xs text-gray-500">No Show</p>
                 <p className="text-xl font-bold text-red-600">{selectedNoShow}</p>
               </div>
+              {selectedCancelled > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500">Cancelled</p>
+                  <p className="text-xl font-bold text-gray-500">{selectedCancelled}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-gray-500">Show Rate</p>
                 <p className="text-xl font-bold">
-                  {selectedDemos.length > 0 ? ((selectedShowed / selectedDemos.length) * 100).toFixed(0) : "—"}%
+                  {selectedCounted.length > 0 ? ((selectedShowed / selectedCounted.length) * 100).toFixed(0) : "—"}%
                 </p>
               </div>
               {selectedPayments.length > 0 && (
@@ -586,6 +601,12 @@ export default function DemosPage() {
                   <p className="text-xs text-gray-500">No Show</p>
                   <p className="text-xl font-bold text-red-600">{totalNoShow}</p>
                 </div>
+                {totalCancelled > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500">Cancelled</p>
+                    <p className="text-xl font-bold text-gray-500">{totalCancelled}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs text-gray-500">Show Rate</p>
                   <p className="text-xl font-bold">

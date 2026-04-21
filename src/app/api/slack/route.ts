@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
       `*Mid-Week Check (${weekLabel})*`,
       "",
       `Bookings: *${kpis.totalBookings}*`,
-      `Shows: *${kpis.totalShows}* | No-Shows: *${kpis.totalNoShows}* | Pending: *${kpis.totalPending}*`,
-      `Show Rate: *${formatPercent(kpis.showRate)}*`,
+      `Shows: *${kpis.totalShows}* | No-Shows: *${kpis.totalNoShows}* | Cancelled: *${kpis.totalCancelled}* | Pending: *${kpis.totalPending}*`,
+      `Show Rate: *${formatPercent(kpis.showRate)}* (cancels count)`,
       "",
       kpis.totalPending > 0
         ? `_${kpis.totalPending} demos still need confirmation._`
