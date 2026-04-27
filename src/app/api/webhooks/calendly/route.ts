@@ -224,6 +224,37 @@ export async function POST(request: NextRequest) {
         if (inviteeEmail && !existing.prospectEmail) bookingUpdates.prospectEmail = inviteeEmail;
         if (phone && !existing.prospectPhone) bookingUpdates.prospectPhone = phone;
 
+        // Re-resolve setter from this incoming event. If the prospect rebooked
+        // through a different setter's link, the most-recent setter gets credit.
+        // Only overwrites when a new setter name is actually parsed — never clears.
+        const incomingSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+        let newSetterId: string | null = null;
+        if (incomingSetterName) {
+          const setterMatch = await prisma.teamMember.findFirst({
+            where: { name: { contains: incomingSetterName, mode: "insensitive" }, role: "setter" },
+          });
+          newSetterId = setterMatch?.id || null;
+          if (!newSetterId) {
+            const newMember = await prisma.teamMember.create({
+              data: { name: incomingSetterName, role: "setter", excludeFromLeaderboard: true },
+            });
+            newSetterId = newMember.id;
+          }
+          if (newSetterId && newSetterId !== existing.setterId) {
+            bookingUpdates.setterId = newSetterId;
+            await prisma.auditLog.create({
+              data: {
+                entityType: "booking",
+                entityId: existing.id,
+                action: "calendly_setter_reassigned",
+                oldValue: JSON.stringify({ setterId: existing.setterId }),
+                newValue: JSON.stringify({ setterId: newSetterId, setterName: incomingSetterName }),
+                performedBy: "calendly_webhook",
+              },
+            });
+          }
+        }
+
         const isReschedule = demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
         if (isReschedule && demoDate) {
           // Demo was rescheduled — move to new date and week

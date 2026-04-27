@@ -162,6 +162,13 @@ id, calendarEventId (unique), reason, dismissedAt
 | `/api/slack/ceo` | Sat 11AM ET | CEO DM — weekly P&L briefing |
 | `/api/slack` | Wed + Sat | #sales-team — midweek/weekly summary |
 
+### Admin / Diagnostic
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/admin/lookup` | GET | Look up booking by name/email, optionally fix status/date |
+| `/api/admin/setter-audit` | GET, POST | Find/correct bookings whose `setterId` disagrees with the latest Calendly "Booked by" (rebooking attribution backfill) |
+| `/api/debug` | GET, POST | Booking/demo investigation + bulk fixes (fix_stale_noshows, fix_rescheduled_status, fix_dismissed_reschedule) |
+
 ### CRUD
 | Route | Methods | Purpose |
 |-------|---------|---------|

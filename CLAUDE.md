@@ -32,6 +32,12 @@ DB: Neon PostgreSQL via Prisma ORM.
 - `?calendar_event_id=xxx` — look up by specific calendarEventId
 - Always returns summary stats (total bookings, demos, dismissed, status counts)
 
+## Setter Attribution Audit
+`/api/admin/setter-audit` — finds and corrects bookings where the Calendly "Booked by" setter disagrees with `setterId` (caused by a pre-fix bug where rebookings through a different setter's link didn't overwrite the original setter on dedup-matched records).
+- `GET ?since=YYYY-MM-DD&limit=100` → dry-run: returns mismatched rows with current vs Calendly setter
+- `POST { bookingIds: ["..."] }` → fix specific bookings, audit-logged as `setter_audit_backfill`
+- `POST { applyAll: true, since, limit }` → fix every detected mismatch in window
+
 ## Enterprise Claude Permissions Needed
 If using Enterprise Claude (without MCP tools), it needs:
 - **Read access to Vercel env vars** or `.env.local` — the GCal service account credentials, DB URL
@@ -148,6 +154,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 1. **Calendly closer name stripping** — FIXED: now dynamic from DB + known variants. No longer hardcoded
 2. **Andrea Reeves-Witherspoon invisible** — marked no_show, GCal invite dragged to next Thursday, sync returns 0 updated. She's not visible in UI on any date. Needs DB investigation via `/api/debug?name=andrea`. Likely causes: (a) calendarEventId format mismatch preventing lookup, (b) booking in DismissedEvent table, (c) weekId pointing to nonexistent/wrong week. Four code fixes already applied in gcal/route.ts but her specific record needs manual investigation.
 3. **Fireflies false shows** — FIXED (Apr 3): 5-layer verification now checks summary_status, silent_meeting, sentence count (≥6 substantive), speaker count (≥2), and content relevance (business keyword match). 9 false shows identified for week of Mar 30 — user manually correcting.
+4. **Rebooking setter attribution** — FIXED (Apr 27): when a prospect rebooked through a different setter's Calendly link, the webhook's dedup matched the existing booking but never overwrote `setterId`, so credit stayed with the original setter (e.g., Calman Lee booked by Heidi, rebooked by Ming → still attributed to Heidi). Webhook now re-resolves setter on every `invitee.created` and updates if changed; the change is audit-logged as `calendly_setter_reassigned`. Backfill via `/api/admin/setter-audit` (see above).
 
 ## Branch Hygiene
 - **Production branch is `main`** — all feature branches must be created from `origin/main`
