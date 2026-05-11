@@ -60,23 +60,34 @@ export default function AgentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchTimeout = useRef<NodeJS.Timeout>();
 
-  const fetchAgents = useCallback(async () => {
-    setLoading(true);
+  const buildFilterParams = useCallback(() => {
     const params = new URLSearchParams();
-    params.set("page", String(page));
-    params.set("limit", "50");
     if (search) params.set("search", search);
     if (state) params.set("state", state);
     if (city) params.set("city", city);
     if (minProd) params.set("minProd", minProd);
     if (maxProd) params.set("maxProd", maxProd);
     if (contacted) params.set("contacted", contacted);
+    return params;
+  }, [search, state, city, minProd, maxProd, contacted]);
+
+  const fetchAgents = useCallback(async () => {
+    setLoading(true);
+    const params = buildFilterParams();
+    params.set("page", String(page));
+    params.set("limit", "50");
 
     const res = await fetch(`/api/agents?${params}`);
     const json = await res.json();
     setData(json);
     setLoading(false);
-  }, [page, search, state, city, minProd, maxProd, contacted]);
+  }, [page, buildFilterParams]);
+
+  const handleExport = useCallback((limit = 30000) => {
+    const params = buildFilterParams();
+    params.set("limit", String(limit));
+    window.location.href = `/api/agents/export?${params}`;
+  }, [buildFilterParams]);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
@@ -255,6 +266,12 @@ export default function AgentsPage() {
             className="hidden"
             onChange={handleFileUpload}
           />
+          <Button
+            onClick={() => handleExport(30000)}
+            variant="outline"
+          >
+            ⬇ Download CSV
+          </Button>
           <Button
             onClick={handleDriveImport}
             disabled={importing}
