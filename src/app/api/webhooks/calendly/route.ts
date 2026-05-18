@@ -413,7 +413,7 @@ export async function POST(request: NextRequest) {
               await sendSlackSetter(`*TOTAL booked today so far: ${total}${setterNote}*`);
             }
           }
-        } catch { /* setter game not configured */ }
+        } catch (err) { console.error("setter game / setter Slack post failed:", err); }
       }
 
       try {
@@ -421,7 +421,7 @@ export async function POST(request: NextRequest) {
         const dateStr = effectiveDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
         const setterLabel = setterName ? ` (booked by ${setterName})` : "";
         await sendSlackTeam(`🗓 New demo booked: ${inviteeName} with ${closerName || "TBD"} on ${dateStr}${setterLabel}`);
-      } catch { /* Slack not configured */ }
+      } catch (err) { console.error("team Slack post failed:", err); }
 
       return NextResponse.json({
         received: true,
