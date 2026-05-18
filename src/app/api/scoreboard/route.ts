@@ -38,11 +38,12 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   // === ACTIVITY: bookings by createdAt in range ===
-  // Only counts real setter activity: Calendly webhooks + manual entries
+  // Includes gcal_sync so the leaderboard stays accurate when the Calendly webhook is down —
+  // gcal_sync is the 10-min backup path and writes real setterId from the event description.
   const activityBookings = await prisma.booking.findMany({
     where: {
       ...(dateFilter ? { createdAt: dateFilter } : {}),
-      source: { in: ["calendly_webhook", "manual"] },
+      source: { in: ["calendly_webhook", "manual", "gcal_sync"] },
     },
     select: { setterId: true },
   });
