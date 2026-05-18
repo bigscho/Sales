@@ -1,4 +1,4 @@
-# Grassfed Sales Dashboard — Session Handoff (March 31, 2026)
+# Grassfed Sales Dashboard — Session Handoff (May 18, 2026)
 
 ## IMPORTANT: Documentation Rules
 - **Read `GrassfedSales.md` first** for full project context (schema, routes, architecture)
@@ -155,6 +155,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 2. **Andrea Reeves-Witherspoon invisible** — marked no_show, GCal invite dragged to next Thursday, sync returns 0 updated. She's not visible in UI on any date. Needs DB investigation via `/api/debug?name=andrea`. Likely causes: (a) calendarEventId format mismatch preventing lookup, (b) booking in DismissedEvent table, (c) weekId pointing to nonexistent/wrong week. Four code fixes already applied in gcal/route.ts but her specific record needs manual investigation.
 3. **Fireflies false shows** — FIXED (Apr 3): 5-layer verification now checks summary_status, silent_meeting, sentence count (≥6 substantive), speaker count (≥2), and content relevance (business keyword match). 9 false shows identified for week of Mar 30 — user manually correcting.
 4. **Rebooking setter attribution** — FIXED (Apr 27): when a prospect rebooked through a different setter's Calendly link, the webhook's dedup matched the existing booking but never overwrote `setterId`, so credit stayed with the original setter (e.g., Calman Lee booked by Heidi, rebooked by Ming → still attributed to Heidi). Webhook now re-resolves setter on every `invitee.created` and updates if changed; the change is audit-logged as `calendly_setter_reassigned`. Backfill via `/api/admin/setter-audit` (see above).
+5. **Scoreboard hiding gcal_sync bookings + silent Slack failures** — FIXED (May 18): the Calendly webhook subscription had drifted to point at a stale Vercel preview hostname (`sales-puce-six.vercel.app`) instead of the canonical `barn.grsfd.ai` alias, so May 16–18 demos only landed via the 10-min `gcal_sync` backup. The scoreboard route's source filter excluded `gcal_sync`, and the two Slack-post `catch` blocks in the Calendly webhook swallowed errors silently — net effect was a blank leaderboard and silent #sales-team / #setter-tpds with no surfacing of the failure. Repair: re-pointed Calendly subscription at `barn.grsfd.ai`, reconciled 50 historical setter-attributed `gcal_sync` rows to `source='manual'` (all 8 affected weeks were `draft`/unconfirmed so no payroll impact), and shipped PR #1 to (a) include `gcal_sync` in the scoreboard's allowed sources and (b) replace `catch { /* … */ }` with `console.error` so future delivery failures show up in `vercel logs`.
 
 ## Branch Hygiene
 - **Production branch is `main`** — all feature branches must be created from `origin/main`

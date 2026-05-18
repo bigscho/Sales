@@ -59,7 +59,7 @@ confirmedBy?, confirmedAt?, notes?
 ```
 id, weekId, prospectName, prospectEmail?, prospectPhone?,
 setterId?, bookedAt?, demoDate, calendarEventId? (unique),
-source (auto|manual|calendly_webhook|calendly_sync)
+source (calendly_webhook|gcal_sync|manual). gcal_sync and manual both count toward scoreboard activity (see /api/scoreboard).
 ```
 
 ### Demo
