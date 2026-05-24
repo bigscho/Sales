@@ -109,12 +109,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Filter: only process demo event types (skip launch calls, quick calls, etc.)
-    // Known demo types: "Grassfed Demo" (Mark), "Grassfed E-Mailers Setup" (Colin)
+    // Filter: only process demo event types (skip onboarding, launch calls, quick calls, etc.)
+    // Current demo event type names contain "farm", "just-listed", "just-closed", "just listed", "just closed", "demo", or "e-mailers"
     if (eventTypeName && event === "invitee.created") {
       const nameLower = eventTypeName.toLowerCase();
-      const isDemoEvent = nameLower.includes("demo") || nameLower.includes("e-mailers") || nameLower.includes("setup");
+      const isDemoEvent =
+        nameLower.includes("farm") ||
+        nameLower.includes("just") ||
+        nameLower.includes("demo") ||
+        nameLower.includes("e-mailers") ||
+        nameLower.includes("setup");
       if (!isDemoEvent) {
+        await prisma.auditLog.create({
+          data: {
+            entityType: "booking",
+            entityId: "n/a",
+            action: "calendly_non_demo_skipped",
+            newValue: JSON.stringify({ eventType: eventTypeName, inviteeName, inviteeEmail }),
+            performedBy: "calendly_webhook",
+          },
+        });
         return NextResponse.json({ received: true, action: "non_demo_skipped", eventType: eventTypeName });
       }
     }
