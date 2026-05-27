@@ -15,9 +15,9 @@ async function main() {
     create: { id: "setter-luke", name: "Luke", role: "setter", tier: 1 },
   });
   await prisma.teamMember.upsert({
-    where: { id: "setter-logan" },
+    where: { id: "setter-jett" },
     update: {},
-    create: { id: "setter-logan", name: "Logan", role: "setter", tier: 1 },
+    create: { id: "setter-jett", name: "Jett", role: "setter", tier: 1 },
   });
 
   // Closers

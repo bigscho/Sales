@@ -6,7 +6,7 @@ export async function POST() {
   const members = [
     { id: "setter-ming", name: "Ming", role: "setter", tier: 2 },
     { id: "setter-luke", name: "Luke", role: "setter", tier: 1 },
-    { id: "setter-logan", name: "Logan", role: "setter", tier: 1 },
+    { id: "setter-jett", name: "Jett", role: "setter", tier: 1 },
     { id: "closer-colin", name: "Colin", role: "closer", tier: 1 },
     { id: "closer-mark", name: "Mark", role: "closer", tier: 1 },
     { id: "rep-belayneh", name: "Belayneh", role: "show_rate_rep", tier: 1 },

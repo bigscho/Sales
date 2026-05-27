@@ -37,7 +37,7 @@ export const TIER_CROSSINGS = [4, 9, 12];
 const SLACK_IDS: Record<string, string> = {
   "setter-ming": "U0A1CD7BU9W",
   "setter-luke": "U0APNBM43S7",
-  "setter-logan": "U0APD917S2K",
+  "setter-jett": "U0B6EQNL6EA",
   "closer-colin": "U09UH7YSPV1",
   "closer-mark": "U0AKMP7A36H",
 };
