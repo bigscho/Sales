@@ -1,8 +1,7 @@
 # Grassfed Sales Dashboard — Complete Project Documentation
 
-> **Last updated:** March 31, 2026
-> **Branch:** `claude/recap-session-progress-CNZlu`
-> **Deployed at:** sales-puce-six.vercel.app
+> **Last updated:** May 28, 2026
+> **Deployed at:** barn.grsfd.ai (production branch: `main`)
 > **Database:** Neon PostgreSQL via Prisma ORM
 
 ---
@@ -12,7 +11,7 @@
 A real-time sales operations dashboard for Grassfed (cold email agency). Tracks the full sales pipeline: setter books demo → prospect shows up → closer runs demo → payment collected. Integrated with Calendly, Google Calendar, Stripe, Fireflies.ai, and Slack.
 
 The sales team consists of:
-- **Setters** (Ming, Luke, Logan + new hires) — book demos via cold calling
+- **Setters** (Ming, Luke, Jett) — book demos via cold calling
 - **Closers** (Colin, Mark) — run demos and close deals
 - **Show Rate Rep** (Belayneh) — ensures prospects show up to their demos
 
@@ -329,11 +328,13 @@ Dismissed events: When a demo is deleted, its `calendarEventId` is added to `Dis
 |--------|------|----------|
 | Ming | Setter | U0A1CD7BU9W |
 | Luke | Setter | U0APNBM43S7 |
-| Logan | Setter | U0APD917S2K |
+| Jett | Setter | U0B6EQNL6EA |
 | Colin | Closer | U09UH7YSPV1 |
 | Mark | Closer | U0AKMP7A36H |
 
-New team members: Add via Team page with Slack User ID field for real @mentions.
+Logan (setter) was deactivated May 2026 — `isActive: false`, historical data preserved.
+
+New team members: Add via Team page with Slack User ID field for real @mentions. Attribution is automatic once they're in the DB — GCal events with "Booked by: [name]" in the description will resolve to the matching setter.
 
 ---
 
