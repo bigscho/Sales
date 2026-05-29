@@ -85,6 +85,14 @@ interface GCalEvent {
   end?: { dateTime?: string; date?: string };
   attendees?: GCalAttendee[];
   recurringEventId?: string;
+  created?: string;
+  updated?: string;
+}
+
+// Resolve the actual booking event time from the GCal event metadata.
+// Falls back to `updated` then `now` if `created` isn't available.
+function getEventBookedAt(event: GCalEvent): Date {
+  return new Date(event.created || event.updated || Date.now());
 }
 
 // --- Parsing helpers ---
@@ -177,9 +185,11 @@ async function reattributeSetter(
   });
   const newSetterId = setter?.id || null;
   if (!newSetterId || newSetterId === currentSetterId) return;
+  // Only update setterId here. The caller updates bookedAt with the correct
+  // event-based timestamp; redoing it here would silently overwrite with `now`.
   await prisma.booking.update({
     where: { id: bookingId },
-    data: { setterId: newSetterId, bookedAt: new Date() },
+    data: { setterId: newSetterId },
   });
   await prisma.auditLog.create({
     data: {
@@ -352,9 +362,13 @@ async function syncCalendar(
             update: {},
           });
 
+          // Reschedule (demoDate changed) — but DO NOT bump bookedAt. A demoDate change
+          // here means the closer dragged the GCal invite or the operator edited the time;
+          // it's not a new Calendly booking event by the setter. Activity counter should
+          // only see a bump when a brand-new Calendly eventId arrives (paths 2-4 below).
           await prisma.booking.update({
             where: { id: existing.id },
-            data: { demoDate: eventStart, weekId: week.id, bookedAt: new Date() },
+            data: { demoDate: eventStart, weekId: week.id },
           });
 
           if (existing.demo) {
@@ -422,12 +436,14 @@ async function syncCalendar(
           include: { demo: true },
         });
         if (byEmail) {
-          // Link the GCal composite ID + bump bookedAt: a new GCal eventId matching
-          // an existing prospect's email is a fresh rebook. Activity counter reads bookedAt.
+          // Link the GCal composite ID + bump bookedAt to event.created: a new GCal
+          // eventId matching an existing prospect's email is a fresh rebook event.
+          // Use event.created so a historical event discovered today lands on its
+          // real Calendly creation date, not today.
           if (byEmail.calendarEventId !== compositeId) {
             await prisma.booking.update({
               where: { id: byEmail.id },
-              data: { calendarEventId: compositeId, bookedAt: new Date() },
+              data: { calendarEventId: compositeId, bookedAt: getEventBookedAt(event) },
             });
           }
           // Re-attribute setter on rebook (same rule as the calendly webhook).
@@ -467,7 +483,7 @@ async function syncCalendar(
           if (byName.calendarEventId !== compositeId) {
             await prisma.booking.update({
               where: { id: byName.id },
-              data: { calendarEventId: compositeId, bookedAt: new Date() },
+              data: { calendarEventId: compositeId, bookedAt: getEventBookedAt(event) },
             });
           }
           await reattributeSetter(byName.id, byName.setterId, description);
@@ -512,7 +528,7 @@ async function syncCalendar(
           });
           await prisma.booking.update({
             where: { id: pastNoShow.id },
-            data: { demoDate: eventStart, weekId: reschedWeek.id, calendarEventId: compositeId, bookedAt: new Date() },
+            data: { demoDate: eventStart, weekId: reschedWeek.id, calendarEventId: compositeId, bookedAt: getEventBookedAt(event) },
           });
           if (pastNoShow.demo) {
             await prisma.demo.update({
@@ -561,7 +577,10 @@ async function syncCalendar(
           prospectEmail,
           prospectPhone,
           setterId,
-          bookedAt: new Date(),
+          // Use the GCal event's actual creation time so a historical event discovered
+          // by sync (e.g. previously hidden by a dedup bug) lands on its real booking
+          // day in May, not the day sync first saw it.
+          bookedAt: getEventBookedAt(event),
           demoDate: eventStart,
           calendarEventId: compositeId,
           source: "gcal_sync",
