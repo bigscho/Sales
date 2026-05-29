@@ -331,9 +331,14 @@ async function syncCalendar(
       });
 
       if (existing) {
-        // Re-attribute setter if the new event description names a different one.
-        // (Same rule as the calendly webhook — most-recent setter gets credit on rebook.)
-        await reattributeSetter(existing.id, existing.setterId, event.description || "");
+        // NOTE: do NOT re-attribute setter here. This branch fires on every cron poll for
+        // already-known events. Re-parsing the description on every poll overwrites any
+        // manual setter correction operators have made (e.g., when Jett's UTM is misconfigured
+        // and the description names the wrong setter — operators backfill the right one, and
+        // this would silently revert it on the next 10-min poll).
+        // Legitimate rebook detection runs on the email/name/past-no-show dedup paths below,
+        // which only fire when a brand-new GCal eventId arrives — those paths still call
+        // reattributeSetter because they represent a real new booking event.
 
         // Check for reschedule (time changed by more than 1 minute)
         const existingTime = existing.demoDate.getTime();
