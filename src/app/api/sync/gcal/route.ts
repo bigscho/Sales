@@ -158,7 +158,7 @@ async function reattributeSetter(
   if (!newSetterId || newSetterId === currentSetterId) return;
   await prisma.booking.update({
     where: { id: bookingId },
-    data: { setterId: newSetterId },
+    data: { setterId: newSetterId, bookedAt: new Date() },
   });
   await prisma.auditLog.create({
     data: {
@@ -311,7 +311,7 @@ async function syncCalendar(
 
           await prisma.booking.update({
             where: { id: existing.id },
-            data: { demoDate: eventStart, weekId: week.id },
+            data: { demoDate: eventStart, weekId: week.id, bookedAt: new Date() },
           });
 
           if (existing.demo) {
@@ -379,11 +379,12 @@ async function syncCalendar(
           include: { demo: true },
         });
         if (byEmail) {
-          // Link the GCal composite ID so future drag-reschedules are detectable
+          // Link the GCal composite ID + bump bookedAt: a new GCal eventId matching
+          // an existing prospect's email is a fresh rebook. Activity counter reads bookedAt.
           if (byEmail.calendarEventId !== compositeId) {
             await prisma.booking.update({
               where: { id: byEmail.id },
-              data: { calendarEventId: compositeId },
+              data: { calendarEventId: compositeId, bookedAt: new Date() },
             });
           }
           // Re-attribute setter on rebook (same rule as the calendly webhook).
@@ -423,7 +424,7 @@ async function syncCalendar(
           if (byName.calendarEventId !== compositeId) {
             await prisma.booking.update({
               where: { id: byName.id },
-              data: { calendarEventId: compositeId },
+              data: { calendarEventId: compositeId, bookedAt: new Date() },
             });
           }
           await reattributeSetter(byName.id, byName.setterId, description);
@@ -468,7 +469,7 @@ async function syncCalendar(
           });
           await prisma.booking.update({
             where: { id: pastNoShow.id },
-            data: { demoDate: eventStart, weekId: reschedWeek.id, calendarEventId: compositeId },
+            data: { demoDate: eventStart, weekId: reschedWeek.id, calendarEventId: compositeId, bookedAt: new Date() },
           });
           if (pastNoShow.demo) {
             await prisma.demo.update({
@@ -517,6 +518,7 @@ async function syncCalendar(
           prospectEmail,
           prospectPhone,
           setterId,
+          bookedAt: new Date(),
           demoDate: eventStart,
           calendarEventId: compositeId,
           source: "gcal_sync",

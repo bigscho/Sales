@@ -25,10 +25,15 @@ export async function GET() {
   const todayStart = new Date(Date.UTC(year, month, day) + diffMs);
   const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
+  // Match the scoreboard's activity definition: count by bookedAt (with createdAt
+  // fallback for any rows that pre-date the bookedAt rollout).
   const demos = await prisma.demo.findMany({
     where: {
       booking: {
-        createdAt: { gte: todayStart, lt: todayEnd },
+        OR: [
+          { bookedAt: { gte: todayStart, lt: todayEnd } },
+          { AND: [{ bookedAt: null }, { createdAt: { gte: todayStart, lt: todayEnd } }] },
+        ],
       },
     },
     include: {
