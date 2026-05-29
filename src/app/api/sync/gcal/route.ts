@@ -105,6 +105,27 @@ function parseSetterName(description: string): string | null {
   return match ? match[1].trim() : null;
 }
 
+// Pull the Calendly event-type label out of the description (first non-empty line after
+// "Event Name"). Returns null if the description doesn't have this marker.
+function parseEventTypeName(description: string): string | null {
+  const match = description.match(/Event Name\s*\n\s*([^\n]+)/i);
+  return match ? match[1].trim() : null;
+}
+
+// Mirror of the calendly webhook's event-type filter: only sales-demo event types
+// should land in the scoreboard. Onboarding / launch calls / quick calls etc. are out.
+function isDemoEventType(eventTypeName: string | null): boolean {
+  if (!eventTypeName) return true; // unknown — keep current permissive behavior
+  const n = eventTypeName.toLowerCase();
+  return (
+    n.includes("farm") ||
+    n.includes("just") ||
+    n.includes("demo") ||
+    n.includes("e-mailers") ||
+    n.includes("setup")
+  );
+}
+
 function parsePhone(description: string): string | null {
   const match = description.match(/Phone Number:\s*(.+)/i);
   return match ? match[1].trim() : null;
@@ -226,6 +247,23 @@ async function syncCalendar(
   for (const event of allEvents) {
     try {
       if (!isCalendlyEvent(event)) continue;
+
+      // Skip non-sales-demo event types (onboarding, launch calls, quick calls, etc.).
+      // The calendly webhook filters these at line ~114 of webhooks/calendly/route.ts;
+      // gcal_sync needs the same filter or non-demo events leak into the scoreboard.
+      const eventTypeName = parseEventTypeName(event.description || "");
+      if (!isDemoEventType(eventTypeName)) {
+        await prisma.auditLog.create({
+          data: {
+            entityType: "booking",
+            entityId: "n/a",
+            action: "gcal_sync_non_demo_skipped",
+            newValue: JSON.stringify({ eventType: eventTypeName, gcalEventId: event.id, closer: closerName }),
+            performedBy: "gcal_sync",
+          },
+        });
+        continue;
+      }
 
       const compositeId = `${event.id}_${closerName}`;
       results.scanned++;
