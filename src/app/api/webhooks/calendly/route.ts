@@ -234,7 +234,10 @@ export async function POST(request: NextRequest) {
       const existing = await findExistingBooking();
       if (existing) {
         // Already exists — update date, enrich missing fields, handle reschedules
-        const bookingUpdates: Record<string, unknown> = {};
+        // Always bump bookedAt: every invitee.created fire represents a rebook event
+        // (the scoreboard's activity counter reads bookedAt so rebooks visually credit
+        // the rebooking setter on the day of rebook).
+        const bookingUpdates: Record<string, unknown> = { bookedAt: new Date() };
         if (inviteeEmail && !existing.prospectEmail) bookingUpdates.prospectEmail = inviteeEmail;
         if (phone && !existing.prospectPhone) bookingUpdates.prospectPhone = phone;
 
@@ -356,6 +359,7 @@ export async function POST(request: NextRequest) {
           prospectEmail: inviteeEmail || null,
           prospectPhone: phone,
           setterId,
+          bookedAt: new Date(),
           demoDate: effectiveDate,
           calendarEventId: calendlyId,
           source: "calendly_webhook",

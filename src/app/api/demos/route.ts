@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
         prospectName,
         prospectEmail,
         setterId,
+        bookedAt: new Date(),
         demoDate: new Date(demoDate),
         source: "manual",
       },

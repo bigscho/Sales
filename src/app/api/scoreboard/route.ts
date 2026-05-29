@@ -37,12 +37,22 @@ export async function GET(request: NextRequest) {
     ? { gte: dateRange.start, lt: dimension === "weekly" ? new Date(dateRange.end.getTime() + 1) : dateRange.end }
     : undefined;
 
-  // === ACTIVITY: bookings by createdAt in range ===
+  // === ACTIVITY: bookings by bookedAt (with createdAt fallback) in range ===
   // Includes gcal_sync so the leaderboard stays accurate when the Calendly webhook is down —
   // gcal_sync is the 10-min backup path and writes real setterId from the event description.
+  // bookedAt is bumped on every booking event (create + rebook) so rebooks give the
+  // rebooking setter visual activity credit on the day of rebook, not the day the original
+  // row was created.
   const activityBookings = await prisma.booking.findMany({
     where: {
-      ...(dateFilter ? { createdAt: dateFilter } : {}),
+      ...(dateFilter
+        ? {
+            OR: [
+              { bookedAt: dateFilter },
+              { AND: [{ bookedAt: null }, { createdAt: dateFilter }] },
+            ],
+          }
+        : {}),
       source: { in: ["calendly_webhook", "manual", "gcal_sync"] },
     },
     select: { setterId: true },

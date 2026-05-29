@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
         prospectName,
         prospectEmail: prospectEmail || null,
         setterId,
+        bookedAt: new Date(),
         demoDate: effectiveDate,
         source: "manual",
       },
