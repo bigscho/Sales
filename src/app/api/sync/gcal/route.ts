@@ -152,7 +152,9 @@ async function syncCalendar(
 
   const now = new Date();
   const timeMin = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString();
-  const timeMax = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  // +90d window: reschedules to dates beyond 2 weeks out used to fall outside the sync
+  // window, leaving the DB with a stale demoDate while GCal had moved on.
+  const timeMax = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
 
   // Fetch events (including cancelled ones via showDeleted)
   const allEvents: GCalEvent[] = [];
@@ -365,79 +367,59 @@ async function syncCalendar(
         }
       }
 
-      // Dedup: check by first name + date window
-      if (prospectName) {
-        const firstName = prospectName.split(/\s+/)[0];
-        if (firstName && firstName.length > 2) {
-          const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
-          const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
-          const byName = await prisma.booking.findFirst({
-            where: {
-              prospectName: { startsWith: firstName, mode: "insensitive" },
-              demoDate: { gte: windowStart, lte: windowEnd },
-            },
-            include: { demo: true },
-          });
-          if (byName) {
-            // Link the GCal composite ID for future reschedule detection
-            if (byName.calendarEventId !== compositeId) {
-              await prisma.booking.update({
-                where: { id: byName.id },
-                data: { calendarEventId: compositeId },
-              });
-            }
-            // Reset stale no_show/rescheduled status on future-dated demos
-            if (
-              byName.demo &&
-              ["no_show", "rescheduled"].includes(byName.demo.status) &&
-              eventStart.getTime() > Date.now()
-            ) {
-              await prisma.demo.update({
-                where: { id: byName.demo.id },
-                data: { status: "pending", confirmedBy: null, confirmedAt: null },
-              });
-              results.updated++;
-            }
-            continue;
+      // Dedup: check by exact full name + date window — only when the new event has
+      // no email AND no phone (otherwise the earlier email/phone path would have caught it).
+      // Name-only matching is dangerous because two different prospects can share a name
+      // within the window. Require an exact full-name match AND that neither side has a
+      // conflicting email — if both records have emails and they differ, treat as distinct.
+      if (prospectName && !prospectEmail && !prospectPhone) {
+        const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
+        const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
+        const byName = await prisma.booking.findFirst({
+          where: {
+            prospectName: { equals: prospectName, mode: "insensitive" },
+            demoDate: { gte: windowStart, lte: windowEnd },
+          },
+          include: { demo: true },
+        });
+        if (byName) {
+          if (byName.calendarEventId !== compositeId) {
+            await prisma.booking.update({
+              where: { id: byName.id },
+              data: { calendarEventId: compositeId },
+            });
           }
+          if (
+            byName.demo &&
+            ["no_show", "rescheduled"].includes(byName.demo.status) &&
+            eventStart.getTime() > Date.now()
+          ) {
+            await prisma.demo.update({
+              where: { id: byName.demo.id },
+              data: { status: "pending", confirmedBy: null, confirmedAt: null },
+            });
+            results.updated++;
+          }
+          continue;
         }
       }
 
       // Detect reschedule of a past no-show/rescheduled booking whose calendarEventId
       // was in Calendly format (calendly_UUID) and couldn't be matched above.
-      // This handles: prospect no-showed → closer drags their GCal invite to new date.
-      // Tries email first, then falls back to first name (handles missing attendee emails).
-      {
+      // Only email-based matching — the previous first-name fallback collided across
+      // unrelated prospects (e.g. "Pat Dreiling" hijacking "Patti Syme") and silently
+      // rewrote demoDate + calendarEventId on the original row.
+      if (prospectEmail) {
         const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-        let pastNoShow = null;
-
-        if (prospectEmail) {
-          pastNoShow = await prisma.booking.findFirst({
-            where: {
-              prospectEmail: { equals: prospectEmail, mode: "insensitive" },
-              demoDate: { gte: sixtyDaysAgo, lt: eventStart },
-              demo: { status: { in: ["no_show", "rescheduled"] } },
-            },
-            orderBy: { demoDate: "desc" },
-            include: { demo: true },
-          });
-        }
-
-        // Name-based fallback (e.g. email not in GCal attendees)
-        if (!pastNoShow && prospectName) {
-          const firstName = prospectName.split(/\s+/)[0];
-          if (firstName && firstName.length > 2) {
-            pastNoShow = await prisma.booking.findFirst({
-              where: {
-                prospectName: { startsWith: firstName, mode: "insensitive" },
-                demoDate: { gte: sixtyDaysAgo, lt: eventStart },
-                demo: { status: { in: ["no_show", "rescheduled"] } },
-              },
-              orderBy: { demoDate: "desc" },
-              include: { demo: true },
-            });
-          }
-        }
+        const pastNoShow = await prisma.booking.findFirst({
+          where: {
+            prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+            demoDate: { gte: sixtyDaysAgo, lt: eventStart },
+            demo: { status: { in: ["no_show", "rescheduled"] } },
+          },
+          orderBy: { demoDate: "desc" },
+          include: { demo: true },
+        });
 
         if (pastNoShow) {
           const { start, end } = getWeekRange(eventStart);
