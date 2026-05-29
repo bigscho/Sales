@@ -16,6 +16,14 @@ Next.js sales tracker at /home/user/Sales, deployed on Vercel (sales-puce-six.ve
 **Production branch: `main`** — Vercel auto-deploys from this.
 DB: Neon PostgreSQL via Prisma ORM.
 
+## CRITICAL: Setter Attribution Model — read before touching anything attribution-related
+- **One Calendly link, owned by the CEO.** Setters do NOT have individual Calendly links and there are NO per-setter UTM tags.
+- Setters give themselves credit by typing their name into a free-text **"Booked by"** field on the Calendly intake form.
+- Wrong / missing / typo'd names are common. Operators correct these via `manual_backfill` audit-logged updates.
+- **Automation MUST NOT overwrite manual setter corrections.** Never re-parse the description on a routine cron poll of an already-known event — that silently reverts operator backfills. See `sync/gcal/route.ts` comment at the compositeId-match branch. PR #6 enforced this; do not regress it.
+- For the activity counter (scoreboard "new bookings this week"), the source of truth is `Booking.bookedAt`, NOT `createdAt`. `bookedAt` gets bumped on every booking event (initial create + rebook + manual setter reassign) so re-engaged prospects credit the rebooking setter on the day of work.
+- Full explanation in `GrassfedSales.md` → "Setter Attribution — How It Actually Works".
+
 ## CRITICAL: Branch Rules
 1. **Always branch from `origin/main`** — run `git fetch origin main` first
 2. **Never branch from other `claude/*` branches** — they go stale fast

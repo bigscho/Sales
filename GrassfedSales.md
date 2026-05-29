@@ -311,6 +311,24 @@ Both have `Override` fields for manual correction via clickable badges in the UI
 
 ---
 
+## Setter Attribution — How It Actually Works
+
+**There is one Calendly link, owned by the CEO, used for all demo bookings.** Setters do not have individual Calendly links and there are no per-setter UTM tags. Attribution works entirely through a free-text **"Booked by"** field that the setter types into the Calendly intake form at booking time.
+
+- The webhook reads `Booked by:` from the Calendly event description (and falls back to a `Booked by` Q&A answer or `utm_source`/`utm_campaign` if present, but the description is the primary signal).
+- The gcal_sync (10-min cron) reads the same field from the GCal event description.
+- Whatever name the setter typed → looked up against `TeamMember` where `role='setter'` via case-insensitive `contains` match.
+- No match found → setter is created as a new `TeamMember` with `excludeFromLeaderboard: true` (so a typo or operator-bystander name doesn't pollute the leaderboard).
+
+**Consequences of this design:**
+- If the setter forgets to type a name, the booking lands as **unattributed** (`setterId IS NULL`).
+- If the setter typos their own name (or types a co-worker's name, or the prospect typed their own name into that field), the booking lands credited to the wrong person.
+- Operators correct these via `manual_backfill` audit-logged updates from the admin UI.
+- **Automation must not overwrite manual setter corrections.** The compositeId-match path in `sync/gcal/route.ts` does *not* call `reattributeSetter` — see comment in that file. Only brand-new GCal events (those that arrive via email/name/past-no-show dedup paths) get auto re-attribution, because those represent a genuinely new booking event, not a re-poll of the same event.
+- See `Booking.bookedAt` — bumped on every booking event (create + rebook) so the activity scoreboard credits the rebooking setter on the day they did the work, not the day the original row was created.
+
+---
+
 ## Deduplication Strategy
 
 Both Calendly webhook and GCal sync can create the same booking. Dedup checks:
