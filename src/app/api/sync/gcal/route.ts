@@ -141,6 +141,37 @@ function getEventStart(event: GCalEvent): Date | null {
   return dt ? new Date(dt) : null;
 }
 
+// Mirrors the calendly webhook's rebook re-attribution: when a prospect rebooks
+// via a different setter's link, the most-recent setter gets credit. Only overwrites
+// when a new setter name is actually parsed from the description — never clears.
+async function reattributeSetter(
+  bookingId: string,
+  currentSetterId: string | null,
+  description: string,
+): Promise<void> {
+  const incoming = parseSetterName(description);
+  if (!incoming) return;
+  const setter = await prisma.teamMember.findFirst({
+    where: { name: { contains: incoming, mode: "insensitive" }, role: "setter" },
+  });
+  const newSetterId = setter?.id || null;
+  if (!newSetterId || newSetterId === currentSetterId) return;
+  await prisma.booking.update({
+    where: { id: bookingId },
+    data: { setterId: newSetterId },
+  });
+  await prisma.auditLog.create({
+    data: {
+      entityType: "booking",
+      entityId: bookingId,
+      action: "gcal_sync_setter_reassigned",
+      oldValue: JSON.stringify({ setterId: currentSetterId }),
+      newValue: JSON.stringify({ setterId: newSetterId, setterName: incoming }),
+      performedBy: "gcal_sync",
+    },
+  });
+}
+
 // --- Main sync logic ---
 
 async function syncCalendar(
@@ -262,6 +293,10 @@ async function syncCalendar(
       });
 
       if (existing) {
+        // Re-attribute setter if the new event description names a different one.
+        // (Same rule as the calendly webhook — most-recent setter gets credit on rebook.)
+        await reattributeSetter(existing.id, existing.setterId, event.description || "");
+
         // Check for reschedule (time changed by more than 1 minute)
         const existingTime = existing.demoDate.getTime();
         const newTime = eventStart.getTime();
@@ -351,6 +386,8 @@ async function syncCalendar(
               data: { calendarEventId: compositeId },
             });
           }
+          // Re-attribute setter on rebook (same rule as the calendly webhook).
+          await reattributeSetter(byEmail.id, byEmail.setterId, description);
           // Reset stale no_show/rescheduled status on future-dated demos
           if (
             byEmail.demo &&
@@ -389,6 +426,7 @@ async function syncCalendar(
               data: { calendarEventId: compositeId },
             });
           }
+          await reattributeSetter(byName.id, byName.setterId, description);
           if (
             byName.demo &&
             ["no_show", "rescheduled"].includes(byName.demo.status) &&
@@ -448,6 +486,7 @@ async function syncCalendar(
               performedBy: "gcal_sync",
             },
           });
+          await reattributeSetter(pastNoShow.id, pastNoShow.setterId, description);
           results.updated++;
           continue;
         }
