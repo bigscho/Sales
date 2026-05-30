@@ -195,7 +195,13 @@ export default function DemosPage() {
   };
 
   const deleteDemo = async (demoId: string, prospectName: string) => {
-    if (!confirm(`Remove "${prospectName}" from this day? This cannot be undone.`)) return;
+    const warning =
+      `DELETE "${prospectName}"?\n\n` +
+      `This permanently removes the booking AND blocks gcal_sync from ever recreating it.\n\n` +
+      `If the prospect didn't show — use "No Show" instead.\n` +
+      `If they cancelled — use "Cancelled" instead.\n\n` +
+      `Only click OK if this row is genuinely a duplicate or junk that should never come back.`;
+    if (!confirm(warning)) return;
     const res = await fetch("/api/demos", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -240,7 +246,17 @@ export default function DemosPage() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     if (action === "delete") {
-      if (!confirm(`Delete ${ids.length} selected demo(s)? This cannot be undone.`)) return;
+      // Show prospect names so the operator can sanity-check what's about to vanish.
+      const selected = demos.filter((d) => ids.includes(d.id));
+      const names = selected.map((d) => d.booking.prospectName).join(", ");
+      const warning =
+        `DELETE ${ids.length} demo(s)?\n\n` +
+        `Prospects: ${names}\n\n` +
+        `This permanently removes the bookings AND blocks gcal_sync from ever recreating them.\n\n` +
+        `If you meant to mark them as no-shows — use "Mark No Show" instead.\n\n` +
+        `Type DELETE to confirm:`;
+      const confirmation = prompt(warning);
+      if (confirmation !== "DELETE") return;
       for (const id of ids) {
         await fetch("/api/demos", {
           method: "DELETE",
