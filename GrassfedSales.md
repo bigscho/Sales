@@ -347,10 +347,15 @@ Dismissed events: When a demo is deleted, its `calendarEventId` is added to `Dis
 | Ming | Setter | U0A1CD7BU9W |
 | Luke | Setter | U0APNBM43S7 |
 | Jett | Setter | U0B6EQNL6EA |
+| Christian | Setter | U0BA1725JD9 |
+| Nick | Setter | U0BA468RHB7 |
+| Oliver | Setter | U0BB1S4SG48 |
 | Colin | Closer | U09UH7YSPV1 |
 | Mark | Closer | U0AKMP7A36H |
 
 Logan (setter) was deactivated May 2026 — `isActive: false`, historical data preserved.
+
+Christian, Nick, and Oliver were promoted from auto-created Calendly attribution rows on 2026-06-12. They are active tier-1 setters, included in the leaderboard, have dashboard PIN `0000`, and keep their existing booking attribution.
 
 New team members: Add via Team page with Slack User ID field for real @mentions. Attribution is automatic once they're in the DB — GCal events with "Booked by: [name]" in the description will resolve to the matching setter.
 
