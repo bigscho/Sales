@@ -6,7 +6,7 @@ async function main() {
   const members = [
     { id: "setter-ming", name: "Ming", role: "setter", tier: 2 },
     { id: "setter-luke", name: "Luke", role: "setter", tier: 1 },
-    { id: "setter-jett", name: "Jett", role: "setter", tier: 1 },
+    { id: "setter-jett", name: "Jett", role: "setter", tier: 1, slackUserId: "U0B6EQNL6EA" },
     { id: "setter-christian", name: "Christian", role: "setter", tier: 1 },
     { id: "setter-oliver", name: "Oliver", role: "setter", tier: 1 },
     { id: "setter-nick", name: "Nick", role: "setter", tier: 1 },
@@ -18,7 +18,7 @@ async function main() {
   for (const m of members) {
     await prisma.teamMember.upsert({
       where: { id: m.id },
-      update: { name: m.name, role: m.role, tier: m.tier, isActive: true, excludeFromLeaderboard: false },
+      update: { name: m.name, role: m.role, tier: m.tier, slackUserId: m.slackUserId, isActive: true, excludeFromLeaderboard: false },
       create: m,
     });
   }
