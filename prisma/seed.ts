@@ -10,6 +10,7 @@ async function main() {
     { id: "setter-christian", name: "Christian", role: "setter", tier: 1 },
     { id: "setter-oliver", name: "Oliver", role: "setter", tier: 1 },
     { id: "setter-nick", name: "Nick", role: "setter", tier: 1 },
+    { id: "setter-evan", name: "Evan", role: "setter", tier: 1 },
     { id: "closer-colin", name: "Colin", role: "closer", tier: 1 },
     { id: "closer-mark", name: "Mark", role: "closer", tier: 1 },
     { id: "rep-belayneh", name: "Belayneh", role: "show_rate_rep", tier: 1 },

@@ -101,11 +101,14 @@ export async function computeWeeklyCredits(setterId: string, weekId: string): Pr
   const week = await prisma.week.findUnique({ where: { id: weekId } });
   if (!week) return { bookings: 0, shows: 0, noShows: 0, cancelled: 0, showRate: 0, base: 0, multiplier: 0, weeklyCredits: 0, pigeonBonus: 0, streakBonus: 0, total: 0 };
 
-  // Count bookings created during this week attributed to this setter
+  // Count bookings credited during this week attributed to this setter
   const bookings = await prisma.booking.count({
     where: {
       setterId,
-      createdAt: { gte: week.weekStart, lte: week.weekEnd },
+      OR: [
+        { bookedAt: { gte: week.weekStart, lte: week.weekEnd } },
+        { AND: [{ bookedAt: null }, { createdAt: { gte: week.weekStart, lte: week.weekEnd } }] },
+      ],
     },
   });
 

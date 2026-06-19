@@ -99,11 +99,14 @@ export function isWeekday(): boolean {
 export async function getSetterTodayBookings(setterId: string): Promise<{ count: number; tier: PigeonTier; score: { id: string; tierCrossings: string } }> {
   const { start, end } = getETDateBounds();
 
-  // Count bookings created today (ET) for this setter
+  // Count bookings credited today (ET) for this setter
   const count = await prisma.booking.count({
     where: {
       setterId,
-      createdAt: { gte: start, lt: end },
+      OR: [
+        { bookedAt: { gte: start, lt: end } },
+        { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
+      ],
     },
   });
 
@@ -198,7 +201,13 @@ export async function getAllSetterScoresToday(): Promise<Array<{
   const results = [];
   for (const setter of setters) {
     const count = await prisma.booking.count({
-      where: { setterId: setter.id, createdAt: { gte: start, lt: end } },
+      where: {
+        setterId: setter.id,
+        OR: [
+          { bookedAt: { gte: start, lt: end } },
+          { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
+        ],
+      },
     });
     const tier = getTierForCount(count);
     results.push({
@@ -223,8 +232,23 @@ export async function getTeamTotalToday(): Promise<{ total: number; setterTotal:
   })).map(s => s.id);
 
   const [total, setterTotal] = await Promise.all([
-    prisma.booking.count({ where: { createdAt: { gte: start, lt: end } } }),
-    prisma.booking.count({ where: { createdAt: { gte: start, lt: end }, setterId: { in: setterIds } } }),
+    prisma.booking.count({
+      where: {
+        OR: [
+          { bookedAt: { gte: start, lt: end } },
+          { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
+        ],
+      },
+    }),
+    prisma.booking.count({
+      where: {
+        setterId: { in: setterIds },
+        OR: [
+          { bookedAt: { gte: start, lt: end } },
+          { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
+        ],
+      },
+    }),
   ]);
   return { total, setterTotal };
 }

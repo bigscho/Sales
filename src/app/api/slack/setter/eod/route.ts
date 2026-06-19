@@ -98,6 +98,12 @@ export async function POST() {
 
   if (todayDay === "Friday") {
     const { start: lbWeekStart } = getWeekRange(new Date());
+    const activityFilter = {
+      OR: [
+        { bookedAt: { gte: lbWeekStart } },
+        { AND: [{ bookedAt: null }, { createdAt: { gte: lbWeekStart } }] },
+      ],
+    };
 
     // Get weekly bookings per setter
     const activeSetters = await prisma.teamMember.findMany({
@@ -110,7 +116,7 @@ export async function POST() {
       const bookings = await prisma.booking.count({
         where: {
           setterId: s.id,
-          createdAt: { gte: lbWeekStart },
+          ...activityFilter,
         },
       });
       const tier = getTierForCount(bookings);
@@ -125,7 +131,7 @@ export async function POST() {
 
     // Team total includes ALL bookings (including CEO/excluded members)
     const teamTotal = await prisma.booking.count({
-      where: { createdAt: { gte: lbWeekStart } },
+      where: activityFilter,
     });
     const setterTotal = weeklyResults.reduce((sum, r) => sum + r.bookings, 0);
 

@@ -65,12 +65,19 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
 
   const totalBookings = allDemos.length;
 
-  // Activity metric: bookings CREATED during this week (regardless of demo date)
+  const activityDateFilter = {
+    OR: [
+      { bookedAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) } },
+      { AND: [{ bookedAt: null }, { createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) } }] },
+    ],
+  };
+
+  // Activity metric: bookings credited during this week (regardless of demo date)
   // Only counts real setter activity: Calendly webhooks + manual entries
   // Excludes "auto" (historical import) and "gcal_sync" (backup/discovery mechanism)
   const newBookings = await prisma.booking.count({
     where: {
-      createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) },
+      ...activityDateFilter,
       source: { in: ["calendly_webhook", "manual"] },
     },
   });
@@ -118,10 +125,10 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const cashPerBooking = totalBookings > 0 ? Math.round(totalCash / totalBookings) : 0;
   const cashPerShow = totalShows > 0 ? Math.round(totalCash / totalShows) : 0;
 
-  // Setter stats — per-setter new bookings (activity by createdAt)
+  // Setter stats — per-setter new bookings (activity by bookedAt)
   const setterNewBookings = await prisma.booking.findMany({
     where: {
-      createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) },
+      ...activityDateFilter,
       source: { in: ["calendly_webhook", "manual"] },
       setterId: { not: null },
     },

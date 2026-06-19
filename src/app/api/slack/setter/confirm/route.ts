@@ -33,7 +33,10 @@ export async function POST() {
     const newBookings = await prisma.booking.count({
       where: {
         setterId: setter.id,
-        createdAt: { gte: weekStart, lt: new Date(weekEnd.getTime() + 1) },
+        OR: [
+          { bookedAt: { gte: weekStart, lt: new Date(weekEnd.getTime() + 1) } },
+          { AND: [{ bookedAt: null }, { createdAt: { gte: weekStart, lt: new Date(weekEnd.getTime() + 1) } }] },
+        ],
         source: { in: ["calendly_webhook", "manual"] },
       },
     });
