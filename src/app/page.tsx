@@ -13,6 +13,7 @@ interface KPIData {
   weekId: string;
   totalBookings: number;
   newBookings: number;
+  asBookedBookings?: number;
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
@@ -117,7 +118,11 @@ export default function Dashboard() {
         <KPICard
           title="New Bookings"
           value={String(kpis.newBookings)}
-          subtitle="booked this week"
+          subtitle={
+            kpis.asBookedBookings !== undefined && kpis.asBookedBookings !== kpis.newBookings
+              ? `booked this week · ${kpis.asBookedBookings} as-booked`
+              : "booked this week"
+          }
         />
 
         {/* Demos + Shows pair with shared StatusBar beneath */}

@@ -133,14 +133,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Helper: find existing booking by calendly ID OR by email+date match
+    // Helper: find existing LIVE booking by calendly ID OR by email+date match.
+    // Superseded rows (closed out by a later reschedule) are frozen history and
+    // must never be matched/mutated — always resolve to the live successor instead.
     async function findExistingBooking() {
       // First try calendly ID
       const byCalendlyId = await prisma.booking.findUnique({
         where: { calendarEventId: calendlyId },
         include: { demo: true },
       });
-      if (byCalendlyId) return byCalendlyId;
+      if (byCalendlyId && !byCalendlyId.supersededAt) return byCalendlyId;
 
       // Find by email + date (within 4 hour window to account for timezone shifts)
       if (inviteeEmail && demoDate) {
@@ -150,6 +152,7 @@ export async function POST(request: NextRequest) {
           where: {
             prospectEmail: { equals: inviteeEmail, mode: "insensitive" },
             demoDate: { gte: windowStart, lte: windowEnd },
+            supersededAt: null,
           },
           include: { demo: true },
         });
@@ -161,6 +164,7 @@ export async function POST(request: NextRequest) {
         const byEmail = await prisma.booking.findFirst({
           where: {
             prospectEmail: { equals: inviteeEmail, mode: "insensitive" },
+            supersededAt: null,
           },
           orderBy: { demoDate: "desc" },
           include: { demo: true },
@@ -183,6 +187,7 @@ export async function POST(request: NextRequest) {
             where: {
               prospectName: { startsWith: firstName, mode: "insensitive" },
               demoDate: { gte: windowStart, lte: windowEnd },
+              supersededAt: null,
             },
             include: { demo: true },
           });
@@ -195,6 +200,13 @@ export async function POST(request: NextRequest) {
 
     // === HANDLE invitee.canceled ===
     if (event === "invitee.canceled") {
+      // If this cancel is for an event whose row was already superseded by a
+      // reschedule, it's history — do NOT let the email fallback matchers cancel
+      // the live successor's pending demo.
+      const exactRow = await prisma.booking.findUnique({ where: { calendarEventId: calendlyId } });
+      if (exactRow?.supersededAt) {
+        return NextResponse.json({ received: true, action: "canceled_superseded_ignored" });
+      }
       const existing = await findExistingBooking();
       if (existing && existing.demo) {
         if (rescheduled) {
@@ -233,87 +245,121 @@ export async function POST(request: NextRequest) {
 
       const existing = await findExistingBooking();
       if (existing) {
-        // Already exists — update date, enrich missing fields, handle reschedules
-        // Always bump bookedAt: every invitee.created fire represents a rebook event
-        // (the scoreboard's activity counter reads bookedAt so rebooks visually credit
-        // the rebooking setter on the day of rebook).
-        const bookingUpdates: Record<string, unknown> = { bookedAt: new Date() };
-        if (inviteeEmail && !existing.prospectEmail) bookingUpdates.prospectEmail = inviteeEmail;
-        if (phone && !existing.prospectPhone) bookingUpdates.prospectPhone = phone;
+        // === IMMUTABLE-HISTORY MODEL ===
+        // A row never leaves its week. Two cases:
+        //  1) Same meeting arriving again (duplicate delivery / cross-channel echo):
+        //     enrich missing contact fields only. NO bookedAt bump — bumping here used
+        //     to silently migrate activity credit out of the original week.
+        //  2) Real reschedule/rebook (time changed): freeze the old row where it sits
+        //     (its week keeps the booking + outcome forever) and create a successor
+        //     row in the new week, credited to the most-recent setter.
+        const enrich: Record<string, unknown> = {};
+        if (inviteeEmail && !existing.prospectEmail) enrich.prospectEmail = inviteeEmail;
+        if (phone && !existing.prospectPhone) enrich.prospectPhone = phone;
 
-        // Re-resolve setter from this incoming event. If the prospect rebooked
-        // through a different setter's link, the most-recent setter gets credit.
-        // Only overwrites when a new setter name is actually parsed — never clears.
+        const isReschedule = !!demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
+
+        if (!isReschedule) {
+          // Fill setter only if the row has none (never overwrite operator corrections
+          // on a mere duplicate delivery).
+          const dupSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+          if (!existing.setterId && dupSetterName) {
+            const setterMatch = await prisma.teamMember.findFirst({
+              where: { name: { contains: dupSetterName, mode: "insensitive" }, role: "setter" },
+            });
+            if (setterMatch) enrich.setterId = setterMatch.id;
+          }
+          if (Object.keys(enrich).length > 0) {
+            await prisma.booking.update({ where: { id: existing.id }, data: enrich });
+          }
+          return NextResponse.json({ received: true, action: "duplicate_enriched", bookingId: existing.id });
+        }
+
+        // Replay guard: if this exact Calendly event already produced a row (live or
+        // superseded), this webhook is a redelivery — never spawn another successor.
+        const replay = await prisma.booking.findUnique({ where: { calendarEventId: calendlyId } });
+        if (replay) {
+          return NextResponse.json({ received: true, action: "replay_ignored", bookingId: replay.id });
+        }
+
+        // Most-recent setter gets credit for the rebook (falls back to previous setter)
         const incomingSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
-        let newSetterId: string | null = null;
+        let successorSetterId: string | null = existing.setterId;
         if (incomingSetterName) {
           const setterMatch = await prisma.teamMember.findFirst({
             where: { name: { contains: incomingSetterName, mode: "insensitive" }, role: "setter" },
           });
-          newSetterId = setterMatch?.id || null;
-          if (!newSetterId) {
+          if (setterMatch) {
+            successorSetterId = setterMatch.id;
+          } else {
             const newMember = await prisma.teamMember.create({
               data: { name: incomingSetterName, role: "setter", excludeFromLeaderboard: true },
             });
-            newSetterId = newMember.id;
-          }
-          if (newSetterId && newSetterId !== existing.setterId) {
-            bookingUpdates.setterId = newSetterId;
-            await prisma.auditLog.create({
-              data: {
-                entityType: "booking",
-                entityId: existing.id,
-                action: "calendly_setter_reassigned",
-                oldValue: JSON.stringify({ setterId: existing.setterId }),
-                newValue: JSON.stringify({ setterId: newSetterId, setterName: incomingSetterName }),
-                performedBy: "calendly_webhook",
-              },
-            });
+            successorSetterId = newMember.id;
           }
         }
 
-        const isReschedule = demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
-        if (isReschedule && demoDate) {
-          // Demo was rescheduled — move to new date and week
-          bookingUpdates.demoDate = demoDate;
-          const { start, end } = getWeekRange(demoDate);
-          const newWeek = await prisma.week.upsert({
-            where: { weekStart: start },
-            create: { weekStart: start, weekEnd: end },
-            update: {},
-          });
-          bookingUpdates.weekId = newWeek.id;
+        const { start, end } = getWeekRange(demoDate!);
+        const newWeek = await prisma.week.upsert({
+          where: { weekStart: start },
+          create: { weekStart: start, weekEnd: end },
+          update: {},
+        });
 
-          // Update demo's weekId and reset status to pending on any reschedule
-          // (no-show, rescheduled, cancelled → pending; showed stays showed)
-          if (existing.demo) {
-            await prisma.demo.update({
-              where: { id: existing.demo.id },
-              data: {
-                weekId: newWeek.id,
-                status: existing.demo.status !== "showed" ? "pending" : existing.demo.status,
-                confirmedBy: existing.demo.status !== "showed" ? null : existing.demo.confirmedBy,
-                confirmedAt: existing.demo.status !== "showed" ? null : existing.demo.confirmedAt,
-              },
-            });
-          }
-
-          await prisma.auditLog.create({
-            data: {
-              entityType: "booking",
-              entityId: existing.id,
-              action: "calendly_rescheduled",
-              oldValue: JSON.stringify({ demoDate: existing.demoDate }),
-              newValue: JSON.stringify({ demoDate }),
-              performedBy: "calendly_webhook",
-            },
+        // Freeze the old row. Terminal outcomes (showed / no_show / cancelled) are
+        // untouchable; a still-pending demo is closed out as 'rescheduled' (excluded
+        // from show rate — the meeting moved before it could happen).
+        await prisma.booking.update({
+          where: { id: existing.id },
+          data: { supersededAt: new Date(), ...enrich },
+        });
+        if (existing.demo && existing.demo.status === "pending") {
+          await prisma.demo.update({
+            where: { id: existing.demo.id },
+            data: { status: "rescheduled", confirmedBy: "reschedule_split", confirmedAt: new Date() },
           });
         }
 
-        if (Object.keys(bookingUpdates).length > 0) {
-          await prisma.booking.update({ where: { id: existing.id }, data: bookingUpdates });
-        }
-        return NextResponse.json({ received: true, action: isReschedule ? "rescheduled_moved" : "duplicate_updated", bookingId: existing.id });
+        const successor = await prisma.booking.create({
+          data: {
+            weekId: newWeek.id,
+            prospectName: existing.prospectName,
+            prospectEmail: inviteeEmail || existing.prospectEmail,
+            prospectPhone: phone || existing.prospectPhone,
+            setterId: successorSetterId,
+            bookedAt: new Date(),
+            demoDate: demoDate!,
+            calendarEventId: calendlyId,
+            source: "calendly_webhook",
+            rescheduledFromId: existing.id,
+          },
+        });
+        await prisma.demo.create({
+          data: {
+            bookingId: successor.id,
+            weekId: newWeek.id,
+            closerId: existing.demo?.closerId || null,
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            entityType: "booking",
+            entityId: existing.id,
+            action: "calendly_rescheduled_split",
+            oldValue: JSON.stringify({ demoDate: existing.demoDate, demoStatus: existing.demo?.status, setterId: existing.setterId }),
+            newValue: JSON.stringify({ successorId: successor.id, demoDate, setterId: successorSetterId }),
+            performedBy: "calendly_webhook",
+          },
+        });
+
+        try {
+          const { sendSlackTeam } = await import("@/lib/slack");
+          const dateStr = demoDate!.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+          await sendSlackTeam(`🔁 Rescheduled: ${existing.prospectName} moved to ${dateStr}${incomingSetterName ? ` (reset by ${incomingSetterName})` : ""}`);
+        } catch (err) { console.error("reschedule Slack post failed:", err); }
+
+        return NextResponse.json({ received: true, action: "rescheduled_split", bookingId: successor.id });
       }
 
       const effectiveDate = demoDate || new Date();

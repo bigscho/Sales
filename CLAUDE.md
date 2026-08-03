@@ -21,8 +21,13 @@ DB: Neon PostgreSQL via Prisma ORM.
 - Setters give themselves credit by typing their name into a free-text **"Booked by"** field on the Calendly intake form.
 - Wrong / missing / typo'd names are common. Operators correct these via `manual_backfill` audit-logged updates.
 - **Automation MUST NOT overwrite manual setter corrections.** Never re-parse the description on a routine cron poll of an already-known event — that silently reverts operator backfills. See `sync/gcal/route.ts` comment at the compositeId-match branch. PR #6 enforced this; do not regress it.
-- For the activity counter (scoreboard "new bookings this week"), the source of truth is `Booking.bookedAt`, NOT `createdAt`. `bookedAt` gets bumped on every booking event (initial create + rebook + manual setter reassign) so re-engaged prospects credit the rebooking setter on the day of work.
-- Full explanation in `GrassfedSales.md` → "Setter Attribution — How It Actually Works".
+- For the activity counter (scoreboard "new bookings this week"), the source of truth is `Booking.bookedAt`, NOT `createdAt`.
+
+## CRITICAL: Immutable Week History (Aug 2026) — do not regress
+- **A booking row never leaves its week and `bookedAt` is NEVER bumped after row creation.** A real reschedule/rebook freezes the old row (`supersededAt` set; pending demo → `rescheduled`; showed/no_show/cancelled untouchable) and creates a successor row (`rescheduledFromId` link) in the new week, credited to the most-recent setter. Same-event GCal drags of still-pending demos move in place without touching `bookedAt`.
+- All dedup matchers filter `supersededAt: null`. Never mutate a superseded row — it is frozen history and the reason past weeks' numbers no longer restate.
+- The "as-booked" number (dashboard + scoreboard) = rows `createdAt` in the period; it is the immutable reference and must stay untouched by any future logic.
+- Full explanation in `GrassfedSales.md` → "Immutable Week History" + "Setter Attribution — How It Actually Works".
 
 ## CRITICAL: Branch Rules
 1. **Always branch from `origin/main`** — run `git fetch origin main` first

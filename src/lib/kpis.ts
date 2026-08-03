@@ -6,7 +6,8 @@ export interface WeeklyKPIs {
   weekStart: string;
   weekEnd: string;
   totalBookings: number;
-  newBookings: number; // bookings created in this week (activity metric)
+  newBookings: number; // bookings credited to this week (activity metric, by bookedAt)
+  asBookedBookings: number; // immutable reference: rows CREATED during this week (never restated)
   totalShows: number;
   totalNoShows: number;
   totalPending: number;
@@ -72,13 +73,23 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     ],
   };
 
-  // Activity metric: bookings credited during this week (regardless of demo date)
-  // Only counts real setter activity: Calendly webhooks + manual entries
-  // Excludes "auto" (historical import) and "gcal_sync" (backup/discovery mechanism)
+  // Activity metric: bookings credited during this week (regardless of demo date).
+  // Includes gcal_sync (backup path writes real setter bookings — same sources as the
+  // scoreboard so the dashboard and scoreboard agree). Excludes "auto" (historical import).
+  const activitySources = ["calendly_webhook", "manual", "gcal_sync"];
   const newBookings = await prisma.booking.count({
     where: {
       ...activityDateFilter,
-      source: { in: ["calendly_webhook", "manual"] },
+      source: { in: activitySources },
+    },
+  });
+
+  // Immutable reference: rows physically created during this week. createdAt is never
+  // mutated and rows never migrate weeks, so this is the "what we saw live" number.
+  const asBookedBookings = await prisma.booking.count({
+    where: {
+      createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) },
+      source: { in: activitySources },
     },
   });
 
@@ -129,7 +140,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const setterNewBookings = await prisma.booking.findMany({
     where: {
       ...activityDateFilter,
-      source: { in: ["calendly_webhook", "manual"] },
+      source: { in: activitySources },
       setterId: { not: null },
     },
     select: { setterId: true },
@@ -218,6 +229,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     weekEnd: week.weekEnd.toISOString(),
     totalBookings,
     newBookings,
+    asBookedBookings,
     totalShows,
     totalNoShows,
     totalPending,

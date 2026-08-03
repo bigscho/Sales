@@ -324,14 +324,27 @@ Both have `Override` fields for manual correction via clickable badges in the UI
 - If the setter forgets to type a name, the booking lands as **unattributed** (`setterId IS NULL`).
 - If the setter typos their own name (or types a co-worker's name, or the prospect typed their own name into that field), the booking lands credited to the wrong person.
 - Operators correct these via `manual_backfill` audit-logged updates from the admin UI.
-- **Automation must not overwrite manual setter corrections.** The compositeId-match path in `sync/gcal/route.ts` does *not* call `reattributeSetter` — see comment in that file. Only brand-new GCal events (those that arrive via email/name/past-no-show dedup paths) get auto re-attribution, because those represent a genuinely new booking event, not a re-poll of the same event.
-- See `Booking.bookedAt` — bumped on every booking event (create + rebook) so the activity scoreboard credits the rebooking setter on the day they did the work, not the day the original row was created.
+- **Automation must not overwrite manual setter corrections.** The compositeId-match path in `sync/gcal/route.ts` does not re-parse the setter — see comment in that file. Only genuinely new booking events (reschedule splits, past-no-show rebooks) resolve a fresh setter, and even those fall back to the previous setter rather than clearing.
+
+---
+
+## Immutable Week History (Aug 2026 redesign)
+
+**A booking row never leaves its week.** Weekly numbers are write-once: what you see during a week is what that week says forever. This replaced the old model where reschedules moved the row (demoDate, weekId, bookedAt bump), silently rewriting past weeks' booking counts, no-shows, and even migrating already-showed demos across payroll weeks.
+
+- **Real reschedule/rebook (new Calendly/GCal event, or a dragged event whose demo already has an outcome):** the old row is **frozen** — `supersededAt` set, still-pending demo closed out as `rescheduled` (excluded from show rate); terminal outcomes (`showed` / `no_show` / `cancelled`) are untouchable — and a **successor row** is created in the new week, linked via `rescheduledFromId`, credited to the most-recent setter (`bookedAt = now`). One prospect can therefore have a chain of rows: the original "set" plus one "reset" per cross-event reschedule; each counts as activity in the week it happened.
+- **Same GCal event dragged while the demo is still pending:** move-in-place (demoDate/weekId follow the meeting; `bookedAt` untouched — a drag is not a new booking event). Nothing had happened yet, so no history is lost.
+- **Duplicate deliveries / cross-channel echoes (time unchanged):** enrich missing contact fields only. Never bump `bookedAt`, never overwrite setter (fill only if null).
+- **Superseded rows are frozen history**: every dedup/matcher filters `supersededAt: null`; the cancel handler ignores cancels for superseded events; syncs skip them. When a same-event drag splits a terminal row, the successor takes over the `calendarEventId` and the old row's id gets a `_superseded_<id>` suffix.
+- **Deletes** remain hard deletes (junk removal) but the audit log now stores a full JSON snapshot of booking + demo for recovery.
+- **"As-booked" reference number** on the dashboard + scoreboard: bookings *created* in the period (`createdAt`, never mutated). Shown when it differs from the credited activity count; it is the immutable "what we saw live" number for any week.
+- `Booking.bookedAt` is set once at row creation (successor rows get the reschedule time) and is never bumped afterward.
 
 ---
 
 ## Deduplication Strategy
 
-Both Calendly webhook and GCal sync can create the same booking. Dedup checks:
+Both Calendly webhook and GCal sync can create the same booking. Dedup checks (all restricted to live rows, `supersededAt: null`):
 1. `calendarEventId` exact match (different formats: `calendly_UUID` vs `eventId_Colin`)
 2. Email + 4-hour date window match
 3. First name + 4-hour date window match

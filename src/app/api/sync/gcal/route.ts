@@ -170,37 +170,97 @@ function getEventStart(event: GCalEvent): Date | null {
   return dt ? new Date(dt) : null;
 }
 
-// Mirrors the calendly webhook's rebook re-attribution: when a prospect rebooks
-// via a different setter's link, the most-recent setter gets credit. Only overwrites
-// when a new setter name is actually parsed from the description — never clears.
-async function reattributeSetter(
-  bookingId: string,
-  currentSetterId: string | null,
-  description: string,
-): Promise<void> {
+// Resolve the setter credited for a rebook event: most-recent setter parsed from the
+// description wins; falls back to the previous row's setter. Never clears.
+async function resolveRebookSetter(description: string, fallbackSetterId: string | null): Promise<string | null> {
   const incoming = parseSetterName(description);
-  if (!incoming) return;
+  if (!incoming) return fallbackSetterId;
   const setter = await prisma.teamMember.findFirst({
     where: { name: { contains: incoming, mode: "insensitive" }, role: "setter" },
   });
-  const newSetterId = setter?.id || null;
-  if (!newSetterId || newSetterId === currentSetterId) return;
-  // Only update setterId here. The caller updates bookedAt with the correct
-  // event-based timestamp; redoing it here would silently overwrite with `now`.
+  return setter?.id || fallbackSetterId;
+}
+
+type OldBookingForSplit = {
+  id: string;
+  prospectName: string;
+  prospectEmail: string | null;
+  prospectPhone: string | null;
+  setterId: string | null;
+  calendarEventId: string | null;
+  demo: { id: string; status: string; closerId: string | null } | null;
+};
+
+// === IMMUTABLE-HISTORY MODEL ===
+// A reschedule/rebook never moves a row to another week. The old row is frozen where
+// it sits (supersededAt set; a still-pending demo is closed out as 'rescheduled';
+// terminal outcomes showed/no_show/cancelled are untouchable) and a successor row is
+// created for the new meeting, linked via rescheduledFromId.
+async function supersedeAndCreate(opts: {
+  old: OldBookingForSplit;
+  newDemoDate: Date;
+  newCalendarEventId: string | null;
+  bookedAt: Date;
+  setterId: string | null;
+  transferEventId?: boolean; // same GCal event dragged: successor takes over the event id
+}): Promise<string> {
+  const { start, end } = getWeekRange(opts.newDemoDate);
+  const week = await prisma.week.upsert({
+    where: { weekStart: start },
+    create: { weekStart: start, weekEnd: end },
+    update: {},
+  });
+
+  // Freeze old row (suffix its event id first if the successor takes it over)
   await prisma.booking.update({
-    where: { id: bookingId },
-    data: { setterId: newSetterId },
+    where: { id: opts.old.id },
+    data: {
+      supersededAt: new Date(),
+      ...(opts.transferEventId && opts.old.calendarEventId
+        ? { calendarEventId: `${opts.old.calendarEventId}_superseded_${opts.old.id}` }
+        : {}),
+    },
+  });
+  if (opts.old.demo && opts.old.demo.status === "pending") {
+    await prisma.demo.update({
+      where: { id: opts.old.demo.id },
+      data: { status: "rescheduled", confirmedBy: "reschedule_split", confirmedAt: new Date() },
+    });
+  }
+
+  const newEventId = opts.transferEventId ? opts.old.calendarEventId : opts.newCalendarEventId;
+  const successor = await prisma.booking.create({
+    data: {
+      weekId: week.id,
+      prospectName: opts.old.prospectName,
+      prospectEmail: opts.old.prospectEmail,
+      prospectPhone: opts.old.prospectPhone,
+      setterId: opts.setterId,
+      bookedAt: opts.bookedAt,
+      demoDate: opts.newDemoDate,
+      calendarEventId: newEventId,
+      source: "gcal_sync",
+      rescheduledFromId: opts.old.id,
+    },
+  });
+  await prisma.demo.create({
+    data: {
+      bookingId: successor.id,
+      weekId: week.id,
+      closerId: opts.old.demo?.closerId || null,
+    },
   });
   await prisma.auditLog.create({
     data: {
       entityType: "booking",
-      entityId: bookingId,
-      action: "gcal_sync_setter_reassigned",
-      oldValue: JSON.stringify({ setterId: currentSetterId }),
-      newValue: JSON.stringify({ setterId: newSetterId, setterName: incoming }),
+      entityId: opts.old.id,
+      action: "gcal_sync_rescheduled_split",
+      oldValue: JSON.stringify({ demoStatus: opts.old.demo?.status, setterId: opts.old.setterId }),
+      newValue: JSON.stringify({ successorId: successor.id, demoDate: opts.newDemoDate, setterId: opts.setterId }),
       performedBy: "gcal_sync",
     },
   });
+  return successor.id;
 }
 
 // --- Main sync logic ---
@@ -292,6 +352,7 @@ async function syncCalendar(
             const activeBooking = await prisma.booking.findFirst({
               where: {
                 prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+                supersededAt: null,
                 demo: { status: { not: "cancelled" } },
               },
               include: { demo: true },
@@ -341,20 +402,41 @@ async function syncCalendar(
       });
 
       if (existing) {
+        // Superseded rows are frozen history — their event id was intentionally left
+        // behind (the live successor owns tracking). Never mutate them.
+        if (existing.supersededAt) continue;
+
         // NOTE: do NOT re-attribute setter here. This branch fires on every cron poll for
-        // already-known events. Re-parsing the description on every poll overwrites any
-        // manual setter correction operators have made (e.g., when Jett's UTM is misconfigured
-        // and the description names the wrong setter — operators backfill the right one, and
-        // this would silently revert it on the next 10-min poll).
-        // Legitimate rebook detection runs on the email/name/past-no-show dedup paths below,
-        // which only fire when a brand-new GCal eventId arrives — those paths still call
-        // reattributeSetter because they represent a real new booking event.
+        // already-known events; re-parsing the description would revert operator backfills.
 
         // Check for reschedule (time changed by more than 1 minute)
         const existingTime = existing.demoDate.getTime();
         const newTime = eventStart.getTime();
 
         if (Math.abs(existingTime - newTime) > 60000) {
+          const isTerminal = !!existing.demo && ["showed", "no_show", "cancelled"].includes(existing.demo.status);
+
+          if (isTerminal) {
+            // The meeting already had an outcome (showed / no_show / cancelled) and the
+            // SAME calendar event now points at a new time: someone dragged the invite to
+            // schedule a follow-up or re-engage. The outcome is frozen in its week —
+            // split off a successor that takes over the event id. Same setter keeps
+            // credit (a drag carries no new "Booked by" signal).
+            await supersedeAndCreate({
+              old: existing,
+              newDemoDate: eventStart,
+              newCalendarEventId: null,
+              bookedAt: getEventBookedAt({ ...event, created: event.updated || event.created }),
+              setterId: existing.setterId,
+              transferEventId: true,
+            });
+            results.updated++;
+            continue;
+          }
+
+          // Still pending — nothing has happened yet, so the row may follow the meeting
+          // to its new date/week. DO NOT bump bookedAt: a drag is not a new booking
+          // event, and activity credit stays in the week the booking was made.
           const { start, end } = getWeekRange(eventStart);
           const week = await prisma.week.upsert({
             where: { weekStart: start },
@@ -362,10 +444,6 @@ async function syncCalendar(
             update: {},
           });
 
-          // Reschedule (demoDate changed) — but DO NOT bump bookedAt. A demoDate change
-          // here means the closer dragged the GCal invite or the operator edited the time;
-          // it's not a new Calendly booking event by the setter. Activity counter should
-          // only see a bump when a brand-new Calendly eventId arrives (paths 2-4 below).
           await prisma.booking.update({
             where: { id: existing.id },
             data: { demoDate: eventStart, weekId: week.id },
@@ -376,9 +454,8 @@ async function syncCalendar(
               where: { id: existing.demo.id },
               data: {
                 weekId: week.id,
-                // Reset any non-showed status back to pending on reschedule
-                // (no-show, rescheduled, cancelled → pending; showed stays showed)
-                ...(existing.demo.status !== "showed" ? {
+                // stale 'rescheduled' markers on a live row reset to pending
+                ...(existing.demo.status !== "pending" ? {
                   status: "pending",
                   confirmedBy: null,
                   confirmedAt: null,
@@ -399,18 +476,6 @@ async function syncCalendar(
           });
 
           results.updated++;
-        } else if (
-          existing.demo &&
-          ["no_show", "rescheduled"].includes(existing.demo.status) &&
-          eventStart.getTime() > Date.now()
-        ) {
-          // Date already matches (previous sync moved it) but status was never reset.
-          // A future-dated demo cannot be a no-show — reset it to pending.
-          await prisma.demo.update({
-            where: { id: existing.demo.id },
-            data: { status: "pending", confirmedBy: null, confirmedAt: null },
-          });
-          results.updated++;
         }
         continue;
       }
@@ -424,7 +489,10 @@ async function syncCalendar(
       const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
       const prospectPhone = parsePhone(description);
 
-      // Dedup: check by email + date window (catches Calendly webhook duplicates)
+      // Dedup: check by email + date window (catches Calendly webhook duplicates).
+      // A row in the ±4h window is the SAME meeting arriving via a second channel —
+      // just attach the GCal composite id for future tracking. No bookedAt bump, no
+      // setter re-parse (operator corrections stay put).
       if (prospectEmail) {
         const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
@@ -432,33 +500,16 @@ async function syncCalendar(
           where: {
             prospectEmail: { equals: prospectEmail, mode: "insensitive" },
             demoDate: { gte: windowStart, lte: windowEnd },
+            supersededAt: null,
           },
           include: { demo: true },
         });
         if (byEmail) {
-          // Link the GCal composite ID + bump bookedAt to event.created: a new GCal
-          // eventId matching an existing prospect's email is a fresh rebook event.
-          // Use event.created so a historical event discovered today lands on its
-          // real Calendly creation date, not today.
-          if (byEmail.calendarEventId !== compositeId) {
+          if (byEmail.calendarEventId !== compositeId && !byEmail.calendarEventId?.startsWith(event.id)) {
             await prisma.booking.update({
               where: { id: byEmail.id },
-              data: { calendarEventId: compositeId, bookedAt: getEventBookedAt(event) },
+              data: { calendarEventId: compositeId },
             });
-          }
-          // Re-attribute setter on rebook (same rule as the calendly webhook).
-          await reattributeSetter(byEmail.id, byEmail.setterId, description);
-          // Reset stale no_show/rescheduled status on future-dated demos
-          if (
-            byEmail.demo &&
-            ["no_show", "rescheduled"].includes(byEmail.demo.status) &&
-            eventStart.getTime() > Date.now()
-          ) {
-            await prisma.demo.update({
-              where: { id: byEmail.demo.id },
-              data: { status: "pending", confirmedBy: null, confirmedAt: null },
-            });
-            results.updated++;
           }
           continue;
         }
@@ -466,9 +517,6 @@ async function syncCalendar(
 
       // Dedup: check by exact full name + date window — only when the new event has
       // no email AND no phone (otherwise the earlier email/phone path would have caught it).
-      // Name-only matching is dangerous because two different prospects can share a name
-      // within the window. Require an exact full-name match AND that neither side has a
-      // conflicting email — if both records have emails and they differ, treat as distinct.
       if (prospectName && !prospectEmail && !prospectPhone) {
         const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
@@ -476,43 +524,32 @@ async function syncCalendar(
           where: {
             prospectName: { equals: prospectName, mode: "insensitive" },
             demoDate: { gte: windowStart, lte: windowEnd },
+            supersededAt: null,
           },
-          include: { demo: true },
         });
         if (byName) {
-          if (byName.calendarEventId !== compositeId) {
+          if (byName.calendarEventId !== compositeId && !byName.calendarEventId?.startsWith(event.id)) {
             await prisma.booking.update({
               where: { id: byName.id },
-              data: { calendarEventId: compositeId, bookedAt: getEventBookedAt(event) },
+              data: { calendarEventId: compositeId },
             });
-          }
-          await reattributeSetter(byName.id, byName.setterId, description);
-          if (
-            byName.demo &&
-            ["no_show", "rescheduled"].includes(byName.demo.status) &&
-            eventStart.getTime() > Date.now()
-          ) {
-            await prisma.demo.update({
-              where: { id: byName.demo.id },
-              data: { status: "pending", confirmedBy: null, confirmedAt: null },
-            });
-            results.updated++;
           }
           continue;
         }
       }
 
-      // Detect reschedule of a past no-show/rescheduled booking whose calendarEventId
-      // was in Calendly format (calendly_UUID) and couldn't be matched above.
+      // A brand-new GCal event for a prospect whose previous demo no-showed or was
+      // marked rescheduled = a real rebook event. The old row is frozen where it sits
+      // (the no-show stays in its week) and a successor is created for the new meeting.
       // Only email-based matching — the previous first-name fallback collided across
-      // unrelated prospects (e.g. "Pat Dreiling" hijacking "Patti Syme") and silently
-      // rewrote demoDate + calendarEventId on the original row.
+      // unrelated prospects (e.g. "Pat Dreiling" hijacking "Patti Syme").
       if (prospectEmail) {
         const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
         const pastNoShow = await prisma.booking.findFirst({
           where: {
             prospectEmail: { equals: prospectEmail, mode: "insensitive" },
             demoDate: { gte: sixtyDaysAgo, lt: eventStart },
+            supersededAt: null,
             demo: { status: { in: ["no_show", "rescheduled"] } },
           },
           orderBy: { demoDate: "desc" },
@@ -520,33 +557,16 @@ async function syncCalendar(
         });
 
         if (pastNoShow) {
-          const { start, end } = getWeekRange(eventStart);
-          const reschedWeek = await prisma.week.upsert({
-            where: { weekStart: start },
-            create: { weekStart: start, weekEnd: end },
-            update: {},
+          await supersedeAndCreate({
+            old: pastNoShow,
+            newDemoDate: eventStart,
+            newCalendarEventId: compositeId,
+            // event.created so a historical event discovered late lands on its real
+            // booking day, not the day sync first saw it
+            bookedAt: getEventBookedAt(event),
+            // most-recent setter gets credit for the rebook
+            setterId: await resolveRebookSetter(description, pastNoShow.setterId),
           });
-          await prisma.booking.update({
-            where: { id: pastNoShow.id },
-            data: { demoDate: eventStart, weekId: reschedWeek.id, calendarEventId: compositeId, bookedAt: getEventBookedAt(event) },
-          });
-          if (pastNoShow.demo) {
-            await prisma.demo.update({
-              where: { id: pastNoShow.demo.id },
-              data: { weekId: reschedWeek.id, status: "pending", confirmedBy: null, confirmedAt: null },
-            });
-          }
-          await prisma.auditLog.create({
-            data: {
-              entityType: "booking",
-              entityId: pastNoShow.id,
-              action: "gcal_sync_rescheduled",
-              oldValue: JSON.stringify({ demoDate: pastNoShow.demoDate }),
-              newValue: JSON.stringify({ demoDate: eventStart }),
-              performedBy: "gcal_sync",
-            },
-          });
-          await reattributeSetter(pastNoShow.id, pastNoShow.setterId, description);
           results.updated++;
           continue;
         }

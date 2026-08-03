@@ -237,17 +237,24 @@ export async function DELETE(request: NextRequest) {
     });
   }
 
+  // Unlink any successor booking that points at this one in a reschedule chain
+  await prisma.booking.updateMany({
+    where: { rescheduledFromId: demo.bookingId },
+    data: { rescheduledFromId: null },
+  });
+
   // Delete demo then booking
   await prisma.demo.delete({ where: { id: demoId } });
   await prisma.booking.delete({ where: { id: demo.bookingId } });
 
-  // Audit log
+  // Audit log — full snapshot of both rows so a fat-fingered delete is recoverable
+  // and historical investigations can still see what was removed.
   await prisma.auditLog.create({
     data: {
       entityType: "demo",
       entityId: demoId,
       action: "deleted",
-      oldValue: JSON.stringify({ prospect: demo.booking.prospectName, status: demo.status }),
+      oldValue: JSON.stringify({ booking: demo.booking, demo: { ...demo, booking: undefined } }),
       performedBy: "admin",
     },
   });
