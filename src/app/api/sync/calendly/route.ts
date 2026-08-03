@@ -115,6 +115,15 @@ export async function POST() {
       });
 
       if (existing) {
+        // Immutable-history guard: frozen rows and terminal outcomes never move weeks.
+        // (Real reschedule splitting is handled by the webhook + gcal sync; this poll
+        // route is a passive backup and must not drag showed/no_show demos around.)
+        if (
+          existing.supersededAt ||
+          (existing.demo && ["showed", "no_show", "cancelled"].includes(existing.demo.status))
+        ) {
+          continue;
+        }
         // Check if time changed (reschedule via GCal)
         const existingTime = new Date(existing.demoDate).getTime();
         const newTime = eventStart.getTime();

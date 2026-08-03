@@ -66,6 +66,18 @@ export async function GET(request: NextRequest) {
     activityTotal++;
   }
 
+  // Immutable reference: rows physically created during this period. createdAt is
+  // never mutated and (under the immutable-history model) rows never migrate weeks,
+  // so this is the "what we saw live during the week" number and will never restate.
+  const asBookedTotal = dateFilter
+    ? await prisma.booking.count({
+        where: {
+          createdAt: dateFilter,
+          source: { in: ["calendly_webhook", "manual", "gcal_sync"] },
+        },
+      })
+    : activityTotal;
+
   // === RESULTS: demos by demoDate in range ===
   const resultsDemos = await prisma.demo.findMany({
     where: {
@@ -132,7 +144,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     scoreboard,
     teamTotals: {
-      activity: { newBookings: activityTotal },
+      activity: { newBookings: activityTotal, asBooked: asBookedTotal },
       results: { ...resultsTotal, showRate: teamShowRate },
       pendingTotal: pendingTotalAll,
     },

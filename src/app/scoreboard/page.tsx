@@ -22,7 +22,7 @@ interface SetterScore {
 interface ScoreboardData {
   scoreboard: SetterScore[];
   teamTotals: {
-    activity: { newBookings: number };
+    activity: { newBookings: number; asBooked?: number };
     results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
     pendingTotal: number;
   };
@@ -93,7 +93,12 @@ export default function ScoreboardPage() {
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">New Bookings</p>
             <p className="text-3xl font-bold tracking-tight text-[var(--teal)] mt-1">{teamTotals.activity.newBookings}</p>
-            <p className="text-xs text-[var(--muted-foreground)]">booked {dimLabel.toLowerCase()}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              booked {dimLabel.toLowerCase()}
+              {teamTotals.activity.asBooked !== undefined && teamTotals.activity.asBooked !== teamTotals.activity.newBookings
+                ? ` · ${teamTotals.activity.asBooked} as-booked`
+                : ""}
+            </p>
           </CardContent>
         </Card>
         <Card>

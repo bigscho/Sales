@@ -70,11 +70,18 @@ model Booking {
   airtableRecordId String?
   source           String   @default("auto") // auto | manual
   blastSourced     Boolean  @default(false) // true if prospect was SMS-blasted within 14 days
+  // Immutable-history model: a reschedule/rebook never moves a row to another week.
+  // Instead the old row is frozen (supersededAt set) and a successor row is created,
+  // linked via rescheduledFromId. Frozen rows keep their week's activity + outcome forever.
+  supersededAt      DateTime?
+  rescheduledFromId String?  @unique
   createdAt        DateTime @default(now())
 
-  week   Week        @relation(fields: [weekId], references: [id])
-  setter TeamMember? @relation(fields: [setterId], references: [id])
-  demo   Demo?
+  week            Week        @relation(fields: [weekId], references: [id])
+  setter          TeamMember? @relation(fields: [setterId], references: [id])
+  demo            Demo?
+  rescheduledFrom Booking?    @relation("RescheduleChain", fields: [rescheduledFromId], references: [id])
+  rescheduledTo   Booking?    @relation("RescheduleChain")
 }
 
 model Demo {
