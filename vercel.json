@@ -67,6 +67,14 @@
     {
       "path": "/api/ceo/audit",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/confirmations/t1",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/confirmations/dayof",
+      "schedule": "0 12 * * *"
     }
   ]
 }

@@ -68,6 +68,8 @@ model Booking {
   demoDate         DateTime
   calendarEventId  String?  @unique
   airtableRecordId String?
+  listingAddress   String?  // Calendly "Listing address / zip codes" free-text (setter-entered); blank -> DB area fallback
+  prospectTimezone String?  // IANA tz from Calendly invitee, for prospect-local send timing
   source           String   @default("auto") // auto | manual
   blastSourced     Boolean  @default(false) // true if prospect was SMS-blasted within 14 days
   // Immutable-history model: a reschedule/rebook never moves a row to another week.
@@ -77,11 +79,12 @@ model Booking {
   rescheduledFromId String?  @unique
   createdAt        DateTime @default(now())
 
-  week            Week        @relation(fields: [weekId], references: [id])
-  setter          TeamMember? @relation(fields: [setterId], references: [id])
-  demo            Demo?
-  rescheduledFrom Booking?    @relation("RescheduleChain", fields: [rescheduledFromId], references: [id])
-  rescheduledTo   Booking?    @relation("RescheduleChain")
+  week              Week        @relation(fields: [weekId], references: [id])
+  setter            TeamMember? @relation(fields: [setterId], references: [id])
+  demo              Demo?
+  confirmationSends ConfirmationSend[]
+  rescheduledFrom   Booking?    @relation("RescheduleChain", fields: [rescheduledFromId], references: [id])
+  rescheduledTo     Booking?    @relation("RescheduleChain")
 }
 
 model Demo {
@@ -567,4 +570,57 @@ model MrrEvent {
   notes                String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+// === SHOW-RATE CONFIRMATIONS (SendBlue) ===
+// Deliberately thin: worklist state (case type, address variable, frozen count,
+// skip reasons) is computed live from Booking/Demo — the only things persisted
+// are what can't be recomputed: the group_id mapping and the send log.
+
+// Maps a SendBlue iMessage group (captured via inbound webhook) to a prospect
+// phone / booking. The AI Agent line can only reply into groups it's in, so
+// this mapping is the send routing table.
+model SendblueGroup {
+  id            String    @id @default(cuid())
+  groupId       String    @unique
+  participants  String?   // JSON array of E.164 numbers seen in the group
+  prospectPhone String?   // the participant matched to a booking's prospectPhone
+  bookingId     String?   // matched booking (null until matched)
+  lastInboundAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([prospectPhone])
+  @@index([bookingId])
+}
+
+// Append-only log of every send attempt. Drives the cross-booking "ever texted
+// this prospect the ask" dedup, the std-vs-again day-of variant, and the
+// automation-readiness instrumentation (edit rate, catches, auto-send share).
+model ConfirmationSend {
+  id                String    @id @default(cuid())
+  bookingId         String
+  prospectEmail     String?   // denormalized for cross-booking dedup
+  prospectPhone     String?
+  touchpoint        String    // t1 | day_of
+  variant           String?   // standard | again (day-of only)
+  addressSource     String?   // calendly | db_fallback | none (t1 only — readiness metric)
+  body              String
+  status            String    @default("queued") // queued | sent | failed | skipped
+  groupId           String?
+  sendblueMessageId String?
+  error             String?
+  // QA instrumentation for automation-readiness
+  edited            Boolean   @default(false)  // rep changed the text before sending
+  autoSent          Boolean   @default(false)  // fired by cron without manual approval
+  approvedBy        String?                    // TeamMember id who approved (null if auto)
+  dryRun            Boolean   @default(true)
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([prospectEmail, touchpoint, status])
+  @@index([prospectPhone, touchpoint, status])
+  @@index([bookingId])
 }

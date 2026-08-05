@@ -16,6 +16,8 @@ const SYSTEM_ROUTES = [
   "/api/seed",
   "/api/credits/award",
   "/api/blasts/process",
+  "/api/confirmations/t1",
+  "/api/confirmations/dayof",
 ];
 
 // Role-based route access
@@ -24,7 +26,7 @@ const SYSTEM_ROUTES = [
 const ROLE_ROUTES: Record<string, string[]> = {
   setter: ["/", "/demos", "/verify", "/scoreboard", "/blasts", "/api/demos", "/api/verify", "/api/scoreboard", "/api/credits", "/api/blasts"],
   closer: ["/", "/demos", "/deals", "/scoreboard", "/api/demos", "/api/deals", "/api/scoreboard", "/api/kpis"],
-  show_rate_rep: ["/", "/scoreboard", "/demos", "/api/scoreboard", "/api/demos", "/api/kpis"],
+  show_rate_rep: ["/", "/scoreboard", "/demos", "/confirmations", "/api/scoreboard", "/api/demos", "/api/kpis", "/api/confirmations"],
 };
 
 // Default landing page per role (when they hit "/")

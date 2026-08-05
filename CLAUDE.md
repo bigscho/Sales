@@ -91,9 +91,25 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Auth**: PIN-based login with role-based middleware — setters see verify+scoreboard, closers see demos+deals, admin sees everything
 - **CEO Financial Dashboard** (Phase 1): `/ceo`, `/ceo/review`, `/ceo/pnl`, `/ceo/transactions` — Mercury API sync, Amex CSV import, auto-categorization with learning merchant mappings (60+ vendors seeded), weekly review workflow, monthly P&L with MoM comparison, live MRR tracker with churn flagging, monthly close. Admin-only sidebar section. Needs `MERCURY_API_KEY` env var + `POST /api/ceo/seed` to initialize categories.
 
+## Confirmations (SendBlue show-rate system — Aug 2026)
+Show-rate rep work surface at `/confirmations` (role: `show_rate_rep` + admin). Two touchpoints sent into setter-created iMessage groups via SendBlue (AI Agent line +13137683591 — reply-only, can't cold-initiate; the setter adding the line to the group at booking is what registers it):
+- **T-1** (cron `/api/confirmations/t1`, 3pm ET): address-led confirmation for tomorrow's BRAND-NEW demos only. Rescheduled/already-asked prospects are skipped via the `ConfirmationSend` log (primary, dedup by email/phone on REAL sends) + `rescheduledFromId` (secondary). Copy branches: single address (frozen count 250-300 seeded off booking id) / multiple ("average around each one") / zips or area fallback (no number). Address variable: `Booking.listingAddress` (Calendly "Listing address / zip codes" Q&A) → Agent-table city by email → generic.
+- **Day-of** (cron `/api/confirmations/dayof`, 8am ET): testimonial (`TESTIMONIAL_VIDEO_URL` media) + invite reminder to ALL pending demos today; "again" variant iff a prior day-of really sent. Auto-sends unless `CONFIRMATIONS_DAYOF_AUTO=false`.
+- **Safety**: NO real text fires unless `SENDBLUE_LIVE=true` (everything logs as dry-run otherwise). T-1 auto-send off unless `CONFIRMATIONS_AUTO_SEND=true`, and even then only the staged-safe subset (single address, calendly source, unambiguous); graduation is earned via readiness metrics on the page (edit rate <3%, 0 catches, 14d).
+- **Key files**: `src/lib/sendblue.ts`, `src/lib/confirmations/{copy,worklist,send,nudge}.ts`, `src/app/api/confirmations/*`, `src/app/confirmations/page.tsx`.
+- **Group discovery is POLL-BASED** (`syncGroupsFromApi` — `GET /api/v2/messages` before every worklist build) — no SendBlue dashboard webhook config required. `src/app/api/webhooks/sendblue/route.ts` exists as an optional real-time enhancement if the webhook URL is ever pasted in their dashboard. Day-of sends as TWO messages: video first, text second (text owns the inbox preview).
+- **Schema**: `SendblueGroup`, `ConfirmationSend` (append-only send log — dedup + instrumentation), `Booking.listingAddress` + `Booking.prospectTimezone` (captured in the Calendly webhook). Worklist state is computed live, never cached.
+- Suppression is re-checked at send time (the send route rebuilds the worklist server-side; the client can't send to a row that stopped being sendable).
+
 ## Env Vars on Vercel
 - DATABASE_URL (Neon)
 - CALENDLY_API_TOKEN
+- SENDBLUE_BASE_URL + SENDBLUE_API_KEY_ID + SENDBLUE_API_SECRET + SENDBLUE_LINE_NUMBER
+- SENDBLUE_LIVE (unset/false = dry run; "true" = real texts)
+- CONFIRMATIONS_AUTO_SEND ("true" = T-1 cron auto-sends staged-safe subset)
+- CONFIRMATIONS_DAYOF_AUTO ("false" = day-of cron stops auto-sending)
+- CONFIRMATIONS_REP_PHONE (show-rate rep's phone, E.164 — cron nudges go here as an iMessage FROM the SendBlue line, not Slack; the rep must text the line ONCE first so it's inbound-registered. Slack #show-rate-tpds is the fallback if the text fails) — NOT YET SET
+- TESTIMONIAL_VIDEO_URL (day-of attachment) — NOT YET SET
 - GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_KEY
 - STRIPE_WEBHOOK_SECRET + STRIPE_SECRET_KEY
 - FIREFLIES_API_KEY (comma-separated: Colin's,Mark's)

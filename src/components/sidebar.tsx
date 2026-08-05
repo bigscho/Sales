@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { href: "/demos", label: "Demos", icon: "📞" },
   { href: "/deals", label: "Deals", icon: "💰", roles: ["closer", "admin"] },
   { href: "/scoreboard", label: "Scoreboard", icon: "🏆" },
+  { href: "/confirmations", label: "Confirmations", icon: "📆", roles: ["show_rate_rep", "admin"] },
   { href: "/blasts", label: "Text Blast", icon: "📲", roles: ["setter", "admin"] },
   { href: "/blasts/admin", label: "Blast Admin", icon: "⚡", roles: ["admin"] },
   { href: "/agents", label: "Agents", icon: "🏠", roles: ["admin"] },

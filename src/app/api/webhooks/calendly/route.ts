@@ -51,6 +51,8 @@ export async function POST(request: NextRequest) {
     let phone: string | null = null;
     let setterFromDescription: string | null = null;
     let eventTypeName: string | null = null;
+    let listingAddress: string | null = null; // "Listing address / zip codes" custom Q&A
+    let prospectTimezone: string | null = null; // IANA tz from invitee
 
     const calendlyToken = process.env.CALENDLY_API_TOKEN;
     if (calendlyToken && eventUri) {
@@ -88,6 +90,16 @@ export async function POST(request: NextRequest) {
               q.question.toLowerCase().includes("phone")
             );
             if (phoneAnswer) phone = phoneAnswer.answer;
+
+            // "Listing address / zip codes" — drives the show-rate T-1 confirmation text
+            const listingQ = qna.find((q: { question: string }) => {
+              const ql = q.question.toLowerCase();
+              return ql.includes("listing") || ql.includes("address") || ql.includes("zip");
+            });
+            if (listingQ?.answer?.trim()) listingAddress = listingQ.answer.trim();
+
+            // Invitee timezone — used for prospect-local send timing
+            prospectTimezone = inviteeData.resource?.timezone || null;
 
             // Also check Q&A for "Booked by" as a custom question
             if (!setterFromDescription) {
@@ -256,6 +268,8 @@ export async function POST(request: NextRequest) {
         const enrich: Record<string, unknown> = {};
         if (inviteeEmail && !existing.prospectEmail) enrich.prospectEmail = inviteeEmail;
         if (phone && !existing.prospectPhone) enrich.prospectPhone = phone;
+        if (listingAddress && !existing.listingAddress) enrich.listingAddress = listingAddress;
+        if (prospectTimezone && !existing.prospectTimezone) enrich.prospectTimezone = prospectTimezone;
 
         const isReschedule = !!demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
 
@@ -326,6 +340,8 @@ export async function POST(request: NextRequest) {
             prospectName: existing.prospectName,
             prospectEmail: inviteeEmail || existing.prospectEmail,
             prospectPhone: phone || existing.prospectPhone,
+            listingAddress: listingAddress || existing.listingAddress,
+            prospectTimezone: prospectTimezone || existing.prospectTimezone,
             setterId: successorSetterId,
             bookedAt: new Date(),
             demoDate: demoDate!,
@@ -404,6 +420,8 @@ export async function POST(request: NextRequest) {
           prospectName: inviteeName || "Unknown",
           prospectEmail: inviteeEmail || null,
           prospectPhone: phone,
+          listingAddress,
+          prospectTimezone,
           setterId,
           bookedAt: new Date(),
           demoDate: effectiveDate,
