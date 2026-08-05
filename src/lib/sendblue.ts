@@ -157,15 +157,20 @@ export interface SendblueMessage {
  * groups WITHOUT a dashboard webhook: poll before building each worklist and
  * map group_id -> participant phones.
  */
-export async function listMessages(limit = 100): Promise<SendblueMessage[]> {
-  const res = await fetch(
-    `${BASE}/api/v2/messages?limit=${limit}&order_direction=desc`,
-    { headers: authHeaders() }
-  );
-  if (!res.ok) return [];
-  const data = await res.json().catch(() => null);
-  const msgs = Array.isArray(data) ? data : data?.messages || data?.data || [];
-  return msgs as SendblueMessage[];
+export async function listMessages(max = 500): Promise<SendblueMessage[]> {
+  const all: SendblueMessage[] = [];
+  for (let offset = 0; offset < max; offset += 100) {
+    const res = await fetch(
+      `${BASE}/api/v2/messages?limit=100&offset=${offset}&order_direction=desc`,
+      { headers: authHeaders() }
+    );
+    if (!res.ok) break;
+    const data = await res.json().catch(() => null);
+    const msgs = Array.isArray(data) ? data : data?.messages || data?.data || [];
+    all.push(...(msgs as SendblueMessage[]));
+    if (msgs.length < 100) break; // reached the end of history
+  }
+  return all;
 }
 
 /** List the numbers (lines) on this SendBlue account. */
