@@ -70,7 +70,57 @@ export async function GET(request: NextRequest) {
     out.sendblue_error = String(e);
   }
 
-  // --- 2. Stored SendblueGroup rows ---
+  // --- 1b. Raw feed: which booking phones appear in ANY raw message participants? ---
+  // (answers "did a real prospect group get created on SendBlue at all")
+  try {
+    const BASE = process.env.SENDBLUE_BASE_URL || "https://api.sendblue.co";
+    const res = await fetch(`${BASE}/api/v2/messages?limit=100&order_direction=desc`, {
+      headers: {
+        "Content-Type": "application/json",
+        "sb-api-key-id": process.env.SENDBLUE_API_KEY_ID || "",
+        "sb-api-secret-key": process.env.SENDBLUE_API_SECRET || "",
+      },
+    });
+    const data = await res.json().catch(() => null);
+    const arr: Record<string, unknown>[] = Array.isArray(data) ? data : data?.messages || data?.data || [];
+    const rawGroupToNums = new Map<string, Set<string>>();
+    for (const m of arr) {
+      const gid = m.group_id as string | undefined;
+      if (!gid) continue;
+      const set = rawGroupToNums.get(gid) || new Set<string>();
+      const nums = [
+        ...(Array.isArray(m.participants) ? (m.participants as string[]) : []),
+        m.from_number as string,
+        m.number as string,
+        m.to_number as string,
+      ];
+      for (const n of nums) {
+        const nn = normalizePhone(n);
+        if (nn) set.add(nn);
+      }
+      rawGroupToNums.set(gid, set);
+    }
+    const allRawNorms = new Set<string>();
+    rawGroupToNums.forEach((s) => s.forEach((n) => allRawNorms.add(n)));
+    out.raw_distinct_group_count = rawGroupToNums.size;
+    out.raw_distinct_participant_norms = Array.from(allRawNorms).map((n) => `…${n.slice(-4)}`);
+  } catch (e) {
+    out.raw_scan_error = String(e);
+  }
+
+  // --- 1c. TRIGGER the real sync, then measure before/after ---
+  const { syncGroupsFromApi } = await import("@/lib/confirmations/worklist");
+  const beforeCount = await prisma.sendblueGroup.count();
+  let syncError: string | null = null;
+  try {
+    await syncGroupsFromApi();
+  } catch (e) {
+    syncError = String(e);
+  }
+  const afterCount = await prisma.sendblueGroup.count();
+  out.sync = { beforeCount, afterCount, created: afterCount - beforeCount, error: syncError };
+
+  // --- 2. Stored SendblueGroup rows (AFTER the sync) ---
   const groups = await prisma.sendblueGroup.findMany({ orderBy: { createdAt: "desc" } });
   out.db_group_count = groups.length;
   out.db_groups = groups.map((g) => ({
