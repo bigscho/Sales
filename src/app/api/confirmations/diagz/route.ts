@@ -66,5 +66,16 @@ export async function GET(request: NextRequest) {
     media_downgraded_tally: tally(media, "was_downgraded"),
     text_status_tally: tally(text, "status"),
     media_samples: media.slice(0, 25).map(brief),
+    // Today's outbound in chronological order — see video/text pairing per group
+    today_timeline: outbound
+      .filter((m) => String(m.date_sent || "").startsWith("2026-08-11"))
+      .sort((a, b) => String(a.date_sent).localeCompare(String(b.date_sent)))
+      .map((m) => ({
+        t: String(m.date_sent).slice(11, 23),
+        group: m.group_id ? `…${String(m.group_id).slice(-6)}` : null,
+        type: m.media_url ? "VIDEO" : "text",
+        status: m.status,
+        service: m.service,
+      })),
   });
 }
