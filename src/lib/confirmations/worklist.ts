@@ -143,7 +143,7 @@ async function lookupGroup(bookingId: string, phone: string | null): Promise<str
 export async function syncGroupsFromApi(): Promise<void> {
   try {
     const { listMessages, SENDBLUE_LINE } = await import("@/lib/sendblue");
-    const msgs = await listMessages(100);
+    const msgs = await listMessages(500);
     const lineNorm = normalizePhone(SENDBLUE_LINE);
 
     // group_id -> set of participant numbers seen (excluding our line)
@@ -151,8 +151,19 @@ export async function syncGroupsFromApi(): Promise<void> {
     for (const m of msgs) {
       if (!m.group_id) continue;
       const entry = groups.get(m.group_id) || { numbers: new Set<string>(), lastInbound: null };
-      const from = m.from_number || "";
-      if (from && normalizePhone(from) !== lineNorm) entry.numbers.add(from);
+      // Capture the WHOLE group roster, not just the sender. SendBlue's message
+      // object carries a `participants` array of every member; from_number is
+      // only whoever sent this one message (usually the setter or our line), so
+      // matching a booking by the prospect's phone fails if we store just that.
+      const candidates = [
+        ...(Array.isArray(m.participants) ? m.participants : []),
+        m.from_number,
+        m.number,
+        m.to_number,
+      ];
+      for (const c of candidates) {
+        if (c && normalizePhone(c) !== lineNorm) entry.numbers.add(c);
+      }
       if (!m.is_outbound && m.date_sent && (!entry.lastInbound || m.date_sent > entry.lastInbound)) {
         entry.lastInbound = m.date_sent;
       }

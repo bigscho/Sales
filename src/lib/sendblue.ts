@@ -147,6 +147,9 @@ export async function evaluateService(
 export interface SendblueMessage {
   group_id?: string | null;
   from_number?: string | null;
+  number?: string | null;
+  to_number?: string | null;
+  participants?: string[] | null; // full group roster — the reliable member list
   is_outbound?: boolean;
   content?: string | null;
   date_sent?: string | null;
