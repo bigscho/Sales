@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 
-// TEMPORARY read-only diagnostic: why do day-of testimonial VIDEOS only send
-// sometimes? Pull recent OUTBOUND messages and classify media vs text by
-// delivery status / service / downgrade / error. DELETE after diagnosis.
+// TEMPORARY read-only diagnostic: cross-reference day-of send log vs actual
+// SendBlue media messages to detect day-of sends that got a TEXT but no VIDEO.
+// DELETE after diagnosis.
 const DIAG_TOKEN = "sb-diag-7f3a9c2e1b0d";
+
+function norm(g: unknown): string {
+  return String(g ?? "");
+}
 
 export async function GET(request: NextRequest) {
   if (request.nextUrl.searchParams.get("key") !== DIAG_TOKEN) {
@@ -18,7 +23,7 @@ export async function GET(request: NextRequest) {
   };
 
   const all: Record<string, unknown>[] = [];
-  for (let offset = 0; offset < 300; offset += 100) {
+  for (let offset = 0; offset < 400; offset += 100) {
     const res = await fetch(`${BASE}/api/v2/messages?limit=100&offset=${offset}&order_direction=desc`, { headers });
     if (!res.ok) break;
     const data = await res.json().catch(() => null);
@@ -27,27 +32,47 @@ export async function GET(request: NextRequest) {
     if (!Array.isArray(arr) || arr.length < 100) break;
   }
 
-  const outbound = all.filter((m) => m.is_outbound === true);
-  const media = outbound.filter((m) => m.media_url && String(m.media_url).length > 0);
-  const text = outbound.filter((m) => !m.media_url || String(m.media_url).length === 0);
+  // Group -> list of media (video) messages with their send time & status
+  const mediaByGroup = new Map<string, { t: string; status: string; service: string }[]>();
+  for (const m of all) {
+    if (m.is_outbound !== true) continue;
+    if (!m.media_url || !norm(m.group_id)) continue;
+    const g = norm(m.group_id);
+    const list = mediaByGroup.get(g) || [];
+    list.push({ t: norm(m.date_sent), status: norm(m.status), service: norm(m.service) });
+    mediaByGroup.set(g, list);
+  }
 
-  const tally = (rows: Record<string, unknown>[], key: string) => {
-    const acc: Record<string, number> = {};
-    for (const r of rows) { const k = String(r[key] ?? "null"); acc[k] = (acc[k] || 0) + 1; }
-    return acc;
-  };
+  // Our day-of send log (real sends only)
+  const sends = await prisma.confirmationSend.findMany({
+    where: { touchpoint: "day_of", status: "sent", dryRun: false },
+    orderBy: { sentAt: "desc" },
+    take: 40,
+    select: { id: true, prospectName: true, groupId: true, sentAt: true, variant: true },
+  });
 
-  const brief = (m: Record<string, unknown>) => ({
-    date: m.date_sent,
-    group: m.group_id ? `…${String(m.group_id).slice(-6)}` : null,
-    status: m.status,
-    service: m.service,
-    downgraded: m.was_downgraded,
-    media: m.media_url ? `${String(m.media_url).split("/").pop()}` : null,
-    error_code: m.error_code ?? null,
-    error_message: m.error_message ?? null,
-    error_reason: m.error_reason ?? null,
-    error_detail: m.error_detail ?? null,
+  let withVideo = 0;
+  let withoutVideo = 0;
+  const rows = sends.map((s) => {
+    const g = norm(s.groupId);
+    const medias = mediaByGroup.get(g) || [];
+    // a video counts as "present" if one was sent within 10 min of the text
+    const sentMs = s.sentAt ? s.sentAt.getTime() : 0;
+    const near = medias.filter((v) => {
+      const vMs = Date.parse(v.t);
+      return Number.isFinite(vMs) && Math.abs(vMs - sentMs) < 10 * 60 * 1000;
+    });
+    const hasVideo = near.length > 0;
+    if (hasVideo) withVideo++; else withoutVideo++;
+    return {
+      name: s.prospectName,
+      variant: s.variant,
+      sentAt: s.sentAt,
+      group: g ? `…${g.slice(-6)}` : null,
+      video_present: hasVideo,
+      video_status: near.map((v) => `${v.status}/${v.service || "?"}`),
+      any_media_ever_to_group: medias.length,
+    };
   });
 
   return NextResponse.json({
@@ -55,27 +80,10 @@ export async function GET(request: NextRequest) {
       TESTIMONIAL_VIDEO_URL: process.env.TESTIMONIAL_VIDEO_URL || null,
       SENDBLUE_LIVE: process.env.SENDBLUE_LIVE || null,
     },
-    counts: {
-      scanned: all.length,
-      outbound: outbound.length,
-      media_messages: media.length,
-      text_messages: text.length,
-    },
-    media_status_tally: tally(media, "status"),
-    media_service_tally: tally(media, "service"),
-    media_downgraded_tally: tally(media, "was_downgraded"),
-    text_status_tally: tally(text, "status"),
-    media_samples: media.slice(0, 25).map(brief),
-    // Today's outbound in chronological order — see video/text pairing per group
-    today_timeline: outbound
-      .filter((m) => String(m.date_sent || "").startsWith("2026-08-11"))
-      .sort((a, b) => String(a.date_sent).localeCompare(String(b.date_sent)))
-      .map((m) => ({
-        t: String(m.date_sent).slice(11, 23),
-        group: m.group_id ? `…${String(m.group_id).slice(-6)}` : null,
-        type: m.media_url ? "VIDEO" : "text",
-        status: m.status,
-        service: m.service,
-      })),
+    scanned_messages: all.length,
+    dayof_sends_examined: sends.length,
+    dayof_with_video: withVideo,
+    dayof_without_video: withoutVideo,
+    rows,
   });
 }
