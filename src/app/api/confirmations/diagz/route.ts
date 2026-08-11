@@ -157,6 +157,22 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // --- 4. Real worklist builders — the actual sendable/block/skip the page uses ---
+  try {
+    const { buildT1Worklist, buildDayOfWorklist } = await import("@/lib/confirmations/worklist");
+    const [t1, dayof] = await Promise.all([buildT1Worklist(), buildDayOfWorklist()]);
+    const summarize = (rows: Array<{ prospectName: string; sendable: boolean; blockReason: string | null; skipReason: string | null; sendStatus: string }>) => ({
+      total: rows.length,
+      sendable: rows.filter((r) => r.sendable).length,
+      byBlock: rows.reduce((a, r) => { const k = r.blockReason || r.skipReason || (r.sendStatus !== "not_sent" ? r.sendStatus : "ok"); a[k] = (a[k] || 0) + 1; return a; }, {} as Record<string, number>),
+      rows: rows.map((r) => ({ name: r.prospectName, sendable: r.sendable, block: r.blockReason, skip: r.skipReason, status: r.sendStatus })),
+    });
+    out.worklist_t1 = summarize(t1);
+    out.worklist_dayof = summarize(dayof);
+  } catch (e) {
+    out.worklist_error = String(e);
+  }
+
   return NextResponse.json(out, { status: 200 });
 }
 
