@@ -18,7 +18,7 @@ const SYSTEM_ROUTES = [
   "/api/blasts/process",
   "/api/confirmations/t1",
   "/api/confirmations/dayof",
-  "/api/confirmations/_diag",
+  "/api/confirmations/diagz",
 ];
 
 // Role-based route access
