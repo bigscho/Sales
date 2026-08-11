@@ -36,8 +36,13 @@ export async function sendConfirmation(
   try {
     // Day-of goes as TWO messages: video first, text second — so the text (not
     // "1 Attachment") is what shows in the prospect's inbox preview.
+    // SendBlue delivers the tiny text instantly but processes media async, so
+    // without a head start the video can land AFTER the text (minutes late when
+    // the file is large). The asset is now compressed (~2.4MB) so it processes
+    // in seconds; a short pause here lets it lead. Best-effort, not guaranteed.
     if (touchpoint === "day_of" && TESTIMONIAL_URL) {
       await sendGroupMessage({ groupId: row.groupId, mediaUrl: TESTIMONIAL_URL, content: "" });
+      await new Promise((resolve) => setTimeout(resolve, 4000));
     }
     const result = await sendGroupMessage({
       groupId: row.groupId,
