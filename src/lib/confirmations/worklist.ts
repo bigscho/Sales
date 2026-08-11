@@ -19,8 +19,10 @@ import {
 // === PHONE NORMALIZATION ===
 
 /** Last 10 digits — good enough to match US numbers across formats. */
-export function normalizePhone(p: string | null | undefined): string | null {
-  const digits = (p || "").replace(/\D/g, "");
+export function normalizePhone(p: string | number | null | undefined): string | null {
+  // SendBlue returns some phone fields as numbers, not strings — coerce before
+  // .replace or the whole group sync throws and silently persists nothing.
+  const digits = String(p ?? "").replace(/\D/g, "");
   if (digits.length < 10) return digits || null;
   return digits.slice(-10);
 }
