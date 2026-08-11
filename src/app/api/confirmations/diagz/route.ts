@@ -31,8 +31,11 @@ export async function GET(request: NextRequest) {
   const media = outbound.filter((m) => m.media_url && String(m.media_url).length > 0);
   const text = outbound.filter((m) => !m.media_url || String(m.media_url).length === 0);
 
-  const tally = (rows: Record<string, unknown>[], key: string) =>
-    rows.reduce((a, r) => { const k = String(r[key] ?? "null"); a[k] = (a[k] || 0) + 1; return a; }, {} as Record<string, number>);
+  const tally = (rows: Record<string, unknown>[], key: string) => {
+    const acc: Record<string, number> = {};
+    for (const r of rows) { const k = String(r[key] ?? "null"); acc[k] = (acc[k] || 0) + 1; }
+    return acc;
+  };
 
   const brief = (m: Record<string, unknown>) => ({
     date: m.date_sent,
