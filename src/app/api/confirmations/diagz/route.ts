@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     where: { touchpoint: "day_of", status: "sent", dryRun: false },
     orderBy: { sentAt: "desc" },
     take: 40,
-    select: { id: true, prospectName: true, groupId: true, sentAt: true, variant: true },
+    select: { id: true, prospectPhone: true, groupId: true, sentAt: true, variant: true },
   });
 
   let withVideo = 0;
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     const hasVideo = near.length > 0;
     if (hasVideo) withVideo++; else withoutVideo++;
     return {
-      name: s.prospectName,
+      name: s.prospectPhone ? `…${norm(s.prospectPhone).slice(-4)}` : null,
       variant: s.variant,
       sentAt: s.sentAt,
       group: g ? `…${g.slice(-6)}` : null,
