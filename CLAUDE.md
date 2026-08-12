@@ -23,6 +23,11 @@ DB: Neon PostgreSQL via Prisma ORM.
 - **Automation MUST NOT overwrite manual setter corrections.** Never re-parse the description on a routine cron poll of an already-known event — that silently reverts operator backfills. See `sync/gcal/route.ts` comment at the compositeId-match branch. PR #6 enforced this; do not regress it.
 - For the activity counter (scoreboard "new bookings this week"), the source of truth is `Booking.bookedAt`, NOT `createdAt`.
 
+## CRITICAL: Sales money definition (Aug 2026) — do not regress
+- **Every cash figure in sales views is UPFRONT CASH ONLY**: charges within 24h of a deal's first payment, first-time clients only, net of refunds — `dealUpfrontCents()` in `src/lib/cash.ts` is the single source. Renewals, reorders, later charges, and "returning revenue" are deliberately NOT displayed anywhere (Colin: "overall revenue is easy to look at on Stripe; this is the sales dashboard"). Closer commission uses the same rule (payroll.ts `UPFRONT_WINDOW_HOURS`). Never re-add total/returning revenue to dashboard, feeds, day locks, or Slack recaps.
+- Exception: UNMATCHED payments stay visible in the demos financial feed — they're the match work-queue, not revenue display.
+- `Payment.isMonth1` is hardcoded true on every insert — meaningless, never use it.
+
 ## CRITICAL: Closer contract tracking (Aug 2026) — Will Farrell's 1099 comp
 - Active closers: Colin (`closer-colin`), Matthew (`closer-matthew`), **Will Farrell (`closer-will`)**. Mark departed (`closer-mark`, isActive=false — do NOT re-add his calendar to any sync list; it 404s).
 - **Will is the only comped closer** — comp config lives in `CLOSER_COMP` (src/lib/payroll.ts), keyed by TeamMember id: 16% fed / 25% self-sourced weekly commission on new-business cash collected, $3,500 monthly base with volume floor (<20 closes → $0) + quality floor (fed close rate <25% → −$200/pt, floor $1,500, needs 15+ fed demos showed), 60-day refund clawback. Colin/Matthew have no entry → tracked, unpaid.
