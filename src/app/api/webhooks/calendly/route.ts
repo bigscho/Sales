@@ -301,10 +301,15 @@ export async function POST(request: NextRequest) {
         const incomingSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
         let successorSetterId: string | null = existing.setterId;
         if (incomingSetterName) {
-          // A closer rescheduling their own booking is not a setter — don't create
-          // a junk setter row for their name; keep the previous setter (if any).
+          // A closer's name in "Booked by": on their own booking they're not a
+          // setter (keep previous setter); rebooking onto ANOTHER closer's
+          // calendar counts as setter work. Never create a junk setter row.
           const closerBookedBy = await matchCloserByName(incomingSetterName);
-          if (!closerBookedBy) {
+          if (closerBookedBy) {
+            if (existing.demo?.closerId && closerBookedBy.id !== existing.demo.closerId) {
+              successorSetterId = closerBookedBy.id;
+            }
+          } else {
             const setterMatch = await prisma.teamMember.findFirst({
               where: { name: { contains: incomingSetterName, mode: "insensitive" }, role: "setter" },
             });
@@ -412,12 +417,15 @@ export async function POST(request: NextRequest) {
       let leadSource = LEAD_SOURCE_FED;
       if (setterName) {
         // "Booked by" naming a closer = the closer booked it themselves. On their
-        // own calendar that's a self-sourced deal (contract §4.6); no setter credit
-        // and no junk setter row either way.
+        // own calendar that's a self-sourced deal (contract §4.6). On ANOTHER
+        // closer's calendar they were acting as a setter — credit them as such
+        // (closers double as setters). Either way, no junk setter row.
         const closerBookedBy = await matchCloserByName(setterName);
         if (closerBookedBy) {
           if (closerId && closerBookedBy.id === closerId) {
             leadSource = LEAD_SOURCE_SELF;
+          } else if (closerId) {
+            setterId = closerBookedBy.id;
           }
         } else {
           const setter = await prisma.teamMember.findFirst({

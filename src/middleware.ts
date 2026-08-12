@@ -25,9 +25,10 @@ const SYSTEM_ROUTES = [
 // Routes not listed here are accessible to any authenticated user
 const ROLE_ROUTES: Record<string, string[]> = {
   setter: ["/", "/demos", "/verify", "/scoreboard", "/blasts", "/api/demos", "/api/verify", "/api/scoreboard", "/api/credits", "/api/blasts"],
-  // Closers get a deliberately tight surface: their own demos + deals + contract
-  // stats. No company dashboard, no scoreboard, no KPIs (those are admin views).
-  closer: ["/", "/demos", "/deals", "/api/demos", "/api/deals", "/api/closer"],
+  // Closers double as setters, so they get the full operational surface (all
+  // demos, scoreboard) — but no company dashboard/KPIs, and deals + the
+  // payments feed stay scoped to their own (revenue figures are admin-only).
+  closer: ["/", "/demos", "/deals", "/scoreboard", "/api/demos", "/api/deals", "/api/scoreboard", "/api/closer"],
   show_rate_rep: ["/", "/scoreboard", "/demos", "/confirmations", "/api/scoreboard", "/api/demos", "/api/kpis", "/api/confirmations"],
 };
 

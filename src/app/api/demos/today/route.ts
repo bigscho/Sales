@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,15 +27,8 @@ export async function GET() {
 
   // Match the scoreboard's activity definition: count by bookedAt (with createdAt
   // fallback for any rows that pre-date the bookedAt rollout).
-  // Non-admin closers see only their own bookings
-  const session = await getSession();
-  const closerScope = session && session.role === "closer" && !session.isAdmin
-    ? { closerId: session.memberId }
-    : {};
-
   const demos = await prisma.demo.findMany({
     where: {
-      ...closerScope,
       booking: {
         OR: [
           { bookedAt: { gte: todayStart, lt: todayEnd } },

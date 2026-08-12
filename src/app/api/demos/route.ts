@@ -9,16 +9,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "weekId required" }, { status: 400 });
   }
 
-  // Non-admin closers see only their own demos
-  const session = await getSession();
-  const closerScope = session && session.role === "closer" && !session.isAdmin
-    ? { closerId: session.memberId }
-    : {};
-
   const demos = await prisma.demo.findMany({
     where: {
       weekId,
-      ...closerScope,
       ...(setterId ? { booking: { setterId } } : {}),
     },
     include: {

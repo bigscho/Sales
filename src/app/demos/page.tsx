@@ -843,7 +843,7 @@ export default function DemosPage() {
                       <p className="text-xs text-[var(--muted-foreground)]">
                         {(lock.showCount + lock.noShowCount) > 0 ? ((lock.showCount / (lock.showCount + lock.noShowCount)) * 100).toFixed(0) : 0}% show rate
                       </p>
-                      {lock.cashCents > 0 && (
+                      {lock.cashCents > 0 && !isCloser && (
                         <p className="text-xs font-medium text-green-600 mt-0.5">{formatCents(lock.cashCents)}</p>
                       )}
                     </div>
@@ -1017,7 +1017,7 @@ export default function DemosPage() {
                                 <span className="text-[var(--muted-foreground)]">{dayDemos.length} demos</span>
                                 <span className="text-[var(--muted-foreground)]">{dayShowRate} show</span>
                                 {dayCloses > 0 && <span className="text-[var(--teal)] font-medium">{dayCloses} close{dayCloses !== 1 ? "s" : ""}</span>}
-                                {dayCash > 0 && <span className="font-medium text-green-600">{formatCents(dayCash)}</span>}
+                                {dayCash > 0 && !isCloser && <span className="font-medium text-green-600">{formatCents(dayCash)}</span>}
                               </>
                             )}
                             {lock && <span className="text-xs">🔒</span>}
@@ -1081,8 +1081,8 @@ export default function DemosPage() {
                 </div>
               )}
 
-              {/* Financial Feed */}
-              {renderFinancialFeed(displayPayments, viewMode === "week")}
+              {/* Financial Feed — revenue figures are hidden from closers */}
+              {!isCloser && renderFinancialFeed(displayPayments, viewMode === "week")}
             </div>
           </div>
         </div>
