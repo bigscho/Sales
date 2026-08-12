@@ -64,6 +64,9 @@ const statusOptions = [
   { value: "showed", label: "Showed" },
   { value: "no_show", label: "No Show" },
   { value: "cancelled", label: "Cancelled" },
+  // Frozen originals of rescheduled bookings (immutable-history model) — the
+  // meeting moved to a successor row; this row is history, not a live demo.
+  { value: "rescheduled", label: "Rescheduled →" },
 ];
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -479,6 +482,7 @@ export default function DemosPage() {
                       demo.status === "showed" ? "bg-green-100 text-green-700 border-green-300" :
                       demo.status === "no_show" ? "bg-red-100 text-red-700 border-red-300" :
                       demo.status === "pending" ? "bg-yellow-100 text-yellow-700 border-yellow-300" :
+                      demo.status === "rescheduled" ? "bg-[var(--muted)] text-[var(--muted-foreground)] border-[var(--border)] opacity-70" :
                       "bg-[var(--muted)] text-[var(--foreground)] border-[var(--border)]"
                     }`}
                   >
@@ -859,7 +863,7 @@ export default function DemosPage() {
                         className={`rounded px-2 py-1 text-xs ${
                           demo.status === "showed" ? "bg-green-50 text-green-800" :
                           demo.status === "no_show" ? "bg-red-50 text-red-800" :
-                          demo.status === "cancelled" ? "bg-[var(--muted)] text-[var(--muted-foreground)]/70 line-through" :
+                          demo.status === "cancelled" || demo.status === "rescheduled" ? "bg-[var(--muted)] text-[var(--muted-foreground)]/70 line-through" :
                           "bg-yellow-50 text-yellow-800"
                         }`}
                       >
