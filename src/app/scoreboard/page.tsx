@@ -7,8 +7,21 @@ import { StatusBar } from "@/components/ui/status-bar";
 import { TimeDimensionToggle } from "@/components/time-dimension-toggle";
 import { useTimeDimension } from "@/lib/hooks/use-time-dimension";
 import { formatPercent } from "@/lib/utils";
-import { showRateColor } from "@/lib/perf-color";
+import { showRateColor, closeRateColor } from "@/lib/perf-color";
 import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
+
+interface CloserScore {
+  id: string;
+  name: string;
+  demos: number;
+  shows: number;
+  noShows: number;
+  pending: number;
+  cancelled: number;
+  showRate: number;
+  closes: number;
+  closeRate: number;
+}
 
 interface SetterScore {
   id: string;
@@ -21,6 +34,7 @@ interface SetterScore {
 
 interface ScoreboardData {
   scoreboard: SetterScore[];
+  closerBoard: CloserScore[];
   teamTotals: {
     activity: { newBookings: number; asBooked?: number };
     results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
@@ -74,7 +88,7 @@ export default function ScoreboardPage() {
 
   if (!data) return <p>Error loading scoreboard</p>;
 
-  const { scoreboard, teamTotals, unattributed, showRateRep } = data;
+  const { scoreboard, closerBoard, teamTotals, unattributed, showRateRep } = data;
   const dimLabel = DIMENSION_LABELS[dimension] || "This Week";
 
   return (
@@ -136,6 +150,48 @@ export default function ScoreboardPage() {
 
       {/* Two Leaderboards Side by Side */}
       <SetterLeaderboards scoreboard={scoreboard} unattributed={unattributed} dimLabel={dimLabel} />
+
+      {/* Closer Performance — demos run, show rate on their calendar, closes, close rate. No cash here. */}
+      {closerBoard && closerBoard.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Closer Performance — {dimLabel}</h3>
+          <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--muted)] border-b">
+                <tr>
+                  <th className="text-left p-3 font-medium">Closer</th>
+                  <th className="text-right p-3 font-medium">Demos</th>
+                  <th className="text-right p-3 font-medium">Shows</th>
+                  <th className="text-right p-3 font-medium">No-Shows</th>
+                  <th className="text-right p-3 font-medium">Show Rate</th>
+                  <th className="text-right p-3 font-medium">Closes</th>
+                  <th className="text-right p-3 font-medium">Close Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {closerBoard.map((c) => {
+                  const rateDenom = c.shows + c.noShows + c.cancelled;
+                  return (
+                    <tr key={c.id} className="border-b last:border-0">
+                      <td className="p-3 font-medium">{c.name}</td>
+                      <td className="p-3 text-right">{c.demos}</td>
+                      <td className="p-3 text-right text-green-600 font-medium">{c.shows}</td>
+                      <td className="p-3 text-right text-red-600">{c.noShows}</td>
+                      <td className={`p-3 text-right font-medium ${rateDenom > 0 ? showRateColor(c.showRate) : ""}`}>
+                        {rateDenom > 0 ? formatPercent(c.showRate) : "—"}
+                      </td>
+                      <td className="p-3 text-right font-medium">{c.closes}</td>
+                      <td className={`p-3 text-right font-medium ${c.shows > 0 ? closeRateColor(c.closeRate) : ""}`}>
+                        {c.shows > 0 ? formatPercent(c.closeRate) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Show Rate Rep Card */}
       {showRateRep && (

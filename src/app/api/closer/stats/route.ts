@@ -1,12 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { getWeekRange } from "@/lib/utils";
+import { getWeekRange, computeShowRate } from "@/lib/utils";
 import {
   CLOSER_COMP,
   computeCloserCommission,
   calculateCloserMonthlyBase,
 } from "@/lib/payroll";
+
+// Demos-run + closes performance for one closer over a date range:
+// show rate on THEIR calendar and overall close rate (closes ÷ shows).
+async function closerPerformance(closerId: string, start: Date, end: Date) {
+  const [demos, closes] = await Promise.all([
+    prisma.demo.findMany({
+      where: { closerId, booking: { demoDate: { gte: start, lte: end } } },
+      select: { status: true },
+    }),
+    prisma.deal.count({
+      where: { closerId, status: "closed_won", closedAt: { gte: start, lte: end } },
+    }),
+  ]);
+  const shows = demos.filter((d) => d.status === "showed").length;
+  const noShows = demos.filter((d) => d.status === "no_show").length;
+  const cancelled = demos.filter((d) => d.status === "cancelled").length;
+  const pending = demos.filter((d) => d.status === "pending").length;
+  return {
+    demos: shows + noShows + cancelled + pending,
+    shows,
+    noShows,
+    cancelled,
+    pending,
+    showRate: shows + noShows + cancelled > 0 ? computeShowRate(shows, noShows, cancelled) : null,
+    closes,
+    closeRate: shows > 0 ? closes / shows : null,
+  };
+}
 
 // Closer self-serve numbers (contract §4.11 transparency): month-to-date closes,
 // fed close rate, cash split, commission, projected base — everything the closer
@@ -61,10 +89,16 @@ export async function GET(request: NextRequest) {
   const selfCloses = closes - fedCloses;
   const fedCloseRate = fedDemosShowed > 0 ? fedCloses / fedDemosShowed : null;
 
+  // Show rate + overall close rate on demos THEY RAN — this week and this month
+  const { start: weekStart, end: weekEnd } = getWeekRange(now);
+  const [weekPerf, monthPerf] = await Promise.all([
+    closerPerformance(closerId, weekStart, weekEnd),
+    closerPerformance(closerId, monthStart, monthEnd),
+  ]);
+
   // Money — only for comped closers (Will's contract terms)
   let money = null;
   if (comp) {
-    const { start: weekStart, end: weekEnd } = getWeekRange(now);
     const [monthCommission, weekCommission, projectedBase] = await Promise.all([
       computeCloserCommission(closer.id, comp, monthStart, monthEnd),
       computeCloserCommission(closer.id, comp, weekStart, weekEnd),
@@ -95,6 +129,7 @@ export async function GET(request: NextRequest) {
     closer: { id: closer.id, name: closer.name },
     monthLabel,
     activity: { demosShowed, fedDemosShowed, closes, fedCloses, selfCloses, fedCloseRate },
+    performance: { week: weekPerf, month: monthPerf },
     money,
   });
 }

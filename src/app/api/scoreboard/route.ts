@@ -128,6 +128,53 @@ export async function GET(request: NextRequest) {
     (pendingTotalBySetterId[c.id] || 0) > 0
   );
 
+  // === CLOSER BOARD: whole team sees closer activity — demos run, show rate
+  // on THEIR calendar, closes, close rate. Deliberately no cash (sales money
+  // is upfront-only and lives on admin views / each closer's own My Numbers).
+  const closerDemos = await prisma.demo.findMany({
+    where: {
+      closerId: { not: null },
+      ...(dateFilter ? { booking: { demoDate: dateFilter } } : {}),
+    },
+    select: { closerId: true, status: true },
+  });
+  const closerAgg: Record<string, { shows: number; noShows: number; pending: number; cancelled: number }> = {};
+  for (const d of closerDemos) {
+    const cid = d.closerId!;
+    if (!closerAgg[cid]) closerAgg[cid] = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
+    if (d.status === "showed") closerAgg[cid].shows++;
+    else if (d.status === "no_show") closerAgg[cid].noShows++;
+    else if (d.status === "pending") closerAgg[cid].pending++;
+    else if (d.status === "cancelled") closerAgg[cid].cancelled++;
+  }
+  const closerDeals = await prisma.deal.findMany({
+    where: {
+      status: "closed_won",
+      closerId: { not: null },
+      ...(dateFilter ? { closedAt: dateFilter } : {}),
+    },
+    select: { closerId: true },
+  });
+  const closesByCloser: Record<string, number> = {};
+  for (const d of closerDeals) {
+    closesByCloser[d.closerId!] = (closesByCloser[d.closerId!] || 0) + 1;
+  }
+  const closerBoard = closers
+    .map((c) => {
+      const r = closerAgg[c.id] || { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
+      const closes = closesByCloser[c.id] || 0;
+      return {
+        id: c.id,
+        name: c.name,
+        demos: r.shows + r.noShows + r.pending + r.cancelled,
+        ...r,
+        showRate: computeShowRate(r.shows, r.noShows, r.cancelled),
+        closes,
+        closeRate: r.shows > 0 ? closes / r.shows : 0,
+      };
+    })
+    .filter((c) => c.demos > 0 || c.closes > 0);
+
   // Build scoreboard entries
   const scoreboard = [...setters, ...activeCloserSetters].map((s) => {
     const activity = activityBySetterId[s.id] || 0;
@@ -156,6 +203,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     scoreboard,
+    closerBoard,
     teamTotals: {
       activity: { newBookings: activityTotal, asBooked: asBookedTotal },
       results: { ...resultsTotal, showRate: teamShowRate },

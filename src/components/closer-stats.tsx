@@ -3,6 +3,17 @@
 import { useEffect, useState } from "react";
 import { formatCents } from "@/lib/utils";
 
+interface RangePerf {
+  demos: number;
+  shows: number;
+  noShows: number;
+  cancelled: number;
+  pending: number;
+  showRate: number | null;
+  closes: number;
+  closeRate: number | null;
+}
+
 interface CloserStats {
   closer: { id: string; name: string };
   monthLabel: string;
@@ -14,6 +25,7 @@ interface CloserStats {
     selfCloses: number;
     fedCloseRate: number | null;
   };
+  performance: { week: RangePerf; month: RangePerf };
   money: {
     rates: { fed: number; self: number };
     month: { fedCashCents: number; selfCashCents: number; commissionCents: number; clawbackCents: number };
@@ -43,12 +55,27 @@ export function CloserStatsPanel({ closerId }: { closerId?: string }) {
   const monthCommission = money ? money.month.commissionCents + money.month.clawbackCents : 0;
   const weekCommission = money ? money.week.commissionCents + money.week.clawbackCents : 0;
 
+  const pct = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(0)}%`);
+  const { week, month } = stats.performance;
+
   const tiles: { label: string; value: string; sub?: string; accent?: string }[] = [
     {
       label: "Closes MTD",
       value: `${activity.closes}`,
       sub: `${activity.fedCloses} fed · ${activity.selfCloses} self${activity.closes < 20 ? " — base needs 20" : " ✓"}`,
       accent: activity.closes >= 20 ? "text-green-600" : undefined,
+    },
+    {
+      label: "My Show Rate",
+      value: pct(month.showRate),
+      sub: `${month.shows}/${month.shows + month.noShows + month.cancelled} this month · ${pct(week.showRate)} this week`,
+      accent: month.showRate === null ? undefined : month.showRate >= 0.5 ? "text-green-600" : "text-red-600",
+    },
+    {
+      label: "My Close Rate",
+      value: pct(month.closeRate),
+      sub: `${month.closes} of ${month.shows} shows · ${pct(week.closeRate)} this week`,
+      accent: month.closeRate === null ? undefined : month.closeRate >= 0.25 ? "text-green-600" : "text-red-600",
     },
     {
       label: "Fed Close Rate",
@@ -90,7 +117,7 @@ export function CloserStatsPanel({ closerId }: { closerId?: string }) {
           </span>
         )}
       </div>
-      <div className={`grid grid-cols-2 ${tiles.length > 2 ? "md:grid-cols-5" : "md:grid-cols-2"} divide-x divide-[var(--border)]`}>
+      <div className={`grid grid-cols-2 md:grid-cols-4 ${tiles.length > 4 ? "xl:grid-cols-7" : "xl:grid-cols-4"} divide-x divide-[var(--border)]`}>
         {tiles.map((t) => (
           <div key={t.label} className="p-4">
             <p className="text-xs text-[var(--muted-foreground)] mb-1">{t.label}</p>

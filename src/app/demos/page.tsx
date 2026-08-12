@@ -8,6 +8,7 @@ import { StatusBar } from "@/components/ui/status-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCents } from "@/lib/utils";
 import { useSession } from "@/components/app-shell";
+import { CloserStatsPanel } from "@/components/closer-stats";
 
 
 interface TeamMember { id: string; name: string; role: string }
@@ -785,6 +786,9 @@ export default function DemosPage() {
 
   return (
     <div className="space-y-6">
+      {/* Closer self-serve numbers — live where they confirm shows */}
+      {isCloser && <CloserStatsPanel />}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
