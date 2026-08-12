@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { demoId, status, closerId, setterId, notes } = body;
+  const { demoId, status, closerId, setterId, notes, leadSource } = body;
 
   // Check if demo's day is locked
   const existingDemo = await prisma.demo.findUnique({
@@ -84,6 +84,32 @@ export async function PATCH(request: NextRequest) {
           }
         }
       } catch { /* setter notification failed */ }
+    }
+  }
+
+  // Handle fed/self-sourced correction (leadSource lives on booking; a linked
+  // deal carries a copy that must stay in sync — commission reads the deal)
+  if (leadSource !== undefined && existingDemo && ["fed", "self_sourced"].includes(leadSource)) {
+    const oldLeadSource = existingDemo.booking.leadSource;
+    if (leadSource !== oldLeadSource) {
+      await prisma.booking.update({
+        where: { id: existingDemo.booking.id },
+        data: { leadSource },
+      });
+      await prisma.deal.updateMany({
+        where: { demoId },
+        data: { leadSource },
+      });
+      await prisma.auditLog.create({
+        data: {
+          entityType: "booking",
+          entityId: existingDemo.booking.id,
+          action: "lead_source_update",
+          oldValue: JSON.stringify({ leadSource: oldLeadSource }),
+          newValue: JSON.stringify({ leadSource }),
+          performedBy: "admin",
+        },
+      });
     }
   }
 

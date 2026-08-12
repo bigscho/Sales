@@ -30,8 +30,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const {
     weekId, demoId, closerId, prospectName, prospectEmail,
-    stripeCustomerId, stripeSubscriptionId, dealType, status, month1Cash, notes,
+    stripeCustomerId, stripeSubscriptionId, dealType, status, month1Cash, notes, leadSource,
   } = body;
+
+  // Fed vs self-sourced: explicit value wins, else inherit from the linked
+  // demo's booking (where it was fixed at booking time), else fed.
+  let resolvedLeadSource = leadSource;
+  if (!resolvedLeadSource && demoId) {
+    const demo = await prisma.demo.findUnique({ where: { id: demoId }, include: { booking: true } });
+    resolvedLeadSource = demo?.booking.leadSource;
+  }
 
   const deal = await prisma.deal.create({
     data: {
@@ -43,6 +51,7 @@ export async function POST(request: NextRequest) {
       stripeCustomerId,
       stripeSubscriptionId,
       dealType: dealType || "subscription",
+      leadSource: resolvedLeadSource || "fed",
       status: status || "pending",
       month1Cash: month1Cash || 0,
       notes,

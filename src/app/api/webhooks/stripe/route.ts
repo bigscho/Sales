@@ -108,6 +108,9 @@ async function autoMatchAndLink(paymentId: string, payment: {
             status: "closed_won",
             closedAt: new Date(),
             month1Cash: payment.amountCents,
+            // Fed vs self-sourced was fixed when the demo was booked — the deal
+            // carries it so closer commission reads it without re-deriving.
+            leadSource: demo.booking.leadSource,
           },
         });
 
@@ -359,6 +362,9 @@ export async function POST(request: NextRequest) {
             data: {
               refundedCents: amountRefunded,
               status: isFullRefund ? "refunded" : "partially_refunded",
+              // First refund timestamp only — keeps the 60-day clawback window
+              // anchored to when the money actually went back.
+              refundedAt: existing.refundedAt || new Date(),
             },
           });
 
@@ -456,7 +462,12 @@ export async function POST(request: NextRequest) {
 
           await prisma.payment.update({
             where: { id: existing.id },
-            data: { status: newStatus, refundedCents },
+            data: {
+              status: newStatus,
+              refundedCents,
+              // A lost dispute is a reversal for clawback purposes too
+              ...(disputeStatus !== "won" ? { refundedAt: existing.refundedAt || new Date() } : {}),
+            },
           });
 
           try {

@@ -12,8 +12,13 @@ A real-time sales operations dashboard for Grassfed (cold email agency). Tracks 
 
 The sales team consists of:
 - **Setters** (Ming, Luke, Jett) — book demos via cold calling
-- **Closers** (Colin, Mark) — run demos and close deals
+- **Closers** (Colin, Matthew, Will Farrell) — run demos and close deals. Will (`closer-will`) is the only comped closer (1099 contract, Aug 2026); Colin and Matthew are tracked for attribution but draw no pay. Mark departed Aug 2026 (`closer-mark`, isActive=false).
 - **Show Rate Rep** (Belayneh) — ensures prospects show up to their demos
+
+### Closer contract tracking (Aug 2026 — Will's 1099 contract)
+- **Lead source (fed vs self-sourced), §4.6**: `Booking.leadSource` + `Deal.leadSource` (`fed` | `self_sourced`, default fed). Fixed at booking: when the Calendly/GCal "Booked by" field names the closer hosting the demo, the booking is `self_sourced`; everything else (setter name, blank, mismatched host) is `fed` — matching the contract's §4.12(b) presumption. Reschedule successors INHERIT the original row's leadSource; who handles a reschedule never changes it. Corrections: FED/SELF toggle on /demos (audit action `lead_source_update`) and /deals; a demo-side change syncs the linked deal. Convention: **when a closer books their own deal they type their own name in "Booked by"**.
+- **Closer payroll** (`src/lib/payroll.ts` → `CLOSER_COMP`, keyed by TeamMember id): weekly commission on new-business cash collected that week (16% fed / 25% self; payments with effective customerStatus "returning" or revenueType "misc" excluded), clawback line for refunds/lost disputes within 60 days of collection (`Payment.refundedAt`, set by the Stripe webhook), and monthly base $3,500 emitted in the payroll week containing the month's last day — volume floor (<20 closes → $0) and quality floor (fed close rate <25% → −$200/full point, floor $1,500, applied only at 15+ fed demos showed).
+- **Closer self-serve**: `/api/closer/stats` + "My Numbers" panel on /deals (closer role) — MTD closes, fed close rate, cash split, commission, projected base.
 
 ---
 
@@ -121,7 +126,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | RSA private key for GCal service account |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (whsec_...) |
 | `STRIPE_SECRET_KEY` | Stripe secret key for API calls |
-| `FIREFLIES_API_KEY` | Comma-separated: Colin's key, Mark's key |
+| `FIREFLIES_API_KEY` | Comma-separated. Colin's key is a Fireflies TEAM ADMIN key — verified Aug 2026 that it returns transcripts org-wide (Matthew, Danielle, Will incl.), so new closers need NO key change, just a seat in the Fireflies workspace. Mark's key still in the list is harmless dead weight. |
 | `SLACK_WEBHOOK_URL` | #sales-team channel webhook |
 | `SLACK_CEO_WEBHOOK_URL` | CEO DM webhook |
 | `SLACK_SETTER_WEBHOOK_URL` | #setter-tpds channel webhook |

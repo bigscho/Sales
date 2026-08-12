@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCents, formatDate } from "@/lib/utils";
+import { CloserStatsPanel } from "@/components/closer-stats";
+import { useSession } from "@/components/app-shell";
 
 interface DealRecord {
   id: string;
@@ -13,6 +15,7 @@ interface DealRecord {
   prospectEmail: string | null;
   stripeCustomerId: string | null;
   dealType: string;
+  leadSource: string;
   month1Cash: number;
   status: string;
   closedAt: string | null;
@@ -40,6 +43,7 @@ const statusOptions = [
 
 export default function DealsPage() {
   const searchParams = useSearchParams();
+  const session = useSession();
   const weekId = searchParams.get("weekId") || "";
   const [deals, setDeals] = useState<DealRecord[]>([]);
   const [unlinkedPayments, setUnlinkedPayments] = useState<{ id: string; amountCents: number; customerName: string | null; customerEmail: string | null; paidAt: string; stripePaymentIntentId: string | null; revenueType: string; matchStatus: string; matchReason: string | null; isSubscription: boolean }[]>([]);
@@ -103,6 +107,9 @@ export default function DealsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Closer self-serve scoreboard — their own contract numbers */}
+      {session?.role === "closer" && !session?.isAdmin && <CloserStatsPanel />}
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Deals</h2>
@@ -158,6 +165,7 @@ export default function DealsPage() {
                 <th className="text-left p-3 font-medium">Prospect</th>
                 <th className="text-left p-3 font-medium">Closer</th>
                 <th className="text-left p-3 font-medium">Type</th>
+                <th className="text-left p-3 font-medium">Source</th>
                 <th className="text-left p-3 font-medium">Status</th>
                 <th className="text-right p-3 font-medium">Month 1 Cash</th>
                 <th className="text-right p-3 font-medium">Payments</th>
@@ -189,6 +197,24 @@ export default function DealsPage() {
                     </td>
                     <td className="p-3"><Badge variant="secondary">{deal.dealType}</Badge></td>
                     <td className="p-3">
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateDeal(deal.id, { leadSource: deal.leadSource === "self_sourced" ? "fed" : "self_sourced" });
+                        }}
+                        title={deal.leadSource === "self_sourced"
+                          ? "Self-sourced (25%) — click to change to Fed"
+                          : "Fed / SDR-booked (16%) — click to change to Self-sourced"}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold cursor-pointer transition-opacity hover:opacity-70 ${
+                          deal.leadSource === "self_sourced"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                        }`}
+                      >
+                        {deal.leadSource === "self_sourced" ? "SELF" : "FED"}
+                      </span>
+                    </td>
+                    <td className="p-3">
                       <select
                         value={deal.status}
                         onChange={(e) => { e.stopPropagation(); updateDeal(deal.id, { status: e.target.value }); }}
@@ -216,7 +242,7 @@ export default function DealsPage() {
                   </tr>
                   {expandedDeal === deal.id && (
                     <tr key={`${deal.id}-detail`}>
-                      <td colSpan={7} className="bg-[var(--muted)] p-4">
+                      <td colSpan={8} className="bg-[var(--muted)] p-4">
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
                             <p className="font-medium text-[var(--muted-foreground)]">Stripe Customer ID</p>
@@ -252,7 +278,7 @@ export default function DealsPage() {
               ))}
               {deals.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-[var(--muted-foreground)]">
+                  <td colSpan={8} className="p-8 text-center text-[var(--muted-foreground)]">
                     No deals this week. Add deals manually or they&apos;ll be created from confirmed demos.
                   </td>
                 </tr>

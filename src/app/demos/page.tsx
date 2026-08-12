@@ -26,6 +26,7 @@ interface DemoRecord {
     demoDate: string;
     createdAt: string;
     source: string;
+    leadSource: string;
     setter: { id: string; name: string } | null;
   };
   closer: { id: string; name: string } | null;
@@ -380,6 +381,7 @@ export default function DemosPage() {
             <th className="text-left p-2 font-medium w-16">Time</th>
             <th className="text-left p-2 font-medium w-24">Setter</th>
             <th className="text-left p-2 font-medium w-16">Closer</th>
+            <th className="text-left p-2 font-medium w-14">Source</th>
             <th className="text-left p-2 font-medium w-20">Status</th>
             <th className="text-left p-2 font-medium whitespace-nowrap">Confirmed By</th>
             <th className="p-2 w-8"></th>
@@ -432,6 +434,27 @@ export default function DemosPage() {
                   </select>
                 </td>
                 <td className="p-2">{demo.closer?.name || "—"}</td>
+                <td className="p-2">
+                  <button
+                    onClick={() => {
+                      if (dayLock) return;
+                      updateDemo(demo.id, { leadSource: demo.booking.leadSource === "self_sourced" ? "fed" : "self_sourced" });
+                    }}
+                    disabled={!!dayLock}
+                    title={demo.booking.leadSource === "self_sourced"
+                      ? "Self-sourced by the closer (25%) — click to change to Fed"
+                      : "Fed / SDR-booked (16%) — click to change to Self-sourced"}
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold transition-opacity ${
+                      dayLock ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-70"
+                    } ${
+                      demo.booking.leadSource === "self_sourced"
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {demo.booking.leadSource === "self_sourced" ? "SELF" : "FED"}
+                  </button>
+                </td>
                 <td className="p-2">
                   <select
                     value={demo.status}
@@ -510,7 +533,7 @@ export default function DemosPage() {
           })}
           {demosToShow.length === 0 && (
             <tr>
-              <td colSpan={isWeekView ? 9 : 8} className="p-8 text-center text-[var(--muted-foreground)]">
+              <td colSpan={isWeekView ? 10 : 9} className="p-8 text-center text-[var(--muted-foreground)]">
                 {isWeekView ? "No demos this week" : `No demos on ${DAY_NAMES[selectedDay]}`}
               </td>
             </tr>

@@ -55,6 +55,7 @@ export async function PATCH(request: NextRequest) {
           status: "closed_won",
           closedAt: new Date(),
           month1Cash: payment?.amountCents || 0,
+          leadSource: demo.booking.leadSource,
         },
       });
     }

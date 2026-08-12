@@ -72,6 +72,10 @@ model Booking {
   prospectTimezone String?  // IANA tz from Calendly invitee, for prospect-local send timing
   source           String   @default("auto") // auto | manual
   blastSourced     Boolean  @default(false) // true if prospect was SMS-blasted within 14 days
+  // Closer-contract lead source (§4.6): "self_sourced" only when the closer both
+  // originated the lead and booked the demo ("Booked by: <closer>" on their own
+  // calendar). Fixed at booking; successors inherit it; ambiguity = "fed" (§4.12b).
+  leadSource       String   @default("fed") // fed | self_sourced
   // Immutable-history model: a reschedule/rebook never moves a row to another week.
   // Instead the old row is frozen (supersededAt set) and a successor row is created,
   // linked via rescheduledFromId. Frozen rows keep their week's activity + outcome forever.
@@ -118,6 +122,7 @@ model Deal {
   stripeCustomerId     String?
   stripeSubscriptionId String?
   dealType             String    @default("subscription") // subscription | one_time
+  leadSource           String    @default("fed") // fed | self_sourced — copied from the demo's booking at creation; drives closer commission rate
   month1Cash           Int       @default(0) // cents
   status               String    @default("pending") // closed_won | closed_lost | pending | held
   closedAt             DateTime?
@@ -140,6 +145,7 @@ model Payment {
   stripeSubscriptionId  String?  // set only if payment is from an actual subscription
   amountCents           Int
   refundedCents         Int      @default(0)  // total refunded amount
+  refundedAt            DateTime? // when the (first) refund/lost dispute landed — drives the 60-day commission clawback window
   currency              String   @default("usd")
   status                String   // succeeded | pending | failed | refunded | partially_refunded | disputed
   paidAt                DateTime

@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
                 status: "closed_won",
                 month1Cash: payment.amountCents,
                 closedAt: payment.paidAt,
+                leadSource: demo.booking.leadSource,
               },
             });
 

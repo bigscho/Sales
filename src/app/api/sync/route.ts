@@ -114,9 +114,9 @@ async function syncGoogleCalendar(): Promise<number> {
   const apiKey = process.env.GOOGLE_CALENDAR_API_KEY;
   if (!apiKey) return 0;
 
-  // Sync both Colin and Mark's calendars
-  const calendarIds = (process.env.GOOGLE_CALENDAR_IDS || "colin@grsfd.co,mark@grsfd.co").split(",");
-  const closerMap: Record<string, string> = { "colin@grsfd.co": "Colin", "mark@grsfd.co": "Mark" };
+  // Sync the active closers' calendars
+  const calendarIds = (process.env.GOOGLE_CALENDAR_IDS || "colin@grsfd.co,will.farrell@grsfd.co").split(",");
+  const closerMap: Record<string, string> = { "colin@grsfd.co": "Colin", "will.farrell@grsfd.co": "Will" };
 
   const now = new Date();
   const fourWeeksAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);

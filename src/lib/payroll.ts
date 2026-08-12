@@ -13,15 +13,56 @@ interface SetterPayResult {
   breakdown: string;
 }
 
+// === Closer comp (1099 contract, Aug 2026) ===
+// Will is the only comped closer — Colin and Matthew close deals but draw no
+// pay from this system. Contract terms (§4): weekly commission on NEW-BUSINESS
+// cash collected that week (16% fed / 25% self-sourced), monthly base $3,500
+// paid in arrears, gated by a volume floor (<20 closes → no base) and a quality
+// floor (fed close rate <25% → −$200 per full point, floor $1,500, applied only
+// in months with 15+ fed demos showed). Refunds/chargebacks within 60 days of
+// collection reverse the commission (§4.8).
+export interface CloserCompConfig {
+  fedRate: number;
+  selfRate: number;
+  monthlyBaseCents: number;
+}
+
+export const CLOSER_COMP: Record<string, CloserCompConfig> = {
+  "closer-will": { fedRate: 0.16, selfRate: 0.25, monthlyBaseCents: 350000 },
+};
+
+export interface CloserMonthlyBase {
+  monthLabel: string; // "August 2026"
+  closes: number;
+  fedCloses: number;
+  fedDemosShowed: number;
+  fedCloseRate: number | null; // 0–1; null when no fed demos showed
+  amountCents: number;
+  note: string;
+}
+
+export interface CloserCommissionRange {
+  fedCashCents: number;
+  selfCashCents: number;
+  commissionCents: number;
+  clawbackCents: number; // negative or 0
+  paymentCount: number;
+  deals: { prospectName: string; cashCents: number; leadSource: string }[];
+}
+
 interface CloserPayResult {
   teamMemberId: string;
   name: string;
+  hasComp: boolean;
   dealsClosedCount: number;
-  month1Cash: number; // cents
+  month1Cash: number; // cents — total commissionable cash this week
+  fedCashCents: number;
+  selfCashCents: number;
   commission: number; // cents
-  weeklyBase: number; // cents
+  clawback: number; // cents, negative or 0
+  monthlyBase: CloserMonthlyBase | null; // present only in the week containing a month end
   totalPay: number; // cents
-  deals: { prospectName: string; month1Cash: number }[];
+  deals: { prospectName: string; cashCents: number; leadSource: string }[];
 }
 
 interface ShowRateRepResult {
@@ -86,38 +127,203 @@ export async function calculateSetterPay(setterId: string, weekId: string): Prom
   };
 }
 
-export async function calculateCloserPay(closerId: string, weekId: string): Promise<CloserPayResult> {
-  const closer = await prisma.teamMember.findUniqueOrThrow({ where: { id: closerId } });
+// A payment counts toward closer commission only when it's the client's first
+// purchase ("new business", §4.5 — overrides win) and not a misc adjustment.
+type CommissionablePayment = {
+  amountCents: number;
+  refundedCents: number;
+  paidAt: Date;
+  refundedAt: Date | null;
+  status: string;
+  customerStatus: string;
+  customerStatusOverride: string | null;
+  revenueType: string;
+  revenueTypeOverride: string | null;
+  deal: { prospectName: string; leadSource: string } | null;
+};
+
+function isNewBusiness(p: CommissionablePayment): boolean {
+  if ((p.customerStatusOverride || p.customerStatus) === "returning") return false;
+  if ((p.revenueTypeOverride || p.revenueType) === "misc") return false;
+  return p.status !== "failed";
+}
+
+// Commission + clawback for a date range, cash-collected basis (§4.7):
+// commission accrues on payments that LANDED in the range; clawback reverses
+// commission on payments whose refund landed in the range within 60 days of
+// collection (§4.8).
+export async function computeCloserCommission(
+  closerId: string,
+  comp: CloserCompConfig,
+  rangeStart: Date,
+  rangeEnd: Date
+): Promise<CloserCommissionRange> {
+  const collected = await prisma.payment.findMany({
+    where: {
+      paidAt: { gte: rangeStart, lte: rangeEnd },
+      deal: { closerId, status: "closed_won" },
+    },
+    include: { deal: { select: { prospectName: true, leadSource: true } } },
+  });
+
+  let fedCashCents = 0;
+  let selfCashCents = 0;
+  let commissionCents = 0;
+  const dealAgg = new Map<string, { prospectName: string; cashCents: number; leadSource: string }>();
+
+  for (const p of collected) {
+    if (!p.deal || !isNewBusiness(p)) continue;
+    const self = p.deal.leadSource === "self_sourced";
+    if (self) selfCashCents += p.amountCents;
+    else fedCashCents += p.amountCents;
+    commissionCents += Math.round(p.amountCents * (self ? comp.selfRate : comp.fedRate));
+
+    const key = p.deal.prospectName;
+    const agg = dealAgg.get(key) || { prospectName: key, cashCents: 0, leadSource: p.deal.leadSource };
+    agg.cashCents += p.amountCents;
+    dealAgg.set(key, agg);
+  }
+
+  // Clawback: refunds recorded in the range on this closer's deals, where the
+  // reversal came within 60 days of collection.
+  const refunded = await prisma.payment.findMany({
+    where: {
+      refundedAt: { gte: rangeStart, lte: rangeEnd },
+      refundedCents: { gt: 0 },
+      deal: { closerId },
+    },
+    include: { deal: { select: { prospectName: true, leadSource: true } } },
+  });
+
+  let clawbackCents = 0;
+  for (const p of refunded) {
+    if (!p.deal || !isNewBusiness(p)) continue;
+    if (!p.refundedAt) continue;
+    const withinWindow = p.refundedAt.getTime() - p.paidAt.getTime() <= 60 * 24 * 60 * 60 * 1000;
+    if (!withinWindow) continue;
+    const self = p.deal.leadSource === "self_sourced";
+    clawbackCents -= Math.round(p.refundedCents * (self ? comp.selfRate : comp.fedRate));
+  }
+
+  return {
+    fedCashCents,
+    selfCashCents,
+    commissionCents,
+    clawbackCents,
+    paymentCount: collected.length,
+    deals: Array.from(dealAgg.values()),
+  };
+}
+
+// Monthly base with the two contract floors (§4.2–4.4).
+export async function calculateCloserMonthlyBase(
+  closerId: string,
+  comp: CloserCompConfig,
+  year: number,
+  monthIndex: number // 0-based
+): Promise<CloserMonthlyBase> {
+  const monthStart = new Date(Date.UTC(year, monthIndex, 1));
+  const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
+  const monthLabel = monthStart.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
   const deals = await prisma.deal.findMany({
+    where: { closerId, status: "closed_won", closedAt: { gte: monthStart, lte: monthEnd } },
+    select: { leadSource: true },
+  });
+  const closes = deals.length;
+  const fedCloses = deals.filter((d) => d.leadSource !== "self_sourced").length;
+
+  // Quality-floor denominator: fed demos that actually SHOWED this month (§5).
+  const fedDemosShowed = await prisma.demo.count({
     where: {
-      weekId,
       closerId,
-      status: "closed_won",
-    },
-    include: {
-      payments: { where: { isMonth1: true } },
+      status: "showed",
+      booking: {
+        leadSource: { not: "self_sourced" },
+        demoDate: { gte: monthStart, lte: monthEnd },
+      },
     },
   });
 
-  const dealDetails = deals.map((d) => ({
-    prospectName: d.prospectName,
-    month1Cash: d.payments.reduce((sum, p) => sum + p.amountCents, 0),
-  }));
+  const fedCloseRate = fedDemosShowed > 0 ? fedCloses / fedDemosShowed : null;
 
-  const totalMonth1Cash = dealDetails.reduce((sum, d) => sum + d.month1Cash, 0);
-  const commission = Math.round(totalMonth1Cash * 0.20);
-  const weeklyBase = Math.round(200000 / 4.33); // $2000/month / 4.33 weeks
+  let amountCents = comp.monthlyBaseCents;
+  let note = "full base";
+
+  if (closes < 20) {
+    // Volume floor (§4.3): under 20 closes → commission only, no base.
+    amountCents = 0;
+    note = `volume floor: ${closes}/20 closes — no base this month`;
+  } else if (fedDemosShowed >= 15 && fedCloseRate !== null) {
+    // Quality floor (§4.4): −$200 per full point below 25%, floored at $1,500.
+    const pct = fedCloseRate * 100;
+    if (pct < 25) {
+      const pointsUnder = Math.floor(25 - pct);
+      amountCents = Math.max(comp.monthlyBaseCents - pointsUnder * 20000, 150000);
+      note = `quality floor: ${pct.toFixed(1)}% fed close rate (−$${pointsUnder * 200})`;
+    }
+  } else if (closes >= 20 && fedDemosShowed < 15) {
+    note = "quality floor waived (<15 fed demos showed)";
+  }
+
+  return { monthLabel, closes, fedCloses, fedDemosShowed, fedCloseRate, amountCents, note };
+}
+
+// The month whose last day falls inside [weekStart, weekEnd], if any — that's
+// the payroll week where the monthly base is emitted (base paid in arrears).
+function monthEndingInWeek(weekStart: Date, weekEnd: Date): { year: number; monthIndex: number } | null {
+  const lastDayOfStartMonth = new Date(Date.UTC(
+    weekStart.getUTCFullYear(), weekStart.getUTCMonth() + 1, 0, 23, 59, 59, 999
+  ));
+  if (lastDayOfStartMonth >= weekStart && lastDayOfStartMonth <= weekEnd) {
+    return { year: weekStart.getUTCFullYear(), monthIndex: weekStart.getUTCMonth() };
+  }
+  return null;
+}
+
+export async function calculateCloserPay(closerId: string, weekId: string): Promise<CloserPayResult> {
+  const closer = await prisma.teamMember.findUniqueOrThrow({ where: { id: closerId } });
+  const comp = CLOSER_COMP[closer.id];
+
+  if (!comp) {
+    // Tracked closer with no comp (Colin, Matthew) — demos/deals count, pay doesn't.
+    return {
+      teamMemberId: closer.id,
+      name: closer.name,
+      hasComp: false,
+      dealsClosedCount: 0,
+      month1Cash: 0,
+      fedCashCents: 0,
+      selfCashCents: 0,
+      commission: 0,
+      clawback: 0,
+      monthlyBase: null,
+      totalPay: 0,
+      deals: [],
+    };
+  }
+
+  const week = await prisma.week.findUniqueOrThrow({ where: { id: weekId } });
+  const range = await computeCloserCommission(closer.id, comp, week.weekStart, week.weekEnd);
+
+  const monthEnd = monthEndingInWeek(week.weekStart, week.weekEnd);
+  const monthlyBase = monthEnd
+    ? await calculateCloserMonthlyBase(closer.id, comp, monthEnd.year, monthEnd.monthIndex)
+    : null;
 
   return {
     teamMemberId: closer.id,
     name: closer.name,
-    dealsClosedCount: deals.length,
-    month1Cash: totalMonth1Cash,
-    commission,
-    weeklyBase,
-    totalPay: weeklyBase + commission,
-    deals: dealDetails,
+    hasComp: true,
+    dealsClosedCount: range.deals.length,
+    month1Cash: range.fedCashCents + range.selfCashCents,
+    fedCashCents: range.fedCashCents,
+    selfCashCents: range.selfCashCents,
+    commission: range.commissionCents,
+    clawback: range.clawbackCents,
+    monthlyBase,
+    totalPay: range.commissionCents + range.clawbackCents + (monthlyBase?.amountCents || 0),
+    deals: range.deals,
   };
 }
 
@@ -208,27 +414,45 @@ export async function generatePayroll(weekId: string) {
     }
   }
 
-  // Closer pay
+  // Closer pay — contract terms, comped closers only (Colin/Matthew are tracked
+  // for attribution but draw no pay; see CLOSER_COMP).
   for (const closer of closers) {
     const pay = await calculateCloserPay(closer.id, weekId);
-    lineItems.push({
-      payrollRunId: payrollRun.id,
-      teamMemberId: closer.id,
-      lineType: "base",
-      description: "Weekly base ($2,000/mo)",
-      quantity: 1,
-      rateCents: pay.weeklyBase,
-      amountCents: pay.weeklyBase,
-    });
+    if (!pay.hasComp) continue;
+
     if (pay.commission > 0) {
+      const fedStr = `fed $${(pay.fedCashCents / 100).toFixed(2)} @16%`;
+      const selfStr = pay.selfCashCents > 0 ? ` + self $${(pay.selfCashCents / 100).toFixed(2)} @25%` : "";
       lineItems.push({
         payrollRunId: payrollRun.id,
         teamMemberId: closer.id,
         lineType: "commission",
-        description: `20% of $${(pay.month1Cash / 100).toFixed(2)} Month 1 cash (${pay.dealsClosedCount} deals)`,
+        description: `New-business commission: ${fedStr}${selfStr} (${pay.dealsClosedCount} deals)`,
         quantity: pay.dealsClosedCount,
         rateCents: Math.round(pay.commission / Math.max(pay.dealsClosedCount, 1)),
         amountCents: pay.commission,
+      });
+    }
+    if (pay.clawback < 0) {
+      lineItems.push({
+        payrollRunId: payrollRun.id,
+        teamMemberId: closer.id,
+        lineType: "commission",
+        description: "Clawback — refund/chargeback within 60 days of collection",
+        quantity: 1,
+        rateCents: pay.clawback,
+        amountCents: pay.clawback,
+      });
+    }
+    if (pay.monthlyBase) {
+      lineItems.push({
+        payrollRunId: payrollRun.id,
+        teamMemberId: closer.id,
+        lineType: "base",
+        description: `Monthly base — ${pay.monthlyBase.monthLabel}: ${pay.monthlyBase.note} (${pay.monthlyBase.closes} closes, ${pay.monthlyBase.fedCloses}/${pay.monthlyBase.fedDemosShowed} fed)`,
+        quantity: 1,
+        rateCents: pay.monthlyBase.amountCents,
+        amountCents: pay.monthlyBase.amountCents,
       });
     }
   }

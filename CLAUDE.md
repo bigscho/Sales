@@ -23,6 +23,13 @@ DB: Neon PostgreSQL via Prisma ORM.
 - **Automation MUST NOT overwrite manual setter corrections.** Never re-parse the description on a routine cron poll of an already-known event — that silently reverts operator backfills. See `sync/gcal/route.ts` comment at the compositeId-match branch. PR #6 enforced this; do not regress it.
 - For the activity counter (scoreboard "new bookings this week"), the source of truth is `Booking.bookedAt`, NOT `createdAt`.
 
+## CRITICAL: Closer contract tracking (Aug 2026) — Will Farrell's 1099 comp
+- Active closers: Colin (`closer-colin`), Matthew (`closer-matthew`), **Will Farrell (`closer-will`)**. Mark departed (`closer-mark`, isActive=false — do NOT re-add his calendar to any sync list; it 404s).
+- **Will is the only comped closer** — comp config lives in `CLOSER_COMP` (src/lib/payroll.ts), keyed by TeamMember id: 16% fed / 25% self-sourced weekly commission on new-business cash collected, $3,500 monthly base with volume floor (<20 closes → $0) + quality floor (fed close rate <25% → −$200/pt, floor $1,500, needs 15+ fed demos showed), 60-day refund clawback. Colin/Matthew have no entry → tracked, unpaid.
+- **`leadSource` (fed | self_sourced)** on Booking + Deal is FIXED AT BOOKING (§4.6): self_sourced only when "Booked by" names the closer hosting the demo. Reschedule successors must always inherit the original row's leadSource — never re-derive it from the rescheduler. Ambiguity defaults to fed (§4.12(b) protects the company). Manual corrections via the FED/SELF toggle on /demos (audit `lead_source_update`); demo-side changes sync the linked deal.
+- Every code path that creates a Deal must copy `leadSource` from the demo's booking (stripe webhook autoMatchAndLink, /api/payments matchToDemoId, /api/reconcile, /api/deals POST).
+- Fireflies show-verification: Colin's API key is a TEAM ADMIN key that returns org-wide transcripts — new closers need only a Fireflies workspace seat, no env change.
+
 ## CRITICAL: Immutable Week History (Aug 2026) — do not regress
 - **A booking row never leaves its week and `bookedAt` is NEVER bumped after row creation.** A real reschedule/rebook freezes the old row (`supersededAt` set; pending demo → `rescheduled`; showed/no_show/cancelled untouchable) and creates a successor row (`rescheduledFromId` link) in the new week, credited to the most-recent setter. Same-event GCal drags of still-pending demos move in place without touching `bookedAt`.
 - All dedup matchers filter `supersededAt: null`. Never mutate a superseded row — it is frozen history and the reason past weeks' numbers no longer restate.
@@ -113,7 +120,7 @@ Show-rate rep work surface at `/confirmations` (role: `show_rate_rep` + admin). 
 - TESTIMONIAL_VIDEO_URL (day-of attachment) — NOT YET SET
 - GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_KEY
 - STRIPE_WEBHOOK_SECRET + STRIPE_SECRET_KEY
-- FIREFLIES_API_KEY (comma-separated: Colin's,Mark's)
+- FIREFLIES_API_KEY (comma-separated; Colin's is a team-admin key that sees ALL members' transcripts — covers Will/Matthew with no change)
 - SLACK_WEBHOOK_URL (#sales-team)
 - SLACK_CEO_WEBHOOK_URL (CEO DM)
 - SLACK_SETTER_WEBHOOK_URL (#setter-tpds)

@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import * as crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
+import { matchCloserByName, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 
 // Google Calendar sync via service account
-// Reads Calendly-booked events from Colin and Mark's calendars,
+// Reads Calendly-booked events from the active closers' calendars,
 // creates/updates bookings + demos, and detects reschedules.
+// NOTE: each calendar must be shared with the service account
+// (GOOGLE_SERVICE_ACCOUNT_EMAIL) or its sync 404s on every poll.
 
 const CALENDARS = [
   { email: "colin@grsfd.co", closerName: "Colin" },
-  { email: "mark@grsfd.co", closerName: "Mark" },
+  { email: "will.farrell@grsfd.co", closerName: "Will" },
 ];
 
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
@@ -144,7 +147,7 @@ function parseProspectName(summary: string): string {
   // Strip the closer's full name (first + last) from the summary
   const cleaned = summary
     .replace(/Grassfed Demo\s*[-:]\s*/i, "")
-    .replace(/\s+and\s+(Colin|Mark)(\s+\w+)?\s*$/i, "")
+    .replace(/\s+and\s+(Colin|Will|Matthew|Mark)(\s+\w+)?\s*$/i, "")
     .trim();
   return cleaned || summary || "Unknown";
 }
@@ -188,6 +191,7 @@ type OldBookingForSplit = {
   prospectPhone: string | null;
   setterId: string | null;
   calendarEventId: string | null;
+  leadSource: string;
   demo: { id: string; status: string; closerId: string | null } | null;
 };
 
@@ -240,6 +244,8 @@ async function supersedeAndCreate(opts: {
       demoDate: opts.newDemoDate,
       calendarEventId: newEventId,
       source: "gcal_sync",
+      // Lead source is fixed at the ORIGINAL booking (§4.6) — reschedules inherit it.
+      leadSource: opts.old.leadSource,
       rescheduledFromId: opts.old.id,
     },
   });
@@ -572,14 +578,21 @@ async function syncCalendar(
         }
       }
 
-      // Resolve setter
+      // Resolve setter + lead source. "Booked by" naming the closer whose calendar
+      // this is = the closer booked it themselves → self-sourced (contract §4.6).
       let setterId: string | null = null;
+      let leadSource = LEAD_SOURCE_FED;
       const setterName = parseSetterName(description);
       if (setterName) {
-        const setter = await prisma.teamMember.findFirst({
-          where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
-        });
-        setterId = setter?.id || null;
+        const closerBookedBy = await matchCloserByName(setterName);
+        if (closerBookedBy) {
+          if (closerId && closerBookedBy.id === closerId) leadSource = LEAD_SOURCE_SELF;
+        } else {
+          const setter = await prisma.teamMember.findFirst({
+            where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
+          });
+          setterId = setter?.id || null;
+        }
       }
 
       // Find or create week
@@ -604,6 +617,7 @@ async function syncCalendar(
           demoDate: eventStart,
           calendarEventId: compositeId,
           source: "gcal_sync",
+          leadSource,
         },
       });
 

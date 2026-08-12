@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
+import { matchCloserByName, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 
 // Calendly sends: invitee.created, invitee.canceled
 // GCal sync may have already created the booking with a different calendarEventId format.
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
       // Dynamic: pull closer last names from DB + known spelling variants
       const closers = await prisma.teamMember.findMany({ where: { role: "closer" } });
       const closerLastNames = closers.flatMap(c => c.name.split(/\s+/).slice(1));
-      const variants = ["Wittlesey", "Whittelsey", "Schofield"];
+      const variants = ["Wittlesey", "Whittelsey", "Schofield", "Farrell"];
       for (const v of variants) {
         if (!closerLastNames.includes(v)) closerLastNames.push(v);
       }
@@ -300,16 +301,21 @@ export async function POST(request: NextRequest) {
         const incomingSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
         let successorSetterId: string | null = existing.setterId;
         if (incomingSetterName) {
-          const setterMatch = await prisma.teamMember.findFirst({
-            where: { name: { contains: incomingSetterName, mode: "insensitive" }, role: "setter" },
-          });
-          if (setterMatch) {
-            successorSetterId = setterMatch.id;
-          } else {
-            const newMember = await prisma.teamMember.create({
-              data: { name: incomingSetterName, role: "setter", excludeFromLeaderboard: true },
+          // A closer rescheduling their own booking is not a setter — don't create
+          // a junk setter row for their name; keep the previous setter (if any).
+          const closerBookedBy = await matchCloserByName(incomingSetterName);
+          if (!closerBookedBy) {
+            const setterMatch = await prisma.teamMember.findFirst({
+              where: { name: { contains: incomingSetterName, mode: "insensitive" }, role: "setter" },
             });
-            successorSetterId = newMember.id;
+            if (setterMatch) {
+              successorSetterId = setterMatch.id;
+            } else {
+              const newMember = await prisma.teamMember.create({
+                data: { name: incomingSetterName, role: "setter", excludeFromLeaderboard: true },
+              });
+              successorSetterId = newMember.id;
+            }
           }
         }
 
@@ -347,6 +353,9 @@ export async function POST(request: NextRequest) {
             demoDate: demoDate!,
             calendarEventId: calendlyId,
             source: "calendly_webhook",
+            // Lead source is fixed at the ORIGINAL booking (§4.6) — a reschedule
+            // never changes fed vs self-sourced, no matter who handled it.
+            leadSource: existing.leadSource,
             rescheduledFromId: existing.id,
           },
         });
@@ -387,31 +396,43 @@ export async function POST(request: NextRequest) {
         update: {},
       });
 
-      // Resolve setter — use contains matching to handle whitespace/special chars in Q&A answers
-      const setterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
-      let setterId: string | null = null;
-      if (setterName) {
-        const setter = await prisma.teamMember.findFirst({
-          where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
-        });
-        setterId = setter?.id || null;
-
-        // Auto-create non-setter bookers (CEO, guests) as excluded from leaderboard
-        if (!setterId) {
-          const newMember = await prisma.teamMember.create({
-            data: { name: setterName, role: "setter", excludeFromLeaderboard: true },
-          });
-          setterId = newMember.id;
-        }
-      }
-
-      // Resolve closer
+      // Resolve closer (Calendly event host) — needed before setter resolution so
+      // a "Booked by: <closer>" on their own calendar can be tagged self-sourced
       let closerId: string | null = null;
       if (closerName) {
         const closer = await prisma.teamMember.findFirst({
           where: { name: { contains: closerName, mode: "insensitive" }, role: "closer" },
         });
         closerId = closer?.id || null;
+      }
+
+      // Resolve setter — use contains matching to handle whitespace/special chars in Q&A answers
+      const setterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+      let setterId: string | null = null;
+      let leadSource = LEAD_SOURCE_FED;
+      if (setterName) {
+        // "Booked by" naming a closer = the closer booked it themselves. On their
+        // own calendar that's a self-sourced deal (contract §4.6); no setter credit
+        // and no junk setter row either way.
+        const closerBookedBy = await matchCloserByName(setterName);
+        if (closerBookedBy) {
+          if (closerId && closerBookedBy.id === closerId) {
+            leadSource = LEAD_SOURCE_SELF;
+          }
+        } else {
+          const setter = await prisma.teamMember.findFirst({
+            where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
+          });
+          setterId = setter?.id || null;
+
+          // Auto-create non-setter bookers (CEO, guests) as excluded from leaderboard
+          if (!setterId) {
+            const newMember = await prisma.teamMember.create({
+              data: { name: setterName, role: "setter", excludeFromLeaderboard: true },
+            });
+            setterId = newMember.id;
+          }
+        }
       }
 
       const booking = await prisma.booking.create({
@@ -427,6 +448,7 @@ export async function POST(request: NextRequest) {
           demoDate: effectiveDate,
           calendarEventId: calendlyId,
           source: "calendly_webhook",
+          leadSource,
         },
       });
 
@@ -443,7 +465,7 @@ export async function POST(request: NextRequest) {
           entityType: "booking",
           entityId: booking.id,
           action: "calendly_webhook_created",
-          newValue: JSON.stringify({ name: inviteeName, email: inviteeEmail, date: effectiveDate }),
+          newValue: JSON.stringify({ name: inviteeName, email: inviteeEmail, date: effectiveDate, leadSource }),
           performedBy: "calendly_webhook",
         },
       });

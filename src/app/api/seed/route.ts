@@ -12,14 +12,16 @@ export async function POST() {
     { id: "setter-nick", name: "Nick", role: "setter", tier: 1 },
     { id: "setter-evan", name: "Evan", role: "setter", tier: 1 },
     { id: "closer-colin", name: "Colin", role: "closer", tier: 1 },
-    { id: "closer-mark", name: "Mark", role: "closer", tier: 1 },
+    { id: "closer-matthew", name: "Matthew Schofield", role: "closer", tier: 1 },
+    { id: "closer-will", name: "Will Farrell", role: "closer", tier: 1 },
+    { id: "closer-mark", name: "Mark", role: "closer", tier: 1, isActive: false }, // departed Aug 2026
     { id: "rep-belayneh", name: "Belayneh", role: "show_rate_rep", tier: 1 },
   ];
 
   for (const m of members) {
     await prisma.teamMember.upsert({
       where: { id: m.id },
-      update: { name: m.name, role: m.role, tier: m.tier, slackUserId: m.slackUserId, isActive: true, excludeFromLeaderboard: false },
+      update: { name: m.name, role: m.role, tier: m.tier, slackUserId: m.slackUserId, isActive: m.isActive ?? true, excludeFromLeaderboard: false },
       create: m,
     });
   }
