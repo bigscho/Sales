@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBar } from "@/components/ui/status-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCents } from "@/lib/utils";
+import { useSession } from "@/components/app-shell";
 
 
 interface TeamMember { id: string; name: string; role: string }
@@ -88,6 +89,10 @@ function toDateKey(dateStr: string): string {
 
 export default function DemosPage() {
   const searchParams = useSearchParams();
+  const session = useSession();
+  // Closers get a read-mostly view: their own demos, status + FED/SELF edits
+  // only — no deletes, locks, bulk ops, setter reassignment, or payment edits.
+  const isCloser = session?.role === "closer" && !session?.isAdmin;
   const weekId = searchParams.get("weekId") || "";
   const setterFilter = searchParams.get("setter") || "";
   const [demos, setDemos] = useState<DemoRecord[]>([]);
@@ -368,14 +373,16 @@ export default function DemosPage() {
       <table className="w-full text-sm" style={{ minWidth: "800px" }}>
         <thead className="bg-[var(--muted)] border-b">
           <tr>
-            <th className="p-2 pl-3 w-8">
-              <input
-                type="checkbox"
-                checked={demosToShow.length > 0 && demosToShow.every((d) => selectedIds.has(d.id))}
-                onChange={() => toggleSelectAll(demosToShow)}
-                className="rounded"
-              />
-            </th>
+            {!isCloser && (
+              <th className="p-2 pl-3 w-8">
+                <input
+                  type="checkbox"
+                  checked={demosToShow.length > 0 && demosToShow.every((d) => selectedIds.has(d.id))}
+                  onChange={() => toggleSelectAll(demosToShow)}
+                  className="rounded"
+                />
+              </th>
+            )}
             {isWeekView && <th className="text-left p-2 font-medium w-12 text-xs">Day</th>}
             <th className="text-left p-2 font-medium">Prospect</th>
             <th className="text-left p-2 font-medium w-16">Time</th>
@@ -384,7 +391,7 @@ export default function DemosPage() {
             <th className="text-left p-2 font-medium w-14">Source</th>
             <th className="text-left p-2 font-medium w-20">Status</th>
             <th className="text-left p-2 font-medium whitespace-nowrap">Confirmed By</th>
-            <th className="p-2 w-8"></th>
+            {!isCloser && <th className="p-2 w-8"></th>}
           </tr>
         </thead>
         <tbody>
@@ -398,14 +405,16 @@ export default function DemosPage() {
                 demo.status === "no_show" ? "bg-red-50/30" :
                 demo.status === "pending" ? "bg-yellow-50/30" : ""
               }`}>
-                <td className="p-2 pl-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(demo.id)}
-                    onChange={() => toggleSelect(demo.id)}
-                    className="rounded"
-                  />
-                </td>
+                {!isCloser && (
+                  <td className="p-2 pl-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(demo.id)}
+                      onChange={() => toggleSelect(demo.id)}
+                      className="rounded"
+                    />
+                  </td>
+                )}
                 {isWeekView && (
                   <td className="p-2 text-xs font-medium text-[var(--muted-foreground)]">
                     {DAY_NAMES[demoDay]}
@@ -423,15 +432,19 @@ export default function DemosPage() {
                   })}
                 </td>
                 <td className="p-2">
-                  <select
-                    value={demo.booking.setter?.id || ""}
-                    onChange={(e) => updateDemo(demo.id, { setterId: e.target.value || null })}
-                    disabled={!!dayLock}
-                    className={`border rounded px-2 py-1 text-xs ${dayLock ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <option value="">—</option>
-                    {setters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  {isCloser ? (
+                    <span className="text-xs">{demo.booking.setter?.name || "—"}</span>
+                  ) : (
+                    <select
+                      value={demo.booking.setter?.id || ""}
+                      onChange={(e) => updateDemo(demo.id, { setterId: e.target.value || null })}
+                      disabled={!!dayLock}
+                      className={`border rounded px-2 py-1 text-xs ${dayLock ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">—</option>
+                      {setters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  )}
                 </td>
                 <td className="p-2">{demo.closer?.name || "—"}</td>
                 <td className="p-2">
@@ -514,7 +527,7 @@ export default function DemosPage() {
                     )}
                   </div>
                 </td>
-                <td className="p-2">
+                {!isCloser && <td className="p-2">
                   {!dayLock && (
                     <button
                       onClick={() => deleteDemo(demo.id, demo.booking.prospectName)}
@@ -527,13 +540,13 @@ export default function DemosPage() {
                       </svg>
                     </button>
                   )}
-                </td>
+                </td>}
               </tr>
             );
           })}
           {demosToShow.length === 0 && (
             <tr>
-              <td colSpan={isWeekView ? 10 : 9} className="p-8 text-center text-[var(--muted-foreground)]">
+              <td colSpan={(isWeekView ? 10 : 9) - (isCloser ? 2 : 0)} className="p-8 text-center text-[var(--muted-foreground)]">
                 {isWeekView ? "No demos this week" : `No demos on ${DAY_NAMES[selectedDay]}`}
               </td>
             </tr>
@@ -562,11 +575,11 @@ export default function DemosPage() {
     // Revenue type cycle order
     const revenueTypeCycle: Record<string, string> = { mrr: "one_time", one_time: "misc", misc: "mrr", unknown: "mrr" };
 
-    // Badge components
+    // Badge components — read-only for closers (payment overrides are ops-only)
     const typeBadge = (p: PaymentRecord) => {
       const type = getType(p);
       const nextType = revenueTypeCycle[type] || "mrr";
-      const handleClick = (e: React.MouseEvent) => {
+      const handleClick = isCloser ? undefined : (e: React.MouseEvent) => {
         e.stopPropagation();
         fetch('/api/payments', {
           method: 'PATCH',
@@ -574,7 +587,7 @@ export default function DemosPage() {
           body: JSON.stringify({ paymentId: p.id, revenueTypeOverride: nextType })
         }).then(() => loadData());
       };
-      const base = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-opacity hover:opacity-70";
+      const base = `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isCloser ? "" : "cursor-pointer transition-opacity hover:opacity-70"}`;
       if (type === "mrr") return <span onClick={handleClick} title={`Click to change to One-time`} className={`${base} bg-blue-100 text-blue-700`}>MRR</span>;
       if (type === "one_time") return <span onClick={handleClick} title={`Click to change to Misc`} className={`${base} bg-orange-100 text-orange-700`}>One-time</span>;
       if (type === "misc") return <span onClick={handleClick} title={`Click to change to MRR`} className={`${base} bg-[var(--muted)] text-[var(--muted-foreground)]`}>Misc</span>;
@@ -584,7 +597,7 @@ export default function DemosPage() {
     const statusBadge = (p: PaymentRecord) => {
       const status = getStatus(p);
       const nextStatus = status === "new" ? "returning" : "new";
-      const handleClick = (e: React.MouseEvent) => {
+      const handleClick = isCloser ? undefined : (e: React.MouseEvent) => {
         e.stopPropagation();
         fetch('/api/payments', {
           method: 'PATCH',
@@ -592,7 +605,7 @@ export default function DemosPage() {
           body: JSON.stringify({ paymentId: p.id, customerStatusOverride: nextStatus })
         }).then(() => loadData());
       };
-      const base = "inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold cursor-pointer transition-opacity hover:opacity-70";
+      const base = `inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ${isCloser ? "" : "cursor-pointer transition-opacity hover:opacity-70"}`;
       if (status === "new") return <span onClick={handleClick} title="Click to change to Returning" className={`${base} bg-green-100 text-green-700`}>NEW</span>;
       if (status === "returning") return <span onClick={handleClick} title="Click to change to New" className={`${base} bg-blue-50 text-blue-600`}>RTN</span>;
       return null;
@@ -633,7 +646,7 @@ export default function DemosPage() {
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline-block flex-shrink-0">
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
-                        ) : (p.matchStatus === "needs_review" || p.matchStatus === "unmatched") ? (
+                        ) : (p.matchStatus === "needs_review" || p.matchStatus === "unmatched") && !isCloser ? (
                           <span className="relative inline-block">
                             <span
                               className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-100 text-yellow-600 text-xs font-bold flex-shrink-0 cursor-pointer transition-opacity hover:opacity-70 hover:bg-yellow-200"
@@ -752,7 +765,7 @@ export default function DemosPage() {
             </p>
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>+ Add Demo</Button>
+        {!isCloser && <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>+ Add Demo</Button>}
       </div>
 
       {showAddForm && (
@@ -908,9 +921,9 @@ export default function DemosPage() {
                 Week
               </button>
             </div>
-            {/* Action buttons */}
+            {/* Action buttons — bulk day ops + locks are admin/setter-ops only */}
             <div className="flex flex-wrap gap-2 items-center">
-              {viewMode === "day" && selectedPending > 0 && !selectedLock && (
+              {viewMode === "day" && selectedPending > 0 && !selectedLock && !isCloser && (
                 <>
                   <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
                     All Showed ({selectedPending})
@@ -920,12 +933,12 @@ export default function DemosPage() {
                   </Button>
                 </>
               )}
-              {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && (
+              {viewMode === "day" && selectedPending === 0 && selectedDemos.length > 0 && !selectedLock && selectedDayDate && !isCloser && (
                 <Button size="sm" variant="outline" onClick={() => lockDay(selectedDayDate)}>
                   Lock {DAY_NAMES[selectedDay]}
                 </Button>
               )}
-              {viewMode === "day" && selectedLock && (
+              {viewMode === "day" && selectedLock && !isCloser && (
                 <Button size="sm" variant="ghost" onClick={() => unlockDay(selectedLock.date)}>
                   Unlock
                 </Button>

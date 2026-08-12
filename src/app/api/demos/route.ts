@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
@@ -8,9 +9,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "weekId required" }, { status: 400 });
   }
 
+  // Non-admin closers see only their own demos
+  const session = await getSession();
+  const closerScope = session && session.role === "closer" && !session.isAdmin
+    ? { closerId: session.memberId }
+    : {};
+
   const demos = await prisma.demo.findMany({
     where: {
       weekId,
+      ...closerScope,
       ...(setterId ? { booking: { setterId } } : {}),
     },
     include: {
@@ -27,6 +35,8 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
   const { demoId, status, closerId, setterId, notes, leadSource } = body;
+  const session = await getSession();
+  const performedBy = session?.name || "admin";
 
   // Check if demo's day is locked
   const existingDemo = await prisma.demo.findUnique({
@@ -59,7 +69,7 @@ export async function PATCH(request: NextRequest) {
         action: "setter_reassigned",
         oldValue: JSON.stringify({ setterId: oldSetterId }),
         newValue: JSON.stringify({ setterId }),
-        performedBy: "admin",
+        performedBy,
       },
     });
 
@@ -107,7 +117,7 @@ export async function PATCH(request: NextRequest) {
           action: "lead_source_update",
           oldValue: JSON.stringify({ leadSource: oldLeadSource }),
           newValue: JSON.stringify({ leadSource }),
-          performedBy: "admin",
+          performedBy,
         },
       });
     }
@@ -141,7 +151,7 @@ export async function PATCH(request: NextRequest) {
       action: "status_update",
       oldValue: JSON.stringify({ status: oldDemo?.status }),
       newValue: JSON.stringify({ status: demo.status }),
-      performedBy: "admin",
+      performedBy,
     },
   });
 
@@ -228,6 +238,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  // Deleting demos is an admin-only operation — company records are the
+  // authoritative comp source (contract §4.11), so closers can't remove rows.
+  const session = await getSession();
+  if (session && !session.isAdmin) {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
+
   const { demoId } = await request.json();
   if (!demoId) {
     return NextResponse.json({ error: "demoId required" }, { status: 400 });

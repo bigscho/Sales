@@ -44,6 +44,7 @@ const statusOptions = [
 export default function DealsPage() {
   const searchParams = useSearchParams();
   const session = useSession();
+  const isCloser = session?.role === "closer" && !session?.isAdmin;
   const weekId = searchParams.get("weekId") || "";
   const [deals, setDeals] = useState<DealRecord[]>([]);
   const [unlinkedPayments, setUnlinkedPayments] = useState<{ id: string; amountCents: number; customerName: string | null; customerEmail: string | null; paidAt: string; stripePaymentIntentId: string | null; revenueType: string; matchStatus: string; matchReason: string | null; isSubscription: boolean }[]>([]);
@@ -117,9 +118,11 @@ export default function DealsPage() {
             {deals.length} deals, {formatCents(totalCash)} cash collected
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
-          + Add Deal
-        </Button>
+        {!isCloser && (
+          <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
+            + Add Deal
+          </Button>
+        )}
       </div>
 
       {showAddForm && (
@@ -185,15 +188,19 @@ export default function DealsPage() {
                       {deal.prospectEmail && <div className="text-xs text-[var(--muted-foreground)] truncate">{deal.prospectEmail}</div>}
                     </td>
                     <td className="p-3">
-                      <select
-                        value={deal.closer?.id || ""}
-                        onChange={(e) => { e.stopPropagation(); updateDeal(deal.id, { closerId: e.target.value }); }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="border rounded px-2 py-1 text-xs"
-                      >
-                        <option value="">Assign...</option>
-                        {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      {isCloser ? (
+                        <span className="text-xs">{deal.closer?.name || "—"}</span>
+                      ) : (
+                        <select
+                          value={deal.closer?.id || ""}
+                          onChange={(e) => { e.stopPropagation(); updateDeal(deal.id, { closerId: e.target.value }); }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="border rounded px-2 py-1 text-xs"
+                        >
+                          <option value="">Assign...</option>
+                          {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td className="p-3"><Badge variant="secondary">{deal.dealType}</Badge></td>
                     <td className="p-3">

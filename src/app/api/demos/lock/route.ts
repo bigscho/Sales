@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
@@ -16,6 +17,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Locking a payroll day is admin-only — locks freeze the official daily stats
+  const session = await getSession();
+  if (session && !session.isAdmin) {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
+
   const body = await request.json();
   const { weekId, date } = body;
 
@@ -185,6 +192,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const session = await getSession();
+  if (session && !session.isAdmin) {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
+
   const body = await request.json();
   const { weekId, date } = body;
 

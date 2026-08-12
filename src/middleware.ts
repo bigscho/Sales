@@ -25,13 +25,16 @@ const SYSTEM_ROUTES = [
 // Routes not listed here are accessible to any authenticated user
 const ROLE_ROUTES: Record<string, string[]> = {
   setter: ["/", "/demos", "/verify", "/scoreboard", "/blasts", "/api/demos", "/api/verify", "/api/scoreboard", "/api/credits", "/api/blasts"],
-  closer: ["/", "/demos", "/deals", "/scoreboard", "/api/demos", "/api/deals", "/api/scoreboard", "/api/kpis", "/api/closer"],
+  // Closers get a deliberately tight surface: their own demos + deals + contract
+  // stats. No company dashboard, no scoreboard, no KPIs (those are admin views).
+  closer: ["/", "/demos", "/deals", "/api/demos", "/api/deals", "/api/closer"],
   show_rate_rep: ["/", "/scoreboard", "/demos", "/confirmations", "/api/scoreboard", "/api/demos", "/api/kpis", "/api/confirmations"],
 };
 
 // Default landing page per role (when they hit "/")
 const ROLE_DEFAULT: Record<string, string> = {
   setter: "/demos",
+  closer: "/demos",
 };
 
 export async function middleware(request: NextRequest) {
