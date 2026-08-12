@@ -134,12 +134,13 @@ export async function calculateSetterPay(setterId: string, weekId: string): Prom
 // month-1 cash. A deal is new business iff its FIRST payment wasn't from an
 // already-paying client (customerStatus override wins — ops can correct).
 //
-// Month-1 window: commission covers cash collected within MONTH1_WINDOW_DAYS
-// of the deal's first payment. Empirically (Aug 2026): split first-month
-// payments land within 7 days; subscription renewals start at 28+ days. 21
-// days cleanly separates "new-business cash" from "renewal/repeat revenue,
-// which belongs entirely to Company".
-const MONTH1_WINDOW_DAYS = 21;
+// Upfront-cash window (Colin's rule, 2026-08-12): commission covers the cash
+// collected AT the close — a multi-campaign purchase bills as several Stripe
+// charges within minutes/hours, so everything within 24h of the deal's first
+// payment is the upfront. Anything later (clients often order MORE campaigns
+// hours-to-days after closing) is a reorder/renewal and belongs entirely to
+// Company (§4.5) — no commission.
+const UPFRONT_WINDOW_HOURS = 24;
 
 type DealMeta = { firstPaidAt: Date; isNewBusiness: boolean };
 
@@ -171,8 +172,8 @@ function isCommissionable(
   if ((p.revenueTypeOverride || p.revenueType) === "misc") return false;
   const dm = meta.get(p.dealId);
   if (!dm || !dm.isNewBusiness) return false; // reorder/repeat client → Company's revenue (§4.5)
-  const windowMs = MONTH1_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  return p.paidAt.getTime() - dm.firstPaidAt.getTime() <= windowMs; // renewals/repeats beyond month 1 excluded
+  const windowMs = UPFRONT_WINDOW_HOURS * 60 * 60 * 1000;
+  return p.paidAt.getTime() - dm.firstPaidAt.getTime() <= windowMs; // later charges = reorders/renewals, not commissionable
 }
 
 // Commission + clawback for a date range, cash-collected basis (§4.7):
