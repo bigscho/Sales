@@ -67,8 +67,22 @@ export async function POST(request: NextRequest) {
           demoDate = resource.start_time ? new Date(resource.start_time) : null;
           eventTypeName = resource.name || null;
 
+          // The PRIMARY closer is the event-type OWNER. event_memberships lists
+          // every host on the event — a closer added to shadow (e.g. Will sitting
+          // in on Matthew's demos) shows up there and must NOT take attribution.
+          if (resource.event_type) {
+            try {
+              const etRes = await fetch(resource.event_type, {
+                headers: { Authorization: `Bearer ${calendlyToken}` },
+              });
+              if (etRes.ok) {
+                const etData = await etRes.json();
+                closerName = etData.resource?.profile?.name?.split(" ")[0] || null;
+              }
+            } catch { /* fall back to memberships below */ }
+          }
           const memberships = resource.event_memberships || [];
-          if (memberships.length > 0) {
+          if (!closerName && memberships.length > 0) {
             closerName = memberships[0].user_name?.split(" ")[0] || null;
           }
 

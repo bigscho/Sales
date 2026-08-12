@@ -87,9 +87,28 @@ interface GCalEvent {
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   attendees?: GCalAttendee[];
+  organizer?: { email?: string; displayName?: string };
   recurringEventId?: string;
   created?: string;
   updated?: string;
+}
+
+// A demo appears on a closer's calendar without being THEIRS when they're
+// invited to shadow another closer. Two independent signals catch it:
+// (1) the GCal organizer is a different @grsfd.co account, (2) the Calendly
+// summary ("Prospect and Matthew Schofield") names a different closer.
+// Such events must be skipped entirely — the true host's calendar/webhook
+// owns them, and ingesting the guest copy creates duplicates.
+function isHostedByOtherCloser(event: GCalEvent, calendarEmail: string, closerName: string): boolean {
+  const organizer = event.organizer?.email?.toLowerCase();
+  if (organizer && organizer.endsWith("@grsfd.co") && organizer !== calendarEmail.toLowerCase()) {
+    return true;
+  }
+  const summaryCloser = (event.summary || "").match(/\s+and\s+(Colin|Will|Matthew|Mark)(\s+\w+)?\s*$/i)?.[1];
+  if (summaryCloser && summaryCloser.toLowerCase() !== closerName.toLowerCase()) {
+    return true;
+  }
+  return false;
 }
 
 // Resolve the actual booking event time from the GCal event metadata.
@@ -323,6 +342,10 @@ async function syncCalendar(
   for (const event of allEvents) {
     try {
       if (!isCalendlyEvent(event)) continue;
+
+      // Shadow guard: this closer is only a guest on another closer's demo —
+      // skip it or we duplicate the true host's booking under the wrong closer.
+      if (isHostedByOtherCloser(event, calendarEmail, closerName)) continue;
 
       // Skip non-sales-demo event types (onboarding, launch calls, quick calls, etc.).
       // The calendly webhook filters these at line ~114 of webhooks/calendly/route.ts;
