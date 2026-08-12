@@ -25,8 +25,12 @@ interface DealRecord {
     booking: { setter: { name: string } | null; demoDate: string };
   } | null;
   closer: { id: string; name: string } | null;
-  payments: { id: string; amountCents: number; status: string; paidAt: string; isMonth1: boolean }[];
+  payments: { id: string; amountCents: number; refundedCents: number; status: string; paidAt: string; isMonth1: boolean }[];
 }
+
+// Cash net of refunds — refunded money is not collected
+const netCents = (p: { amountCents: number; refundedCents: number; status: string }) =>
+  p.status === "failed" ? 0 : p.amountCents - (p.refundedCents || 0);
 
 interface TeamMember {
   id: string;
@@ -104,7 +108,7 @@ export default function DealsPage() {
 
   const closers = team.filter((m) => m.role === "closer");
   const totalCash = deals.filter((d) => d.status === "closed_won").reduce((sum, d) =>
-    sum + d.payments.reduce((s, p) => s + p.amountCents, 0), 0);
+    sum + d.payments.reduce((s, p) => s + netCents(p), 0), 0);
 
   return (
     <div className="space-y-6">
@@ -239,7 +243,7 @@ export default function DealsPage() {
                     <td className="p-3 text-right font-medium">{formatCents(deal.month1Cash)}</td>
                     <td className="p-3 text-right">
                       {deal.payments.length > 0
-                        ? formatCents(deal.payments.reduce((s, p) => s + p.amountCents, 0))
+                        ? formatCents(deal.payments.reduce((s, p) => s + netCents(p), 0))
                         : "—"
                       }
                     </td>
@@ -269,7 +273,12 @@ export default function DealsPage() {
                               {deal.payments.map((p) => (
                                 <div key={p.id} className="flex justify-between py-1 border-b last:border-0">
                                   <span>{formatDate(p.paidAt)}</span>
-                                  <span>{formatCents(p.amountCents)}</span>
+                                  <span>
+                                    {formatCents(netCents(p))}
+                                    {p.refundedCents > 0 && (
+                                      <span className="text-red-500 text-xs ml-1" title={`${formatCents(p.refundedCents)} refunded`}>↩ refunded</span>
+                                    )}
+                                  </span>
                                   <Badge variant={p.isMonth1 ? "success" : "secondary"}>
                                     {p.isMonth1 ? "Month 1" : "Recurring"}
                                   </Badge>

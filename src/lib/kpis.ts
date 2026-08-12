@@ -111,26 +111,32 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const totalLost = deals.filter((d) => d.status === "closed_lost").length;
   const closeRate = totalShows > 0 ? totalCloses / totalShows : 0;
 
+  // Cash figures are NET of refunds/chargebacks — refunded money is not
+  // "collected". (partially_refunded/refunded/disputed rows keep amountCents
+  // gross; refundedCents carries what went back.)
+  const netCents = (p: { amountCents: number; refundedCents: number; status: string }) =>
+    p.status === "failed" ? 0 : p.amountCents - p.refundedCents;
+
   const cashCollected = deals
     .filter((d) => d.status === "closed_won")
-    .reduce((sum, d) => sum + d.payments.reduce((s, p) => s + p.amountCents, 0), 0);
+    .reduce((sum, d) => sum + d.payments.reduce((s, p) => s + netCents(p), 0), 0);
 
   // Also include unlinked payments for this week (not tied to a deal but assigned to this week)
   const unlinkedPayments = await prisma.payment.findMany({
-    where: { weekId, dealId: null, status: "succeeded" },
+    where: { weekId, dealId: null, status: { in: ["succeeded", "partially_refunded", "refunded", "disputed"] } },
   });
-  const unlinkedCash = unlinkedPayments.reduce((sum, p) => sum + p.amountCents, 0);
+  const unlinkedCash = unlinkedPayments.reduce((sum, p) => sum + netCents(p), 0);
   const totalCash = cashCollected + unlinkedCash;
 
   const allWeekPayments = await prisma.payment.findMany({
-    where: { weekId, status: "succeeded" },
+    where: { weekId, status: { in: ["succeeded", "partially_refunded", "refunded", "disputed"] } },
   });
   const newRevenue = allWeekPayments
     .filter(p => (p.customerStatusOverride || p.customerStatus) === "new")
-    .reduce((sum, p) => sum + p.amountCents, 0);
+    .reduce((sum, p) => sum + netCents(p), 0);
   const returningRevenue = allWeekPayments
     .filter(p => (p.customerStatusOverride || p.customerStatus) === "returning")
-    .reduce((sum, p) => sum + p.amountCents, 0);
+    .reduce((sum, p) => sum + netCents(p), 0);
 
   const avgCashPerClose = totalCloses > 0 ? Math.round(totalCash / totalCloses) : 0;
   const cashPerBooking = totalBookings > 0 ? Math.round(totalCash / totalBookings) : 0;
@@ -214,7 +220,7 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     c.shows++;
     if (demo.deal?.status === "closed_won") {
       c.closes++;
-      c.cashCollected += demo.deal.payments.reduce((s, p) => s + p.amountCents, 0);
+      c.cashCollected += demo.deal.payments.reduce((s, p) => s + netCents(p), 0);
     }
     if (demo.deal?.status === "held") c.held++;
     if (demo.deal?.status === "closed_lost") c.lost++;

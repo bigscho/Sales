@@ -47,6 +47,7 @@ interface DayLockRecord {
 interface PaymentRecord {
   id: string;
   amountCents: number;
+  refundedCents: number;
   customerName: string | null;
   customerEmail: string | null;
   paidAt: string;
@@ -70,6 +71,12 @@ const statusOptions = [
 ];
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Cash net of refunds — refunded money is not collected
+function netCents(p: { amountCents: number; refundedCents?: number; status?: string }): number {
+  if (p.status === "failed") return 0;
+  return p.amountCents - (p.refundedCents || 0);
+}
 
 function shortName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -568,13 +575,13 @@ export default function DemosPage() {
     const getStatus = (p: PaymentRecord) => p.customerStatusOverride || p.customerStatus;
 
     // Totals by revenue type
-    const mrrTotal = paymentsToShow.filter((p) => getType(p) === "mrr").reduce((s, p) => s + p.amountCents, 0);
-    const oneTimeTotal = paymentsToShow.filter((p) => getType(p) === "one_time").reduce((s, p) => s + p.amountCents, 0);
-    const miscTotal = paymentsToShow.filter((p) => getType(p) === "misc" || getType(p) === "unknown").reduce((s, p) => s + p.amountCents, 0);
+    const mrrTotal = paymentsToShow.filter((p) => getType(p) === "mrr").reduce((s, p) => s + netCents(p), 0);
+    const oneTimeTotal = paymentsToShow.filter((p) => getType(p) === "one_time").reduce((s, p) => s + netCents(p), 0);
+    const miscTotal = paymentsToShow.filter((p) => getType(p) === "misc" || getType(p) === "unknown").reduce((s, p) => s + netCents(p), 0);
 
     // New revenue = new MRR + new one-time (the sales KPI)
-    const newRevenue = paymentsToShow.filter((p) => getStatus(p) === "new").reduce((s, p) => s + p.amountCents, 0);
-    const returningRevenue = paymentsToShow.filter((p) => getStatus(p) === "returning").reduce((s, p) => s + p.amountCents, 0);
+    const newRevenue = paymentsToShow.filter((p) => getStatus(p) === "new").reduce((s, p) => s + netCents(p), 0);
+    const returningRevenue = paymentsToShow.filter((p) => getStatus(p) === "returning").reduce((s, p) => s + netCents(p), 0);
 
     // Revenue type cycle order
     const revenueTypeCycle: Record<string, string> = { mrr: "one_time", one_time: "misc", misc: "mrr", unknown: "mrr" };
@@ -623,7 +630,7 @@ export default function DemosPage() {
             {!isWeekView && selectedDayDate && ` ${getDateLabel(selectedDayDate)}`}
           </h3>
           <span className="text-sm font-bold text-green-600">
-            {formatCents(paymentsToShow.reduce((s, p) => s + p.amountCents, 0))}
+            {formatCents(paymentsToShow.reduce((s, p) => s + netCents(p), 0))}
           </span>
         </div>
         {paymentsToShow.length > 0 ? (
@@ -707,7 +714,12 @@ export default function DemosPage() {
                         {statusBadge(p)}
                       </div>
                     </td>
-                    <td className="p-2 pr-4 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
+                    <td className="p-2 pr-4 text-right font-medium text-green-600">
+                      {formatCents(netCents(p))}
+                      {p.refundedCents > 0 && (
+                        <span className="text-red-500 text-xs ml-1" title={`${formatCents(p.refundedCents)} refunded`}>↩</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -974,7 +986,7 @@ export default function DemosPage() {
                     const dayCloses = dayDemos.filter((d) => d.deal?.status === "closed_won").length;
                     const isExpanded = expandedDays.has(dayIndex);
                     const dayPayments = payments.filter((p) => weekDateKeys[dayIndex] && toDateKey(p.paidAt) === weekDateKeys[dayIndex]);
-                    const dayCash = dayPayments.reduce((s, p) => s + p.amountCents, 0);
+                    const dayCash = dayPayments.reduce((s, p) => s + netCents(p), 0);
                     const dayDenom = dayShowed + dayNoShow + dayCancelled;
                     const dayShowRate = dayDenom > 0
                       ? `${((dayShowed / dayDenom) * 100).toFixed(0)}%`

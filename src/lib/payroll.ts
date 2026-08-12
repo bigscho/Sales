@@ -127,25 +127,52 @@ export async function calculateSetterPay(setterId: string, weekId: string): Prom
   };
 }
 
-// A payment counts toward closer commission only when it's the client's first
-// purchase ("new business", §4.5 — overrides win) and not a misc adjustment.
-type CommissionablePayment = {
-  amountCents: number;
-  refundedCents: number;
-  paidAt: Date;
-  refundedAt: Date | null;
-  status: string;
-  customerStatus: string;
-  customerStatusOverride: string | null;
-  revenueType: string;
-  revenueTypeOverride: string | null;
-  deal: { prospectName: string; leadSource: string } | null;
-};
+// === What counts as commissionable cash (§4.5, §5 "Cash Collected") ===
+// The NEW-BUSINESS test lives on the DEAL, not the payment: Stripe marks the
+// 2nd installment of a split first-month payment "returning" (any prior
+// succeeded charge does that), so filtering per-payment silently drops real
+// month-1 cash. A deal is new business iff its FIRST payment wasn't from an
+// already-paying client (customerStatus override wins — ops can correct).
+//
+// Month-1 window: commission covers cash collected within MONTH1_WINDOW_DAYS
+// of the deal's first payment. Empirically (Aug 2026): split first-month
+// payments land within 7 days; subscription renewals start at 28+ days. 21
+// days cleanly separates "new-business cash" from "renewal/repeat revenue,
+// which belongs entirely to Company".
+const MONTH1_WINDOW_DAYS = 21;
 
-function isNewBusiness(p: CommissionablePayment): boolean {
-  if ((p.customerStatusOverride || p.customerStatus) === "returning") return false;
+type DealMeta = { firstPaidAt: Date; isNewBusiness: boolean };
+
+// First payment per deal → month-1 anchor + deal-level new-business test.
+async function loadDealMeta(dealIds: string[]): Promise<Map<string, DealMeta>> {
+  const meta = new Map<string, DealMeta>();
+  if (dealIds.length === 0) return meta;
+  const payments = await prisma.payment.findMany({
+    where: { dealId: { in: dealIds }, status: { not: "failed" } },
+    orderBy: { paidAt: "asc" },
+    select: { dealId: true, paidAt: true, customerStatus: true, customerStatusOverride: true },
+  });
+  for (const p of payments) {
+    if (!p.dealId || meta.has(p.dealId)) continue;
+    meta.set(p.dealId, {
+      firstPaidAt: p.paidAt,
+      isNewBusiness: (p.customerStatusOverride || p.customerStatus) !== "returning",
+    });
+  }
+  return meta;
+}
+
+function isCommissionable(
+  p: { paidAt: Date; status: string; revenueType: string; revenueTypeOverride: string | null; dealId: string | null },
+  meta: Map<string, DealMeta>
+): boolean {
+  if (!p.dealId) return false;
+  if (p.status === "failed") return false;
   if ((p.revenueTypeOverride || p.revenueType) === "misc") return false;
-  return p.status !== "failed";
+  const dm = meta.get(p.dealId);
+  if (!dm || !dm.isNewBusiness) return false; // reorder/repeat client → Company's revenue (§4.5)
+  const windowMs = MONTH1_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  return p.paidAt.getTime() - dm.firstPaidAt.getTime() <= windowMs; // renewals/repeats beyond month 1 excluded
 }
 
 // Commission + clawback for a date range, cash-collected basis (§4.7):
@@ -163,8 +190,22 @@ export async function computeCloserCommission(
       paidAt: { gte: rangeStart, lte: rangeEnd },
       deal: { closerId, status: "closed_won" },
     },
-    include: { deal: { select: { prospectName: true, leadSource: true } } },
+    include: { deal: { select: { id: true, prospectName: true, leadSource: true } } },
   });
+
+  // Clawback: refunds recorded in the range on this closer's deals, where the
+  // reversal came within 60 days of collection.
+  const refunded = await prisma.payment.findMany({
+    where: {
+      refundedAt: { gte: rangeStart, lte: rangeEnd },
+      refundedCents: { gt: 0 },
+      deal: { closerId },
+    },
+    include: { deal: { select: { id: true, prospectName: true, leadSource: true } } },
+  });
+
+  const dealIds = [...new Set([...collected, ...refunded].map((p) => p.dealId!).filter(Boolean))];
+  const meta = await loadDealMeta(dealIds);
 
   let fedCashCents = 0;
   let selfCashCents = 0;
@@ -172,7 +213,7 @@ export async function computeCloserCommission(
   const dealAgg = new Map<string, { prospectName: string; cashCents: number; leadSource: string }>();
 
   for (const p of collected) {
-    if (!p.deal || !isNewBusiness(p)) continue;
+    if (!p.deal || !isCommissionable(p, meta)) continue;
     const self = p.deal.leadSource === "self_sourced";
     if (self) selfCashCents += p.amountCents;
     else fedCashCents += p.amountCents;
@@ -184,20 +225,9 @@ export async function computeCloserCommission(
     dealAgg.set(key, agg);
   }
 
-  // Clawback: refunds recorded in the range on this closer's deals, where the
-  // reversal came within 60 days of collection.
-  const refunded = await prisma.payment.findMany({
-    where: {
-      refundedAt: { gte: rangeStart, lte: rangeEnd },
-      refundedCents: { gt: 0 },
-      deal: { closerId },
-    },
-    include: { deal: { select: { prospectName: true, leadSource: true } } },
-  });
-
   let clawbackCents = 0;
   for (const p of refunded) {
-    if (!p.deal || !isNewBusiness(p)) continue;
+    if (!p.deal || !isCommissionable(p, meta)) continue;
     if (!p.refundedAt) continue;
     const withinWindow = p.refundedAt.getTime() - p.paidAt.getTime() <= 60 * 24 * 60 * 60 * 1000;
     if (!withinWindow) continue;

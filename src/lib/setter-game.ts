@@ -351,15 +351,16 @@ export async function getWeeklyCloserStats(): Promise<{
   if (!week) return { totalNewRevenue: 0, totalReturningRevenue: 0, totalCloses: 0 };
 
   const payments = await prisma.payment.findMany({
-    where: { weekId: week.id, status: "succeeded" },
+    where: { weekId: week.id, status: { in: ["succeeded", "partially_refunded", "refunded", "disputed"] } },
   });
 
+  // Net of refunds — refunded money is not revenue
   const totalNewRevenue = payments
     .filter(p => (p.customerStatusOverride || p.customerStatus) === "new")
-    .reduce((sum, p) => sum + p.amountCents, 0);
+    .reduce((sum, p) => sum + p.amountCents - p.refundedCents, 0);
   const totalReturningRevenue = payments
     .filter(p => (p.customerStatusOverride || p.customerStatus) === "returning")
-    .reduce((sum, p) => sum + p.amountCents, 0);
+    .reduce((sum, p) => sum + p.amountCents - p.refundedCents, 0);
 
   const deals = await prisma.deal.findMany({
     where: { weekId: week.id, status: "closed_won" },

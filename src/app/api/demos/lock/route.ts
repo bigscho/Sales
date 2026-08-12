@@ -73,10 +73,12 @@ export async function POST(request: NextRequest) {
   const noShowCount = dayDemos.filter((d) => d.status === "no_show").length;
   const cancelledCount = dayDemos.filter((d) => d.status === "cancelled").length;
 
-  // Cash from deals closed on demos from this day
+  // Cash from deals closed on demos from this day — net of refunds
+  const netCents = (p: { amountCents: number; refundedCents: number; status: string }) =>
+    p.status === "failed" ? 0 : p.amountCents - p.refundedCents;
   const cashCents = dayDemos.reduce((sum, d) => {
     if (d.deal?.status === "closed_won") {
-      return sum + d.deal.payments.reduce((s, p) => s + p.amountCents, 0);
+      return sum + d.deal.payments.reduce((s, p) => s + netCents(p), 0);
     }
     return sum;
   }, 0);
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
       paidAt: { gte: lockDate, lt: nextDay },
     },
   });
-  const unlinkedCash = dayPayments.reduce((s, p) => s + p.amountCents, 0);
+  const unlinkedCash = dayPayments.reduce((s, p) => s + netCents(p), 0);
 
   const dayLock = await prisma.dayLock.upsert({
     where: { weekId_date: { weekId, date: lockDate } },
