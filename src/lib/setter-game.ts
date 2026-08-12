@@ -350,23 +350,16 @@ export async function getWeeklyCloserStats(): Promise<{
   const week = await prisma.week.findFirst({ where: { weekStart: start } });
   if (!week) return { totalNewRevenue: 0, totalReturningRevenue: 0, totalCloses: 0 };
 
-  const payments = await prisma.payment.findMany({
-    where: { weekId: week.id, status: { in: ["succeeded", "partially_refunded", "refunded", "disputed"] } },
-  });
-
-  // Net of refunds — refunded money is not revenue
-  const totalNewRevenue = payments
-    .filter(p => (p.customerStatusOverride || p.customerStatus) === "new")
-    .reduce((sum, p) => sum + p.amountCents - p.refundedCents, 0);
-  const totalReturningRevenue = payments
-    .filter(p => (p.customerStatusOverride || p.customerStatus) === "returning")
-    .reduce((sum, p) => sum + p.amountCents - p.refundedCents, 0);
-
+  // Weekly sales cash = UPFRONT cash on the week's closed deals (see
+  // src/lib/cash.ts) — same definition as the dashboard and closer commission.
+  const { dealUpfrontCents } = await import("./cash");
   const deals = await prisma.deal.findMany({
     where: { weekId: week.id, status: "closed_won" },
+    include: { payments: true },
   });
+  const totalNewRevenue = deals.reduce((sum, d) => sum + dealUpfrontCents(d.payments), 0);
 
-  return { totalNewRevenue, totalReturningRevenue, totalCloses: deals.length };
+  return { totalNewRevenue, totalReturningRevenue: 0, totalCloses: deals.length };
 }
 
 // Send close notification to #closer-tpds

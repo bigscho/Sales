@@ -78,6 +78,10 @@ function netCents(p: { amountCents: number; refundedCents?: number; status?: str
   return p.amountCents - (p.refundedCents || 0);
 }
 
+// Sales views show UPFRONT cash only (charges within 24h of a deal's first
+// payment, first-time clients) — renewals/reorders live in Stripe.
+const UPFRONT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 function shortName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length <= 1) return fullName;
@@ -138,11 +142,21 @@ export default function DemosPage() {
       setDayLocks(lockData.dayLocks || []);
       const allPayments: PaymentRecord[] = [];
       for (const deal of dealData.deals || []) {
-        for (const p of deal.payments || []) {
+        const pays: PaymentRecord[] = (deal.payments || []).filter((p: PaymentRecord) => p.status !== "failed");
+        if (pays.length === 0) continue;
+        const first = pays.reduce((a, b) => (new Date(a.paidAt) <= new Date(b.paidAt) ? a : b));
+        // Reorder deal (existing client's repeat purchase) — not sales cash
+        if ((first.customerStatusOverride || first.customerStatus) === "returning") continue;
+        const firstMs = new Date(first.paidAt).getTime();
+        for (const p of pays) {
+          // Later charges (renewals / additional orders) are Stripe's story, not the sales feed's
+          if (new Date(p.paidAt).getTime() - firstMs > UPFRONT_WINDOW_MS) continue;
           allPayments.push({ ...p, customerName: deal.prospectName, customerEmail: deal.prospectEmail });
         }
       }
+      // Unmatched payments stay visible — they're the match work-queue — unless clearly returning revenue
       for (const p of dealData.unlinkedPayments || []) {
+        if ((p.customerStatusOverride || p.customerStatus) === "returning") continue;
         allPayments.push(p);
       }
       setPayments(allPayments);

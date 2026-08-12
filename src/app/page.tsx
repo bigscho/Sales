@@ -29,8 +29,6 @@ interface KPIData {
   avgCashPerClose: number;
   cashPerBooking: number;
   cashPerShow: number;
-  newRevenue: number;
-  returningRevenue: number;
   setterStats: { setterId: string; setterName: string; newBookings: number; shows: number; noShows: number; pending: number; cancelled: number; pendingTotal: number; showRate: number }[];
   closerStats: { closerId: string; closerName: string; shows: number; closes: number; held: number; lost: number; closeRate: number; cashCollected: number }[];
 }
@@ -201,10 +199,10 @@ export default function Dashboard() {
       {/* Revenue KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KPICard
-          title="New Revenue"
-          value={formatCents(kpis.newRevenue)}
-          valueClassName={cashColor(kpis.newRevenue)}
-          subtitle={`Total: ${formatCents(kpis.cashCollected)} · ${formatCents(kpis.returningRevenue)} returning`}
+          title="Upfront Cash"
+          value={formatCents(kpis.cashCollected)}
+          valueClassName={cashColor(kpis.cashCollected)}
+          subtitle="new clients at the close · renewals live in Stripe"
         />
         <KPICard
           title="Avg Cash / Close"

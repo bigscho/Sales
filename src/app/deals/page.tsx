@@ -25,7 +25,7 @@ interface DealRecord {
     booking: { setter: { name: string } | null; demoDate: string };
   } | null;
   closer: { id: string; name: string } | null;
-  payments: { id: string; amountCents: number; refundedCents: number; status: string; paidAt: string; isMonth1: boolean }[];
+  payments: { id: string; amountCents: number; refundedCents: number; status: string; paidAt: string; isMonth1: boolean; customerStatus: string; customerStatusOverride: string | null }[];
 }
 
 // Cash net of refunds — refunded money is not collected
@@ -45,6 +45,9 @@ function isUpfront(p: { paidAt: string }, first: number | null): boolean {
 function upfrontCents(deal: DealRecord): number {
   const first = firstPaidAt(deal.payments);
   if (first === null) return deal.month1Cash; // no payments yet — manual figure
+  // Reorder deal (existing client's repeat purchase) — not sales cash
+  const firstPay = deal.payments.find((p) => new Date(p.paidAt).getTime() === first && p.status !== "failed");
+  if (firstPay && (firstPay.customerStatusOverride || firstPay.customerStatus) === "returning") return 0;
   return deal.payments.filter((p) => isUpfront(p, first)).reduce((s, p) => s + netCents(p), 0);
 }
 
@@ -124,7 +127,7 @@ export default function DealsPage() {
 
   const closers = team.filter((m) => m.role === "closer");
   const totalCash = deals.filter((d) => d.status === "closed_won").reduce((sum, d) =>
-    sum + d.payments.reduce((s, p) => s + netCents(p), 0), 0);
+    sum + upfrontCents(d), 0);
 
   return (
     <div className="space-y-6">
@@ -191,7 +194,6 @@ export default function DealsPage() {
                 <th className="text-left p-3 font-medium">Source</th>
                 <th className="text-left p-3 font-medium">Status</th>
                 <th className="text-right p-3 font-medium">Upfront Cash</th>
-                <th className="text-right p-3 font-medium">Payments</th>
                 <th className="text-left p-3 font-medium">Setter</th>
               </tr>
             </thead>
@@ -257,19 +259,13 @@ export default function DealsPage() {
                       </select>
                     </td>
                     <td className="p-3 text-right font-medium">{formatCents(upfrontCents(deal))}</td>
-                    <td className="p-3 text-right">
-                      {deal.payments.length > 0
-                        ? formatCents(deal.payments.reduce((s, p) => s + netCents(p), 0))
-                        : "—"
-                      }
-                    </td>
                     <td className="p-3 text-xs text-[var(--muted-foreground)]">
                       {deal.demo?.booking?.setter?.name || "—"}
                     </td>
                   </tr>
                   {expandedDeal === deal.id && (
                     <tr key={`${deal.id}-detail`}>
-                      <td colSpan={8} className="bg-[var(--muted)] p-4">
+                      <td colSpan={7} className="bg-[var(--muted)] p-4">
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
                             <p className="font-medium text-[var(--muted-foreground)]">Stripe Customer ID</p>
@@ -285,8 +281,8 @@ export default function DealsPage() {
                           </div>
                           {deal.payments.length > 0 && (
                             <div className="col-span-3">
-                              <p className="font-medium text-[var(--muted-foreground)] mb-2">Stripe Payments</p>
-                              {deal.payments.map((p) => (
+                              <p className="font-medium text-[var(--muted-foreground)] mb-2">Upfront Payments</p>
+                              {deal.payments.filter((p) => isUpfront(p, firstPaidAt(deal.payments))).map((p) => (
                                 <div key={p.id} className="flex justify-between py-1 border-b last:border-0">
                                   <span>{formatDate(p.paidAt)}</span>
                                   <span>
@@ -295,9 +291,6 @@ export default function DealsPage() {
                                       <span className="text-red-500 text-xs ml-1" title={`${formatCents(p.refundedCents)} refunded`}>↩ refunded</span>
                                     )}
                                   </span>
-                                  <Badge variant={isUpfront(p, firstPaidAt(deal.payments)) ? "success" : "secondary"}>
-                                    {isUpfront(p, firstPaidAt(deal.payments)) ? "Upfront" : "Later"}
-                                  </Badge>
                                 </div>
                               ))}
                             </div>
@@ -310,7 +303,7 @@ export default function DealsPage() {
               ))}
               {deals.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-[var(--muted-foreground)]">
+                  <td colSpan={7} className="p-8 text-center text-[var(--muted-foreground)]">
                     No deals this week. Add deals manually or they&apos;ll be created from confirmed demos.
                   </td>
                 </tr>

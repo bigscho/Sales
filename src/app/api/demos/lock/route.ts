@@ -73,24 +73,16 @@ export async function POST(request: NextRequest) {
   const noShowCount = dayDemos.filter((d) => d.status === "no_show").length;
   const cancelledCount = dayDemos.filter((d) => d.status === "cancelled").length;
 
-  // Cash from deals closed on demos from this day — net of refunds
-  const netCents = (p: { amountCents: number; refundedCents: number; status: string }) =>
-    p.status === "failed" ? 0 : p.amountCents - p.refundedCents;
+  // Official day cash = UPFRONT cash on the day's closed deals only (see
+  // src/lib/cash.ts) — renewals/reorders/unlinked payments are Stripe's story.
+  const { dealUpfrontCents } = await import("@/lib/cash");
   const cashCents = dayDemos.reduce((sum, d) => {
     if (d.deal?.status === "closed_won") {
-      return sum + d.deal.payments.reduce((s, p) => s + netCents(p), 0);
+      return sum + dealUpfrontCents(d.deal.payments);
     }
     return sum;
   }, 0);
-
-  // Also count unlinked payments from this calendar day
-  const dayPayments = await prisma.payment.findMany({
-    where: {
-      dealId: null,
-      paidAt: { gte: lockDate, lt: nextDay },
-    },
-  });
-  const unlinkedCash = dayPayments.reduce((s, p) => s + netCents(p), 0);
+  const unlinkedCash = 0;
 
   const dayLock = await prisma.dayLock.upsert({
     where: { weekId_date: { weekId, date: lockDate } },
