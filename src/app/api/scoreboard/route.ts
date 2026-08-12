@@ -115,8 +115,21 @@ export async function GET(request: NextRequest) {
     pendingTotalAll++;
   }
 
+  // Closers double as setters — include any active closer who has setter-credited
+  // activity in the period (bookings/demos/pending with their setterId). They ride
+  // the same aggregates; setter PAYROLL stays role-gated so this is display-only.
+  const closers = await prisma.teamMember.findMany({
+    where: { role: "closer", isActive: true, excludeFromLeaderboard: { not: true } },
+    orderBy: { name: "asc" },
+  });
+  const activeCloserSetters = closers.filter((c) =>
+    (activityBySetterId[c.id] || 0) > 0 ||
+    resultsBySetterId[c.id] !== undefined ||
+    (pendingTotalBySetterId[c.id] || 0) > 0
+  );
+
   // Build scoreboard entries
-  const scoreboard = setters.map((s) => {
+  const scoreboard = [...setters, ...activeCloserSetters].map((s) => {
     const activity = activityBySetterId[s.id] || 0;
     const results = resultsBySetterId[s.id] || { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
     const pendingTotal = pendingTotalBySetterId[s.id] || 0;

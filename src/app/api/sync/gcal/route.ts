@@ -580,17 +580,17 @@ async function syncCalendar(
 
       // Resolve setter + lead source. "Booked by" naming the closer whose calendar
       // this is = the closer booked it themselves → self-sourced (contract §4.6).
-      // A DIFFERENT closer's name = they were acting as a setter — credit them.
+      // Closers double as setters: the booking closer always takes setter credit
+      // (scoreboard activity; setter PAY stays role-gated so this never pays them).
       let setterId: string | null = null;
       let leadSource = LEAD_SOURCE_FED;
       const setterName = parseSetterName(description);
       if (setterName) {
         const closerBookedBy = await matchCloserByName(setterName);
         if (closerBookedBy) {
+          setterId = closerBookedBy.id;
           if (closerId && closerBookedBy.id === closerId) {
             leadSource = LEAD_SOURCE_SELF;
-          } else if (closerId) {
-            setterId = closerBookedBy.id;
           }
         } else {
           const setter = await prisma.teamMember.findFirst({
