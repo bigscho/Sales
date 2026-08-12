@@ -66,13 +66,27 @@ export async function matchPaymentToDemo(payment: {
     };
   }
 
+  // A payment follows the demo where the close happened — prefer the most
+  // recent demo that has ALREADY occurred. Matching the newest by date could
+  // grab a future rebooked demo (and auto-mark it "showed" before it happens).
+  const pickBooking = <T extends { demoDate: Date }>(candidates: T[]): T | null => {
+    if (candidates.length === 0) return null;
+    const now = new Date();
+    const past = candidates.filter((b) => b.demoDate <= now);
+    if (past.length > 0) {
+      return past.reduce((a, b) => (a.demoDate > b.demoDate ? a : b));
+    }
+    // All demos are in the future (prepayment) — take the soonest one
+    return candidates.reduce((a, b) => (a.demoDate < b.demoDate ? a : b));
+  };
+
   // Try exact email match first
   if (payment.customerEmail) {
-    const booking = await prisma.booking.findFirst({
+    const candidates = await prisma.booking.findMany({
       where: { prospectEmail: { equals: payment.customerEmail, mode: "insensitive" } },
       include: { demo: true },
-      orderBy: { demoDate: "desc" },
     });
+    const booking = pickBooking(candidates);
     if (booking) {
       return {
         bookingId: booking.id,
@@ -86,21 +100,19 @@ export async function matchPaymentToDemo(payment: {
   if (payment.customerName) {
     const allBookings = await prisma.booking.findMany({
       include: { demo: true },
-      orderBy: { demoDate: "desc" },
     });
-
-    for (const booking of allBookings) {
-      if (namesMatch(payment.customerName, booking.prospectName)) {
-        return {
-          bookingId: booking.id,
-          demoId: booking.demo?.id || null,
-          result: {
-            type: "auto_matched",
-            confidence: "medium",
-            reason: `Name match: "${payment.customerName}" ≈ "${booking.prospectName}"`,
-          },
-        };
-      }
+    const nameMatches = allBookings.filter((b) => namesMatch(payment.customerName!, b.prospectName));
+    const booking = pickBooking(nameMatches);
+    if (booking) {
+      return {
+        bookingId: booking.id,
+        demoId: booking.demo?.id || null,
+        result: {
+          type: "auto_matched",
+          confidence: "medium",
+          reason: `Name match: "${payment.customerName}" ≈ "${booking.prospectName}"`,
+        },
+      };
     }
   }
 

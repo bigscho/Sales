@@ -32,6 +32,22 @@ interface DealRecord {
 const netCents = (p: { amountCents: number; refundedCents: number; status: string }) =>
   p.status === "failed" ? 0 : p.amountCents - (p.refundedCents || 0);
 
+// Upfront cash = everything collected within 24h of the deal's first payment
+// (same rule payroll uses for closer commission). Later charges are reorders.
+const UPFRONT_WINDOW_MS = 24 * 60 * 60 * 1000;
+function firstPaidAt(payments: { paidAt: string; status: string }[]): number | null {
+  const times = payments.filter((p) => p.status !== "failed").map((p) => new Date(p.paidAt).getTime());
+  return times.length > 0 ? Math.min(...times) : null;
+}
+function isUpfront(p: { paidAt: string }, first: number | null): boolean {
+  return first !== null && new Date(p.paidAt).getTime() - first <= UPFRONT_WINDOW_MS;
+}
+function upfrontCents(deal: DealRecord): number {
+  const first = firstPaidAt(deal.payments);
+  if (first === null) return deal.month1Cash; // no payments yet — manual figure
+  return deal.payments.filter((p) => isUpfront(p, first)).reduce((s, p) => s + netCents(p), 0);
+}
+
 interface TeamMember {
   id: string;
   name: string;
@@ -174,7 +190,7 @@ export default function DealsPage() {
                 <th className="text-left p-3 font-medium">Type</th>
                 <th className="text-left p-3 font-medium">Source</th>
                 <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-right p-3 font-medium">Month 1 Cash</th>
+                <th className="text-right p-3 font-medium">Upfront Cash</th>
                 <th className="text-right p-3 font-medium">Payments</th>
                 <th className="text-left p-3 font-medium">Setter</th>
               </tr>
@@ -240,7 +256,7 @@ export default function DealsPage() {
                         {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
-                    <td className="p-3 text-right font-medium">{formatCents(deal.month1Cash)}</td>
+                    <td className="p-3 text-right font-medium">{formatCents(upfrontCents(deal))}</td>
                     <td className="p-3 text-right">
                       {deal.payments.length > 0
                         ? formatCents(deal.payments.reduce((s, p) => s + netCents(p), 0))
@@ -279,8 +295,8 @@ export default function DealsPage() {
                                       <span className="text-red-500 text-xs ml-1" title={`${formatCents(p.refundedCents)} refunded`}>↩ refunded</span>
                                     )}
                                   </span>
-                                  <Badge variant={p.isMonth1 ? "success" : "secondary"}>
-                                    {p.isMonth1 ? "Month 1" : "Recurring"}
+                                  <Badge variant={isUpfront(p, firstPaidAt(deal.payments)) ? "success" : "secondary"}>
+                                    {isUpfront(p, firstPaidAt(deal.payments)) ? "Upfront" : "Later"}
                                   </Badge>
                                 </div>
                               ))}
