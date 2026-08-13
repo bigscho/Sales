@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBar } from "@/components/ui/status-bar";
 import { TimeDimensionToggle } from "@/components/time-dimension-toggle";
 import { useTimeDimension } from "@/lib/hooks/use-time-dimension";
-import { formatPercent, formatDateShort, formatCents } from "@/lib/utils";
+import { formatPercent, formatDateShort, formatCents, computeShowRate } from "@/lib/utils";
 import { showRateColor, closeRateColor } from "@/lib/perf-color";
 import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
 import { useSession } from "@/components/app-shell";
@@ -122,11 +122,16 @@ const DIMENSION_LABELS: Record<string, string> = {
   all_time: "All-Time",
 };
 
+type BoardView = "setters" | "closers";
+
 export default function ScoreboardPage() {
   const searchParams = useSearchParams();
   const session = useSession();
   const isAdmin = !!session?.isAdmin;
   const weekId = searchParams.get("weekId") || "";
+  const [view, setView] = useState<BoardView>(
+    searchParams.get("view") === "closers" ? "closers" : "setters"
+  );
   const { dimension, setDimension } = useTimeDimension();
   const [data, setData] = useState<ScoreboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,16 +211,47 @@ export default function ScoreboardPage() {
   const { scoreboard, closerBoard, teamTotals, unattributed, showRateRep } = data;
   const dimLabel = DIMENSION_LABELS[dimension] || "This Week";
 
+  // Closer-view summary cards, derived from the same closerBoard rows the
+  // table shows — a card can never disagree with the table beneath it.
+  const closerTotals = closerBoard.reduce(
+    (acc, c) => ({
+      demos: acc.demos + c.demos,
+      shows: acc.shows + c.shows,
+      noShows: acc.noShows + c.noShows,
+      cancelled: acc.cancelled + c.cancelled,
+      closes: acc.closes + c.closes,
+      cashCents: acc.cashCents + c.cashCents,
+    }),
+    { demos: 0, shows: 0, noShows: 0, cancelled: 0, closes: 0, cashCents: 0 }
+  );
+  const closerRateDenom = closerTotals.shows + closerTotals.noShows + closerTotals.cancelled;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Setter Scoreboard</h2>
-          <p className="text-sm text-[var(--muted-foreground)] mt-1">{dimLabel} performance</p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="inline-flex rounded-lg border bg-[var(--muted)] p-0.5">
+            {(["setters", "closers"] as BoardView[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
+                  view === v
+                    ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {v === "setters" ? "Setter Scoreboard" : "Closer Scoreboard"}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-[var(--muted-foreground)]">{dimLabel} performance</p>
         </div>
         <TimeDimensionToggle value={dimension} onChange={setDimension} />
       </div>
 
+      {view === "setters" && (
+      <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
@@ -265,11 +301,60 @@ export default function ScoreboardPage() {
 
       {/* Two Leaderboards Side by Side */}
       <SetterLeaderboards scoreboard={scoreboard} unattributed={unattributed} dimLabel={dimLabel} />
+      </>
+      )}
 
-      {/* Closer Performance — demos run, show rate on their calendar, closes, close rate. No cash here. */}
-      {closerBoard && closerBoard.length > 0 && (
+      {/* Closer Scoreboard — demos run, show rate on their calendar, closes, close rate, cash collected. */}
+      {view === "closers" && (
+        <>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Demos Run</p>
+              <p className="text-3xl font-bold tracking-tight text-[var(--teal)] mt-1">{closerTotals.demos}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">on closer calendars {dimLabel.toLowerCase()}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Shows</p>
+              <p className="text-3xl font-bold tracking-tight text-green-600 mt-1">{closerTotals.shows}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">{closerTotals.noShows} no-shows</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate</p>
+              <p className={`text-3xl font-bold tracking-tight mt-1 ${closerRateDenom > 0 ? showRateColor(computeShowRate(closerTotals.shows, closerTotals.noShows, closerTotals.cancelled)) : "text-[var(--muted-foreground)]"}`}>
+                {closerRateDenom > 0 ? formatPercent(computeShowRate(closerTotals.shows, closerTotals.noShows, closerTotals.cancelled)) : "—"}
+              </p>
+              <p className="text-xs text-[var(--muted-foreground)]">across all closers</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Closes</p>
+              <p className="text-3xl font-bold tracking-tight mt-1">{closerTotals.closes}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {closerTotals.shows > 0 ? `${formatPercent(closerTotals.closes / closerTotals.shows)} close rate` : "—"}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Cash Collected</p>
+              <p className={`text-3xl font-bold tracking-tight mt-1 ${closerTotals.cashCents > 0 ? "text-green-600" : closerTotals.cashCents < 0 ? "text-red-600" : "text-[var(--muted-foreground)]"}`}>
+                {closerTotals.cashCents !== 0 ? formatCents(closerTotals.cashCents) : "—"}
+              </p>
+              <p className="text-xs text-[var(--muted-foreground)]">upfront cash landed {dimLabel.toLowerCase()}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {closerBoard.length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">No closer activity {dimLabel.toLowerCase()}.</p>
+        ) : (
         <div>
-          <h3 className="text-lg font-semibold mb-3">Closer Performance — {dimLabel}</h3>
           <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-[var(--muted)] border-b">
@@ -312,10 +397,12 @@ export default function ScoreboardPage() {
             </p>
           )}
         </div>
+        )}
+        </>
       )}
 
       {/* Show Rate Rep Card */}
-      {showRateRep && (
+      {view === "setters" && showRateRep && (
         <Card className="border-green-200 bg-green-50/30">
           <CardContent className="pt-4 pb-4 px-6">
             <div className="flex items-center justify-between">
