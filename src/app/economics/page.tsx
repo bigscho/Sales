@@ -72,6 +72,14 @@ interface EconDetail {
     amountCents: number;
     isNew: boolean;
   }[];
+  closedRows: {
+    id: string;
+    prospectName: string;
+    closedAt: string | null;
+    closerName: string | null;
+    demoDate: string | null;
+    demoInPeriod: boolean;
+  }[];
   activeClosers: { id: string; name: string }[];
 }
 
@@ -163,7 +171,7 @@ export default function EconomicsPage() {
         <div>
           <h2 className="text-2xl font-bold">Sales Economics</h2>
           <p className="text-sm text-[var(--muted-foreground)] mt-1">
-            Cash per booked call, show, and close — cohort basis (a period owns its demos&apos; eventual upfront cash)
+            New cash landed in the period ÷ the calls, shows, and closes that happened in it
           </p>
         </div>
         <TimeDimensionToggle
@@ -280,9 +288,10 @@ export default function EconomicsPage() {
                 </table>
               </div>
               <p className="text-xs text-[var(--muted-foreground)] mt-2">
-                Cohort columns (booked/shows/closes/per-call/per-show/per-close/cohort cash) credit a period with the demos that ran in it and every
-                upfront dollar those deals eventually produce — recent periods will grow as late closes land. Landed cash counts money the day it
-                hit the bank and never restates. The two deliberately answer different questions.
+                Per-X metrics = <span className="font-medium">landed cash</span> (new money that hit the bank in the period, net of refunds) ÷ the
+                period&apos;s own activity: booked calls and shows by demo date, closes by close date. This shows new revenue THE WEEK it arrives and
+                never restates — the trade-off is that late-collected cash divides over a different week&apos;s demos than the ones that earned it.
+                Cohort Cash is the reference column for that: what each week&apos;s demos eventually produced (it grows as late closes land).
               </p>
             </div>
           )}
@@ -303,7 +312,9 @@ export default function EconomicsPage() {
               <div className="space-y-5">
                 {/* Setter economics */}
                 <div>
-                  <p className="font-medium text-sm mb-1">Setter economics (cohort)</p>
+                  <p className="font-medium text-sm mb-1">
+                    Setter economics — cash landed this period via their bookings ÷ their activity this period
+                  </p>
                   <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
                     <table className="w-full text-sm [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b">
@@ -312,7 +323,7 @@ export default function EconomicsPage() {
                           <th className="text-right p-2.5 font-medium">Booked Calls</th>
                           <th className="text-right p-2.5 font-medium">Shows</th>
                           <th className="text-right p-2.5 font-medium">Show Rate</th>
-                          <th className="text-right p-2.5 font-medium">Cash (cohort)</th>
+                          <th className="text-right p-2.5 font-medium">Cash Landed</th>
                           <th className="text-right p-2.5 font-medium">Cash/Call</th>
                           <th className="text-right p-2.5 font-medium">Cash/Show</th>
                         </tr>
@@ -321,7 +332,7 @@ export default function EconomicsPage() {
                         {detail.setters.map((s) => {
                           const rateDenom = s.shows + s.noShows + s.cancelled;
                           return (
-                            <tr key={s.id} className={`border-b last:border-0 ${s.id === "unattributed" || s.id === "other" ? "text-[var(--muted-foreground)]" : ""}`}>
+                            <tr key={s.id} className={`border-b last:border-0 ${s.id === "unattributed" || s.id === "other" || s.id === "organic" ? "text-[var(--muted-foreground)]" : ""}`}>
                               <td className="p-2.5">{s.name}</td>
                               <td className="p-2.5 text-right">{s.bookedCalls}</td>
                               <td className="p-2.5 text-right">{s.shows}</td>
@@ -374,6 +385,44 @@ export default function EconomicsPage() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+
+                {/* Closes in this period (by close date) */}
+                <div>
+                  <p className="font-medium text-sm mb-1">
+                    Deals closed-won this period ({detail.closedRows.length}) — the closes denominator
+                  </p>
+                  {detail.closedRows.length === 0 ? (
+                    <p className="text-sm text-[var(--muted-foreground)]">None.</p>
+                  ) : (
+                    <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
+                      <table className="w-full text-xs [font-variant-numeric:tabular-nums]">
+                        <thead className="bg-[var(--muted)] border-b">
+                          <tr>
+                            <th className="text-left p-2 font-medium">Closed</th>
+                            <th className="text-left p-2 font-medium">Client</th>
+                            <th className="text-left p-2 font-medium">Closer</th>
+                            <th className="text-left p-2 font-medium">Demo ran</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.closedRows.map((d) => (
+                            <tr key={d.id} className="border-b last:border-0">
+                              <td className="p-2 whitespace-nowrap">{d.closedAt ? formatDateShort(d.closedAt) : "—"}</td>
+                              <td className="p-2">{d.prospectName}</td>
+                              <td className="p-2">{d.closerName || "—"}</td>
+                              <td className="p-2">
+                                {d.demoDate ? formatDateShort(d.demoDate) : <span className="text-[var(--muted-foreground)]">no demo (organic)</span>}
+                                {d.demoDate && !d.demoInPeriod && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">demo outside this period</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 {/* Landed payments */}

@@ -4,13 +4,17 @@ import { dealUpfrontCents } from "@/lib/cash";
 import { loadDealMeta, commissionExclusionReason } from "@/lib/payroll";
 
 // === Sales economics (admin-only via middleware allowlists) ===
-// COHORT basis for unit economics: a period owns the demos that RAN in it
-// (booking.demoDate), and all the upfront cash those deals ever produce —
-// so cash/booked-call, cash/show, cash/close compare like with like. Past
-// periods restate UPWARD as late closes land; that is the honest cohort read.
-// LANDED basis for "cash collected this period": commissionable payments that
-// hit the bank in the period minus refunds that landed in it — identical rule
-// to the closer scoreboard column and payroll.
+// LANDED basis everywhere (Colin, Aug 13: "shows new revenue THIS WEEK vs
+// almost hiding it because the demo was last week"): the per-X metrics are
+// cash that HIT THE BANK in the period (commissionable payments minus refunds
+// landed — identical rule to the closer scoreboard and payroll) divided by
+// the activity that happened in the period: booked calls and shows by
+// demoDate, closes by closedAt (same as the scoreboard). Numerator and
+// denominator are different cohorts by design — that's the trade-off for a
+// number that never hides late-collected money and never restates.
+// COHORT cash (a period's demos' eventual upfront cash, dealUpfrontCents) is
+// kept as a reference column in the history table — it restates upward as
+// late closes land and shows what each week's demos were ultimately worth.
 //
 // ?granularity=weekly|monthly|all_time        → period series (newest first)
 // ?start=ISO&end=ISO&detail=true              → receipts for one period:
@@ -129,46 +133,73 @@ export async function GET(request: NextRequest) {
       upfrontCents: d.deal?.status === "closed_won" ? dealUpfrontCents(d.deal.payments) : 0,
     }));
 
-    // Per-setter cohort economics. A booked call belongs to whoever set it,
-    // regardless of demo outcome; rescheduled frozen rows are not calls.
-    // Non-setter bookers (excludeFromLeaderboard: CEO self-books, junk "Booked
-    // by" names) fold into one "Other" line, and no-setter rows into
-    // "Unattributed" — the table must always sum to the period totals.
+    // Per-setter activity (booked calls/shows by demoDate — rescheduled frozen
+    // rows are not calls). Cash is LANDED: payments that hit the bank this
+    // period, attributed to the setter of the deal's booking. Non-setter
+    // bookers (excludeFromLeaderboard) fold into "Other", no-setter rows into
+    // "Unattributed", demo-less organic deals into "Organic (no demo)" — the
+    // table must always sum to the period totals.
+    const setterBucket = (setter: { name: string; excludeFromLeaderboard: boolean | null } | null, setterId: string | null) => {
+      if (setter?.excludeFromLeaderboard) return { key: "other", name: "Other (non-setter bookers)" };
+      if (!setterId || !setter) return { key: "unattributed", name: "Unattributed" };
+      return { key: setterId, name: setter.name };
+    };
     const bySetter = new Map<string, { name: string; bookedCalls: number; shows: number; noShows: number; cancelled: number; cashCents: number }>();
+    const getBucket = (key: string, name: string) => {
+      const s = bySetter.get(key) || { name, bookedCalls: 0, shows: 0, noShows: 0, cancelled: 0, cashCents: 0 };
+      bySetter.set(key, s);
+      return s;
+    };
     for (const d of demos) {
       if (d.status === "rescheduled") continue;
-      let key = d.booking.setterId || "unattributed";
-      let name = d.booking.setter?.name || "Unattributed";
-      if (d.booking.setter?.excludeFromLeaderboard) {
-        key = "other";
-        name = "Other (non-setter bookers)";
-      }
-      const s = bySetter.get(key) || { name, bookedCalls: 0, shows: 0, noShows: 0, cancelled: 0, cashCents: 0 };
+      const { key, name } = setterBucket(d.booking.setter, d.booking.setterId);
+      const s = getBucket(key, name);
       s.bookedCalls++;
       if (d.status === "showed") s.shows++;
       else if (d.status === "no_show") s.noShows++;
       else if (d.status === "cancelled") s.cancelled++;
-      if (d.deal?.status === "closed_won") s.cashCents += dealUpfrontCents(d.deal.payments);
-      bySetter.set(key, s);
     }
-    const setters = [...bySetter.entries()]
-      .map(([id, s]) => ({ id, ...s }))
-      .sort((a, b) => b.cashCents - a.cashCents || b.bookedCalls - a.bookedCalls);
 
     // Landed payment rows with the counted/excluded verdict, for the landed tile.
     const pays = await prisma.payment.findMany({
       where: { paidAt: { gte: start, lt: end }, dealId: { not: null }, deal: { status: "closed_won" } },
-      include: { deal: { select: { prospectName: true } } },
+      include: {
+        deal: {
+          select: {
+            prospectName: true,
+            demo: { select: { booking: { select: { setterId: true, setter: { select: { name: true, excludeFromLeaderboard: true } } } } } },
+          },
+        },
+      },
       orderBy: { paidAt: "asc" },
     });
     const refs = await prisma.payment.findMany({
       where: { refundedAt: { gte: start, lt: end }, refundedCents: { gt: 0 }, dealId: { not: null }, deal: { status: "closed_won" } },
-      include: { deal: { select: { prospectName: true } } },
+      include: {
+        deal: {
+          select: {
+            prospectName: true,
+            demo: { select: { booking: { select: { setterId: true, setter: { select: { name: true, excludeFromLeaderboard: true } } } } } },
+          },
+        },
+      },
       orderBy: { refundedAt: "asc" },
     });
     const meta = await loadDealMeta([...new Set([...pays, ...refs].map((p) => p.dealId!))]);
+
+    // Setter cash = landed counted payments (minus landed refunds) attributed
+    // through the deal's booking. Demo-less organic deals get their own line.
+    const paymentBucket = (p: (typeof pays)[number]) => {
+      if (!p.deal!.demo) return { key: "organic", name: "Organic (no demo)" };
+      const b = p.deal!.demo.booking;
+      return setterBucket(b.setter, b.setterId);
+    };
     const landedRows = pays.map((p) => {
       const reason = commissionExclusionReason(p, meta);
+      if (reason === null) {
+        const { key, name } = paymentBucket(p);
+        getBucket(key, name).cashCents += p.amountCents;
+      }
       return {
         id: p.id,
         paidAt: p.paidAt,
@@ -181,12 +212,40 @@ export async function GET(request: NextRequest) {
     });
     const refundRows = refs
       .filter((p) => commissionExclusionReason(p, meta) === null)
-      .map((p) => ({
-        id: `refund-${p.id}`,
-        refundedAt: p.refundedAt,
-        prospectName: p.deal!.prospectName,
-        refundedCents: p.refundedCents,
-      }));
+      .map((p) => {
+        const { key, name } = paymentBucket(p);
+        getBucket(key, name).cashCents -= p.refundedCents;
+        return {
+          id: `refund-${p.id}`,
+          refundedAt: p.refundedAt,
+          prospectName: p.deal!.prospectName,
+          refundedCents: p.refundedCents,
+        };
+      });
+    const setters = [...bySetter.entries()]
+      .map(([id, s]) => ({ id, ...s }))
+      .sort((a, b) => b.cashCents - a.cashCents || b.bookedCalls - a.bookedCalls);
+
+    // Deals closed-won in the period (by closedAt — the closes receipts).
+    const closedInPeriod = await prisma.deal.findMany({
+      where: { status: "closed_won", closedAt: { gte: start, lt: end } },
+      include: {
+        closer: { select: { name: true } },
+        demo: { select: { booking: { select: { demoDate: true } } } },
+      },
+      orderBy: { closedAt: "asc" },
+    });
+    const closedRows = closedInPeriod.map((d) => {
+      const demoDate = d.demo?.booking?.demoDate || null;
+      return {
+        id: d.id,
+        prospectName: d.prospectName,
+        closedAt: d.closedAt,
+        closerName: d.closer?.name || null,
+        demoDate,
+        demoInPeriod: demoDate !== null && demoDate >= start && demoDate < end,
+      };
+    });
 
     // Unlinked payments landed in the period — money that counts NOWHERE.
     // New-client ones are a work queue (match on the demos-page financial
@@ -211,7 +270,7 @@ export async function GET(request: NextRequest) {
       orderBy: { name: "asc" },
     });
 
-    return NextResponse.json({ demoRows, setters, landedRows, refundRows, unlinkedRows, activeClosers });
+    return NextResponse.json({ demoRows, setters, landedRows, refundRows, unlinkedRows, closedRows, activeClosers });
   }
 
   // === PERIOD SERIES ===
@@ -232,6 +291,16 @@ export async function GET(request: NextRequest) {
 
   const landed = await landedCashByPeriod(periods);
 
+  // Closes by closedAt (same basis as the scoreboard closer board) — a deal
+  // counts in the period it was WON, wherever its demo ran.
+  const closedDeals = await prisma.deal.findMany({
+    where: {
+      status: "closed_won",
+      closedAt: { gte: periods[periods.length - 1].start, lt: periods[0].end },
+    },
+    select: { closedAt: true },
+  });
+
   // Unmatched NEW-client payments: cash that counts nowhere until an operator
   // matches it to a demo (demos-page financial feed). Surfaced as a standing
   // work queue (all time, not just the visible span) so it can't rot silently.
@@ -250,18 +319,19 @@ export async function GET(request: NextRequest) {
     }));
 
   const series = [];
-  for (const p of periods) {
+  for (const [i, p] of periods.entries()) {
     const inPeriod = demos.filter((d) => d.booking.demoDate >= p.start && d.booking.demoDate < p.end);
-    let bookedCalls = 0, shows = 0, closes = 0, cohortCashCents = 0;
+    let bookedCalls = 0, shows = 0, cohortCashCents = 0;
     for (const d of inPeriod) {
       if (d.status === "rescheduled") continue; // frozen duplicate of a moved demo
       bookedCalls++;
       if (d.status === "showed") shows++;
       if (d.deal?.status === "closed_won") {
-        closes++;
         cohortCashCents += dealUpfrontCents(d.deal.payments);
       }
     }
+    const closes = closedDeals.filter((d) => d.closedAt && d.closedAt >= p.start && d.closedAt < p.end).length;
+    const landedCents = landed[i];
     series.push({
       label: p.label,
       start: p.start,
@@ -270,13 +340,13 @@ export async function GET(request: NextRequest) {
       shows,
       closes,
       cohortCashCents,
-      landedCashCents: landed[series.length],
+      landedCashCents: landedCents,
       unmatchedNewCents: unmatchedNewQueue
         .filter((u) => u.paidAt >= p.start && u.paidAt < p.end)
         .reduce((s, u) => s + u.amountCents, 0),
-      cashPerCallCents: bookedCalls > 0 ? Math.round(cohortCashCents / bookedCalls) : 0,
-      cashPerShowCents: shows > 0 ? Math.round(cohortCashCents / shows) : 0,
-      cashPerCloseCents: closes > 0 ? Math.round(cohortCashCents / closes) : 0,
+      cashPerCallCents: bookedCalls > 0 ? Math.round(landedCents / bookedCalls) : 0,
+      cashPerShowCents: shows > 0 ? Math.round(landedCents / shows) : 0,
+      cashPerCloseCents: closes > 0 ? Math.round(landedCents / closes) : 0,
     });
   }
 
