@@ -110,6 +110,7 @@ export default function EconomicsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const [showExcluded, setShowExcluded] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -287,16 +288,21 @@ export default function EconomicsPage() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-[var(--muted-foreground)] mt-2">
-                Per-X metrics = <span className="font-medium">landed cash</span> (new money that hit the bank in the period, net of refunds) ÷ the
-                period&apos;s own activity: booked calls and shows by demo date, closes by close date. This shows new revenue THE WEEK it arrives and
-                never restates — the trade-off is that late-collected cash divides over a different week&apos;s demos than the ones that earned it.
-                Cohort Cash is the reference column for that: what each week&apos;s demos eventually produced (it grows as late closes land).
-              </p>
+              <details className="mt-2 text-xs text-[var(--muted-foreground)]">
+                <summary className="cursor-pointer select-none w-fit hover:text-[var(--foreground)]">How this math works</summary>
+                <p className="mt-1 max-w-3xl">
+                  Per-X metrics = <span className="font-medium">landed cash</span> (new money that hit the bank in the period, net of refunds) ÷ the
+                  period&apos;s own activity: booked calls and shows by demo date, closes by close date. This shows new revenue THE WEEK it arrives and
+                  never restates — the trade-off is that late-collected cash divides over a different week&apos;s demos than the ones that earned it.
+                  Cohort Cash is the reference column for that: what each week&apos;s demos eventually produced (it grows as late closes land).
+                </p>
+              </details>
             </div>
           )}
 
-          {/* Receipts for the selected period */}
+          {/* Receipts for the selected period — the new-revenue story is open by
+              default; the heavy audit tables fold up so the page stays scannable.
+              Every number still expands to its raw rows in one click. */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-semibold">Receipts — {period.label}</h3>
@@ -309,13 +315,65 @@ export default function EconomicsPage() {
             </div>
             {detailLoading && <p className="text-sm text-[var(--muted-foreground)]">Loading receipts…</p>}
             {detail && !detailLoading && (
-              <div className="space-y-5">
+              <div className="space-y-3">
+                {/* New revenue payments — the one section open by default */}
+                <ReceiptSection
+                  defaultOpen
+                  title="New revenue landed"
+                  meta={<span className={`font-semibold ${period.landedCashCents >= 0 ? "text-green-600" : "text-red-600"} [font-variant-numeric:tabular-nums]`}>{formatCents(period.landedCashCents)}</span>}
+                >
+                  <PaymentsReceipt
+                    detail={detail}
+                    landedCashCents={period.landedCashCents}
+                    showExcluded={showExcluded}
+                    onToggleExcluded={() => setShowExcluded((v) => !v)}
+                  />
+                </ReceiptSection>
+
+                {/* Closes in this period (by close date) */}
+                <ReceiptSection
+                  title={`Deals closed-won (${detail.closedRows.length})`}
+                  meta="the closes denominator"
+                >
+                  {detail.closedRows.length === 0 ? (
+                    <p className="text-sm text-[var(--muted-foreground)] px-4 py-3">None.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
+                        <thead className="bg-[var(--muted)] border-b">
+                          <tr>
+                            <th className="text-left p-2 font-medium">Closed</th>
+                            <th className="text-left p-2 font-medium">Client</th>
+                            <th className="text-left p-2 font-medium">Closer</th>
+                            <th className="text-left p-2 font-medium">Demo ran</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.closedRows.map((d) => (
+                            <tr key={d.id} className="border-b last:border-0">
+                              <td className="p-2 whitespace-nowrap">{d.closedAt ? formatDateShort(d.closedAt) : "—"}</td>
+                              <td className="p-2">{d.prospectName}</td>
+                              <td className="p-2">{d.closerName || "—"}</td>
+                              <td className="p-2">
+                                {d.demoDate ? formatDateShort(d.demoDate) : <span className="text-[var(--muted-foreground)]">no demo (organic)</span>}
+                                {d.demoDate && !d.demoInPeriod && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">demo outside this period</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </ReceiptSection>
+
                 {/* Setter economics */}
-                <div>
-                  <p className="font-medium text-sm mb-1">
-                    Setter economics — cash landed this period via their bookings ÷ their activity this period
-                  </p>
-                  <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
+                <ReceiptSection
+                  title="Setter economics"
+                  meta="cash landed via their bookings ÷ their activity"
+                >
+                  <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] text-sm [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b">
                         <tr>
@@ -348,14 +406,14 @@ export default function EconomicsPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </ReceiptSection>
 
                 {/* Cohort demo rows */}
-                <div>
-                  <p className="font-medium text-sm mb-1">
-                    Demos in this period ({detail.demoRows.length} rows) — the cohort behind booked/shows/closes and the per-X tiles
-                  </p>
-                  <div className="bg-[var(--card)] rounded-xl border overflow-x-auto max-h-96 overflow-y-auto">
+                <ReceiptSection
+                  title={`Demos in this period (${detail.demoRows.length})`}
+                  meta="the cohort behind booked / shows and the per-X tiles"
+                >
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b sticky top-0">
                         <tr>
@@ -385,118 +443,7 @@ export default function EconomicsPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-
-                {/* Closes in this period (by close date) */}
-                <div>
-                  <p className="font-medium text-sm mb-1">
-                    Deals closed-won this period ({detail.closedRows.length}) — the closes denominator
-                  </p>
-                  {detail.closedRows.length === 0 ? (
-                    <p className="text-sm text-[var(--muted-foreground)]">None.</p>
-                  ) : (
-                    <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
-                      <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
-                        <thead className="bg-[var(--muted)] border-b">
-                          <tr>
-                            <th className="text-left p-2 font-medium">Closed</th>
-                            <th className="text-left p-2 font-medium">Client</th>
-                            <th className="text-left p-2 font-medium">Closer</th>
-                            <th className="text-left p-2 font-medium">Demo ran</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detail.closedRows.map((d) => (
-                            <tr key={d.id} className="border-b last:border-0">
-                              <td className="p-2 whitespace-nowrap">{d.closedAt ? formatDateShort(d.closedAt) : "—"}</td>
-                              <td className="p-2">{d.prospectName}</td>
-                              <td className="p-2">{d.closerName || "—"}</td>
-                              <td className="p-2">
-                                {d.demoDate ? formatDateShort(d.demoDate) : <span className="text-[var(--muted-foreground)]">no demo (organic)</span>}
-                                {d.demoDate && !d.demoInPeriod && (
-                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">demo outside this period</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* Landed payments */}
-                <div>
-                  <p className="font-medium text-sm mb-1">
-                    Payments landed in this period — behind the &quot;Cash collected (landed)&quot; tile
-                  </p>
-                  <p className="text-xs text-[var(--muted-foreground)] mb-1 [font-variant-numeric:tabular-nums]">
-                    Total money in: {formatCents(
-                      detail.landedRows.reduce((s, p) => s + p.amountCents, 0) +
-                      detail.unlinkedRows.reduce((s, p) => s + p.amountCents, 0)
-                    )}
-                    {" = "}{formatCents(detail.landedRows.filter((p) => p.counted).reduce((s, p) => s + p.amountCents, 0))} counted new
-                    {" · "}{formatCents(detail.landedRows.filter((p) => !p.counted).reduce((s, p) => s + p.amountCents, 0))} reorders/excluded
-                    {" · "}{formatCents(detail.unlinkedRows.reduce((s, p) => s + p.amountCents, 0))} unlinked
-                  </p>
-                  <div className="bg-[var(--card)] rounded-xl border overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
-                      <thead className="bg-[var(--muted)] border-b sticky top-0">
-                        <tr>
-                          <th className="text-left p-2 font-medium">Landed</th>
-                          <th className="text-left p-2 font-medium">Client</th>
-                          <th className="text-right p-2 font-medium">Amount</th>
-                          <th className="text-left p-2 font-medium">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.landedRows.filter((p) => p.counted).map((p) => (
-                          <tr key={p.id} className="border-b last:border-0">
-                            <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
-                            <td className="p-2">{p.prospectName}</td>
-                            <td className="p-2 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
-                            <td className="p-2 text-[var(--muted-foreground)]">counted</td>
-                          </tr>
-                        ))}
-                        {detail.refundRows.map((r) => (
-                          <tr key={r.id} className="border-b last:border-0">
-                            <td className="p-2 whitespace-nowrap">{r.refundedAt ? formatDateShort(r.refundedAt) : "—"}</td>
-                            <td className="p-2">{r.prospectName}</td>
-                            <td className="p-2 text-right font-medium text-red-600">−{formatCents(r.refundedCents)}</td>
-                            <td className="p-2 text-red-600">refund</td>
-                          </tr>
-                        ))}
-                        {detail.landedRows.filter((p) => !p.counted).map((p) => (
-                          <tr key={p.id} className="border-b last:border-0 text-[var(--muted-foreground)]">
-                            <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
-                            <td className="p-2">{p.prospectName}</td>
-                            <td className="p-2 text-right line-through">{formatCents(p.amountCents)}</td>
-                            <td className="p-2">not counted — {p.excludedReason}</td>
-                          </tr>
-                        ))}
-                        {detail.unlinkedRows.map((p) => (
-                          <tr key={p.id} className={`border-b last:border-0 ${p.isNew ? "text-yellow-700 dark:text-yellow-400" : "text-[var(--muted-foreground)]"}`}>
-                            <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
-                            <td className="p-2">{p.name}</td>
-                            <td className={`p-2 text-right ${p.isNew ? "font-medium" : "line-through"}`}>{formatCents(p.amountCents)}</td>
-                            <td className="p-2">
-                              {p.isNew
-                                ? "⚠ unmatched NEW cash — counts nowhere, match it on the Demos page"
-                                : "unlinked — returning client (would be excluded anyway)"}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className="font-semibold">
-                          <td className="p-2" colSpan={2}>Total (matches the landed tile)</td>
-                          <td className={`p-2 text-right ${period.landedCashCents >= 0 ? "text-green-600" : "text-red-600"}`}>
-                            {formatCents(period.landedCashCents)}
-                          </td>
-                          <td />
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                </ReceiptSection>
               </div>
             )}
           </div>
@@ -699,6 +646,145 @@ function MatchControls({
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+      </div>
+    </div>
+  );
+}
+
+// Collapsible receipts card — native <details> so there's no state to manage
+// and deep receipts stay one click away without dominating the page.
+function ReceiptSection({
+  title,
+  meta,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={defaultOpen} className="group bg-[var(--card)] rounded-xl border">
+      <summary className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden hover:bg-[var(--muted)]/40 rounded-xl group-open:rounded-b-none">
+        <span className="text-sm font-medium flex items-center gap-2">
+          <svg className="shrink-0 transition-transform group-open:rotate-90 text-[var(--muted-foreground)]" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
+            <path d="M3 1.5 6.5 5 3 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {title}
+        </span>
+        <span className="text-xs text-[var(--muted-foreground)] text-right">{meta}</span>
+      </summary>
+      <div className="border-t border-[var(--border)]">{children}</div>
+    </details>
+  );
+}
+
+// The new-revenue payments receipt. Default view = the story that matters:
+// counted new payments, refunds, and anything that needs action (unmatched new
+// cash). Reorders/excluded/returning-unlinked rows fold behind a toggle — still
+// one click away so the money-in line always reconciles.
+function PaymentsReceipt({
+  detail,
+  landedCashCents,
+  showExcluded,
+  onToggleExcluded,
+}: {
+  detail: EconDetail;
+  landedCashCents: number;
+  showExcluded: boolean;
+  onToggleExcluded: () => void;
+}) {
+  const excludedRows = detail.landedRows.filter((p) => !p.counted);
+  const unlinkedReturning = detail.unlinkedRows.filter((p) => !p.isNew);
+  const unmatchedNewRows = detail.unlinkedRows.filter((p) => p.isNew);
+  const hiddenCount = excludedRows.length + unlinkedReturning.length;
+  const hiddenCents =
+    excludedRows.reduce((s, p) => s + p.amountCents, 0) +
+    unlinkedReturning.reduce((s, p) => s + p.amountCents, 0);
+  const countedCents = detail.landedRows.filter((p) => p.counted).reduce((s, p) => s + p.amountCents, 0);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 pt-2.5 pb-1.5">
+        <p className="text-xs text-[var(--muted-foreground)] [font-variant-numeric:tabular-nums]">
+          Money in: {formatCents(
+            detail.landedRows.reduce((s, p) => s + p.amountCents, 0) +
+            detail.unlinkedRows.reduce((s, p) => s + p.amountCents, 0)
+          )}
+          {" = "}{formatCents(countedCents)} new
+          {" · "}{formatCents(hiddenCents)} reorders/excluded
+          {unmatchedNewRows.length > 0 && <> · {formatCents(unmatchedNewRows.reduce((s, p) => s + p.amountCents, 0))} unmatched</>}
+        </p>
+        {hiddenCount > 0 && (
+          <button
+            onClick={onToggleExcluded}
+            className="text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] underline underline-offset-2"
+          >
+            {showExcluded ? "Hide" : "Show"} {hiddenCount} excluded ({formatCents(hiddenCents)})
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto max-h-96 overflow-y-auto">
+        <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
+          <thead className="bg-[var(--muted)] border-b sticky top-0">
+            <tr>
+              <th className="text-left p-2 font-medium">Landed</th>
+              <th className="text-left p-2 font-medium">Client</th>
+              <th className="text-right p-2 font-medium">Amount</th>
+              <th className="text-left p-2 font-medium">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.landedRows.filter((p) => p.counted).map((p) => (
+              <tr key={p.id} className="border-b last:border-0">
+                <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                <td className="p-2">{p.prospectName}</td>
+                <td className="p-2 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
+                <td className="p-2 text-[var(--muted-foreground)]">counted</td>
+              </tr>
+            ))}
+            {detail.refundRows.map((r) => (
+              <tr key={r.id} className="border-b last:border-0">
+                <td className="p-2 whitespace-nowrap">{r.refundedAt ? formatDateShort(r.refundedAt) : "—"}</td>
+                <td className="p-2">{r.prospectName}</td>
+                <td className="p-2 text-right font-medium text-red-600">−{formatCents(r.refundedCents)}</td>
+                <td className="p-2 text-red-600">refund</td>
+              </tr>
+            ))}
+            {unmatchedNewRows.map((p) => (
+              <tr key={p.id} className="border-b last:border-0 text-yellow-700 dark:text-yellow-400">
+                <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                <td className="p-2">{p.name}</td>
+                <td className="p-2 text-right font-medium">{formatCents(p.amountCents)}</td>
+                <td className="p-2">⚠ unmatched NEW cash — counts nowhere, use Reconcile</td>
+              </tr>
+            ))}
+            {showExcluded && excludedRows.map((p) => (
+              <tr key={p.id} className="border-b last:border-0 text-[var(--muted-foreground)]">
+                <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                <td className="p-2">{p.prospectName}</td>
+                <td className="p-2 text-right line-through">{formatCents(p.amountCents)}</td>
+                <td className="p-2">not counted — {p.excludedReason}</td>
+              </tr>
+            ))}
+            {showExcluded && unlinkedReturning.map((p) => (
+              <tr key={p.id} className="border-b last:border-0 text-[var(--muted-foreground)]">
+                <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                <td className="p-2">{p.name}</td>
+                <td className="p-2 text-right line-through">{formatCents(p.amountCents)}</td>
+                <td className="p-2">unlinked — returning client (would be excluded anyway)</td>
+              </tr>
+            ))}
+            <tr className="font-semibold">
+              <td className="p-2" colSpan={2}>Total (matches the landed tile)</td>
+              <td className={`p-2 text-right ${landedCashCents >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {formatCents(landedCashCents)}
+              </td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

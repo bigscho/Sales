@@ -208,7 +208,7 @@ export default function ScoreboardPage() {
 
   if (!data) return <p>Error loading scoreboard</p>;
 
-  const { scoreboard, closerBoard, teamTotals, unattributed, showRateRep } = data;
+  const { scoreboard, closerBoard, teamTotals, unattributed } = data;
   const dimLabel = DIMENSION_LABELS[dimension] || "This Week";
 
   // Closer-view summary cards, derived from the same closerBoard rows the
@@ -305,13 +305,13 @@ export default function ScoreboardPage() {
       </>
       )}
 
-      {/* Closer Scoreboard — demos run, show rate on their calendar, closes, close rate, cash collected. */}
+      {/* Closer Scoreboard — demos booked onto their calendars, show rate, closes, close rate, cash collected. */}
       {view === "closers" && (
         <>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-4 pb-3 px-4">
-              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Demos Run</p>
+              <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Demos Booked</p>
               <p className="text-3xl font-bold tracking-tight text-[var(--teal)] mt-1">{closerTotals.demos}</p>
               <p className="text-xs text-[var(--muted-foreground)]">on closer calendars {dimLabel.toLowerCase()}</p>
             </CardContent>
@@ -402,32 +402,8 @@ export default function ScoreboardPage() {
         </>
       )}
 
-      {/* Show Rate Rep Card */}
-      {view === "setters" && showRateRep && (
-        <Card className="border-green-200 bg-green-50/30">
-          <CardContent className="pt-4 pb-4 px-4 md:px-6">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate Rep</p>
-                <p className="text-xl font-bold mt-1">{showRateRep.name}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-[var(--muted-foreground)]">{dimLabel}</p>
-                <p className={`text-3xl font-bold ${
-                  showRateRep.showRate >= 0.6 ? "text-green-600" :
-                  showRateRep.showRate >= 0.4 ? "text-yellow-600" : "text-red-600"
-                }`}>
-                  {(teamTotals.results.shows + teamTotals.results.noShows + teamTotals.results.cancelled) > 0 ? formatPercent(showRateRep.showRate) : "—"}
-                </p>
-              </div>
-              <div className="text-sm text-[var(--muted-foreground)] max-w-xs">
-                <p className="font-medium">Bonus Tiers:</p>
-                <p>50%+ → $100 | 60%+ → $200 | 70%+ → $300</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Show Rate Rep card removed per Colin 2026-08-13 — it displayed his
+          bonus comp to the whole team. His pay lives on the Payroll page. */}
     </div>
   );
 }
