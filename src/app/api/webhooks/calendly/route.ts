@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
-import { matchCloserByName, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
+import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 
 // Calendly sends: invitee.created, invitee.canceled
 // GCal sync may have already created the booking with a different calendarEventId format.
@@ -467,6 +467,11 @@ export async function POST(request: NextRequest) {
             where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
           });
           setterId = setter?.id || null;
+
+          // Setter alias of the host closer (Ming = Matthew) → full-cycle self-sourced
+          if (isSelfSourcedViaIdentity(setterId, closerId)) {
+            leadSource = LEAD_SOURCE_SELF;
+          }
 
           // Auto-create non-setter bookers (CEO, guests) as excluded from leaderboard
           if (!setterId) {

@@ -13,6 +13,19 @@ import { prisma } from "./db";
 export const LEAD_SOURCE_FED = "fed";
 export const LEAD_SOURCE_SELF = "self_sourced";
 
+// Setter identities that are the same human as a closer (per Colin 2026-08-13:
+// "Matthew is Ming"). A booking this setter makes onto their own closer
+// calendar is full-cycle self-sourced (§4.6). The setter row keeps the booking
+// credit on the setter scoreboard — only leadSource (and therefore the closer
+// commission rate) is affected, and only when the host closer is the same person.
+export const SETTER_CLOSER_IDENTITIES: Record<string, string> = {
+  "setter-ming": "closer-matthew",
+};
+
+export function isSelfSourcedViaIdentity(setterId: string | null, hostCloserId: string | null): boolean {
+  return !!setterId && !!hostCloserId && SETTER_CLOSER_IDENTITIES[setterId] === hostCloserId;
+}
+
 // Returns the closer TeamMember matched by a booked-by name, or null.
 // Used both to detect self-sourced bookings and to avoid auto-creating a junk
 // setter TeamMember when a closer's name lands in the "Booked by" field.

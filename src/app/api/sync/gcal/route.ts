@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
-import { matchCloserByName, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
+import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 
 // Google Calendar sync via service account
 // Reads Calendly-booked events from the active closers' calendars,
@@ -620,6 +620,11 @@ async function syncCalendar(
             where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
           });
           setterId = setter?.id || null;
+
+          // Setter alias of the host closer (Ming = Matthew) → full-cycle self-sourced
+          if (isSelfSourcedViaIdentity(setterId, closerId)) {
+            leadSource = LEAD_SOURCE_SELF;
+          }
         }
       }
 
