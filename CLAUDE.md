@@ -25,6 +25,7 @@ DB: Neon PostgreSQL via Prisma ORM.
 
 ## CRITICAL: Sales money definition (Aug 2026) — do not regress
 - **Every cash figure in sales views is UPFRONT CASH ONLY**: charges within 24h of a deal's first payment, first-time clients only, net of refunds — `dealUpfrontCents()` in `src/lib/cash.ts` is the single source. Renewals, reorders, later charges, and "returning revenue" are deliberately NOT displayed anywhere (Colin: "overall revenue is easy to look at on Stripe; this is the sales dashboard"). Closer commission uses the same rule (payroll.ts `UPFRONT_WINDOW_HOURS`). Never re-add total/returning revenue to dashboard, feeds, day locks, or Slack recaps.
+- Amendment (Colin, Aug 13): the scoreboard closer board's Cash Collected column IS team-visible cash — the one deliberate exception to hiding money from closers/setters. See "Closer board Cash Collected column" below.
 - Exception: UNMATCHED payments stay visible in the demos financial feed — they're the match work-queue, not revenue display.
 - `Payment.isMonth1` is hardcoded true on every insert — meaningless, never use it.
 
@@ -81,7 +82,8 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Stripe webhook** → instant payment with MRR/one-time + new/returning classification
 - **Financial feed** with clickable badges (revenue type, customer status) + match dropdown
 - **Setter Scoreboard** page
-- **Closer board drill-down** (Aug 13): every closer row on /scoreboard expands to show the raw demos + closed-won deals behind its numbers, with the formula math spelled out (show-rate denominator, pending excluded, rescheduled rows listed-but-not-counted, closes-by-close-date vs demos-by-demo-date mismatch flagged per deal). Served by `/api/scoreboard?closerId=X` — same route, same dateFilter as the board, so detail can NEVER drift from the aggregate. No cash in it (team-visible).
+- **Closer board drill-down** (Aug 13): every closer row on /scoreboard expands to show the raw demos + closed-won deals behind its numbers, with the formula math spelled out (show-rate denominator, pending excluded, rescheduled rows listed-but-not-counted, closes-by-close-date vs demos-by-demo-date mismatch flagged per deal). Served by `/api/scoreboard?closerId=X` — same route, same dateFilter as the board, so detail can NEVER drift from the aggregate.
+- **Closer board Cash Collected column** (Aug 13, Colin's explicit exception to the no-cash-on-scoreboard rule): per-closer upfront cash that LANDED in the period on closed-won deals, minus refunds landed in the period — cash-collected basis via payroll's `isCommissionable`/`loadDealMeta` (exported from payroll.ts) so the column always reconciles with commission. Drill-down lists every payment: counted (green), excluded grayed with verbatim reason from `commissionExclusionReason()` (reorder / later-charge>24h / misc / deal-not-closed-won), refunds as red negatives; total row = board cell by construction. Unattributed cash (closed-won deals with no closer) surfaces as a warning under the table. Admin gets an inline per-row reassign dropdown → existing audited /api/deals PATCH (moves the whole deal: its cash AND its close). This column is the ONLY cash on team-visible views — demos-page/day-lock/deals scoping for closers is unchanged.
 - **Demos page**: day/week view, bulk select, side-by-side financials, no-flash refresh
 - **Day locking** system
 - **Dismissed events** (deleted demos stay deleted)

@@ -6,9 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBar } from "@/components/ui/status-bar";
 import { TimeDimensionToggle } from "@/components/time-dimension-toggle";
 import { useTimeDimension } from "@/lib/hooks/use-time-dimension";
-import { formatPercent, formatDateShort } from "@/lib/utils";
+import { formatPercent, formatDateShort, formatCents } from "@/lib/utils";
 import { showRateColor, closeRateColor } from "@/lib/perf-color";
 import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
+import { useSession } from "@/components/app-shell";
 
 interface CloserScore {
   id: string;
@@ -21,6 +22,7 @@ interface CloserScore {
   showRate: number;
   closes: number;
   closeRate: number;
+  cashCents: number;
 }
 
 interface CloserDetailDemo {
@@ -42,10 +44,37 @@ interface CloserDetailClose {
   demoInPeriod: boolean;
 }
 
+interface CloserDetailPayment {
+  id: string;
+  paidAt: string;
+  prospectName: string;
+  dealId: string;
+  leadSource: string;
+  amountCents: number;
+  counted: boolean;
+  excludedReason: string | null;
+}
+
+interface CloserDetailRefund {
+  id: string;
+  refundedAt: string | null;
+  paidAt: string;
+  prospectName: string;
+  dealId: string;
+  leadSource: string;
+  refundedCents: number;
+}
+
 interface CloserDetail {
   closer: { id: string; name: string };
   demos: CloserDetailDemo[];
   closes: CloserDetailClose[];
+  cash: {
+    payments: CloserDetailPayment[];
+    refunds: CloserDetailRefund[];
+    totalCents: number;
+  };
+  activeClosers: { id: string; name: string }[];
   tallies: {
     demos: number;
     shows: number;
@@ -71,6 +100,7 @@ interface SetterScore {
 interface ScoreboardData {
   scoreboard: SetterScore[];
   closerBoard: CloserScore[];
+  unattributedCashCents: number;
   teamTotals: {
     activity: { newBookings: number; asBooked?: number };
     results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
@@ -94,6 +124,8 @@ const DIMENSION_LABELS: Record<string, string> = {
 
 export default function ScoreboardPage() {
   const searchParams = useSearchParams();
+  const session = useSession();
+  const isAdmin = !!session?.isAdmin;
   const weekId = searchParams.get("weekId") || "";
   const { dimension, setDimension } = useTimeDimension();
   const [data, setData] = useState<ScoreboardData | null>(null);
@@ -101,6 +133,17 @@ export default function ScoreboardPage() {
   const [expandedCloser, setExpandedCloser] = useState<string | null>(null);
   const [closerDetail, setCloserDetail] = useState<CloserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const fetchDetail = useCallback((closerId: string) => {
+    setDetailLoading(true);
+    const params = new URLSearchParams({ closerId });
+    if (weekId) params.set("weekId", weekId);
+    if (dimension !== "weekly") params.set("dimension", dimension);
+    fetch(`/api/scoreboard?${params.toString()}`)
+      .then((r) => r.json())
+      .then((d) => { setCloserDetail(d); setDetailLoading(false); })
+      .catch(() => setDetailLoading(false));
+  }, [weekId, dimension]);
 
   const toggleCloserDetail = useCallback((closerId: string) => {
     if (expandedCloser === closerId) {
@@ -110,15 +153,28 @@ export default function ScoreboardPage() {
     }
     setExpandedCloser(closerId);
     setCloserDetail(null);
-    setDetailLoading(true);
-    const params = new URLSearchParams({ closerId });
+    fetchDetail(closerId);
+  }, [expandedCloser, fetchDetail]);
+
+  // Admin reassigns a deal's cash to a different closer straight from the
+  // drill-down. Writes the existing audited /api/deals PATCH, then refreshes
+  // both the board and the open detail so the numbers move in front of you.
+  const reassignDeal = useCallback(async (dealId: string, closerId: string) => {
+    await fetch("/api/deals", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dealId, closerId }),
+    });
+    // Silent board refresh (no skeleton flash), then refresh the open panel.
+    const params = new URLSearchParams();
     if (weekId) params.set("weekId", weekId);
     if (dimension !== "weekly") params.set("dimension", dimension);
     fetch(`/api/scoreboard?${params.toString()}`)
       .then((r) => r.json())
-      .then((d) => { setCloserDetail(d); setDetailLoading(false); })
-      .catch(() => setDetailLoading(false));
-  }, [expandedCloser, weekId, dimension]);
+      .then((d) => setData(d))
+      .catch(() => {});
+    if (expandedCloser) fetchDetail(expandedCloser);
+  }, [weekId, dimension, expandedCloser, fetchDetail]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -225,6 +281,7 @@ export default function ScoreboardPage() {
                   <th className="text-right p-3 font-medium">Show Rate</th>
                   <th className="text-right p-3 font-medium">Closes</th>
                   <th className="text-right p-3 font-medium">Close Rate</th>
+                  <th className="text-right p-3 font-medium" title="Upfront cash landed this period, net of refunds — same rule as commission">Cash Collected</th>
                 </tr>
               </thead>
               <tbody>
@@ -240,12 +297,20 @@ export default function ScoreboardPage() {
                       detail={isExpanded ? closerDetail : null}
                       detailLoading={isExpanded && detailLoading}
                       onToggle={() => toggleCloserDetail(c.id)}
+                      isAdmin={isAdmin}
+                      onReassign={reassignDeal}
                     />
                   );
                 })}
               </tbody>
             </table>
           </div>
+          {data.unattributedCashCents !== 0 && (
+            <p className="text-xs text-yellow-700 mt-2">
+              ⚠ {formatCents(data.unattributedCashCents)} of upfront cash this period isn&apos;t assigned to any closer
+              {isAdmin ? " — set the closer on the deal (Deals page) to attribute it." : "."}
+            </p>
+          )}
         </div>
       )}
 
@@ -302,6 +367,8 @@ function CloserRowGroup({
   detail,
   detailLoading,
   onToggle,
+  isAdmin,
+  onReassign,
 }: {
   closer: CloserScore;
   rateDenom: number;
@@ -309,6 +376,8 @@ function CloserRowGroup({
   detail: CloserDetail | null;
   detailLoading: boolean;
   onToggle: () => void;
+  isAdmin: boolean;
+  onReassign: (dealId: string, closerId: string) => void;
 }) {
   return (
     <>
@@ -331,14 +400,17 @@ function CloserRowGroup({
         <td className={`p-3 text-right font-medium ${c.shows > 0 ? closeRateColor(c.closeRate) : ""}`}>
           {c.shows > 0 ? formatPercent(c.closeRate) : "—"}
         </td>
+        <td className={`p-3 text-right font-medium ${c.cashCents > 0 ? "text-green-600" : c.cashCents < 0 ? "text-red-600" : "text-[var(--muted-foreground)]"}`}>
+          {c.cashCents !== 0 ? formatCents(c.cashCents) : "—"}
+        </td>
       </tr>
       {isExpanded && (
         <tr className="border-b last:border-0 bg-[var(--muted)]/20">
-          <td colSpan={7} className="p-0">
+          <td colSpan={8} className="p-0">
             {detailLoading && (
               <p className="p-4 text-sm text-[var(--muted-foreground)]">Loading detail…</p>
             )}
-            {detail && <CloserDetailPanel detail={detail} />}
+            {detail && <CloserDetailPanel detail={detail} isAdmin={isAdmin} onReassign={onReassign} />}
           </td>
         </tr>
       )}
@@ -346,9 +418,21 @@ function CloserRowGroup({
   );
 }
 
-function CloserDetailPanel({ detail }: { detail: CloserDetail }) {
+function CloserDetailPanel({
+  detail,
+  isAdmin,
+  onReassign,
+}: {
+  detail: CloserDetail;
+  isAdmin: boolean;
+  onReassign: (dealId: string, closerId: string) => void;
+}) {
   const t = detail.tallies;
   const rateDenom = t.shows + t.noShows + t.cancelled;
+  const countedPayments = detail.cash.payments.filter((p) => p.counted);
+  const excludedPayments = detail.cash.payments.filter((p) => !p.counted);
+  const collectedCents = countedPayments.reduce((s, p) => s + p.amountCents, 0);
+  const refundedCents = detail.cash.refunds.reduce((s, r) => s + r.refundedCents, 0);
   return (
     <div className="p-4 space-y-4 text-sm">
       {/* The math, spelled out from the rows below */}
@@ -369,6 +453,11 @@ function CloserDetailPanel({ detail }: { detail: CloserDetail }) {
           <span className="font-semibold">Close Rate</span> = {t.closes} close{t.closes === 1 ? "" : "s"} ÷ {t.shows} show{t.shows === 1 ? "" : "s"} ={" "}
           {t.shows > 0 ? formatPercent(t.closeRate) : "—"}
           <span className="text-[var(--muted-foreground)]"> · closes count by close date, so a close here may come from an earlier period&apos;s demo</span>
+        </p>
+        <p>
+          <span className="font-semibold">Cash Collected</span> = {formatCents(collectedCents)} landed
+          {refundedCents > 0 && <> − {formatCents(refundedCents)} refunded</>} = {formatCents(detail.cash.totalCents)}
+          <span className="text-[var(--muted-foreground)]"> · upfront cash only (within 24h of the deal&apos;s first payment), counted the day it lands — same rule as commission</span>
         </p>
       </div>
 
@@ -444,6 +533,111 @@ function CloserDetailPanel({ detail }: { detail: CloserDetail }) {
           </table>
         )}
       </div>
+
+      {/* Every payment behind the cash number — counted, excluded (with reason), and refunds */}
+      <div>
+        <p className="font-semibold mb-1">
+          Cash collected this period ({countedPayments.length} payment{countedPayments.length === 1 ? "" : "s"}
+          {detail.cash.refunds.length > 0 ? `, ${detail.cash.refunds.length} refund${detail.cash.refunds.length === 1 ? "" : "s"}` : ""})
+        </p>
+        {countedPayments.length === 0 && excludedPayments.length === 0 && detail.cash.refunds.length === 0 ? (
+          <p className="text-[var(--muted-foreground)]">No payments landed on {detail.closer.name}&apos;s deals this period.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="text-[var(--muted-foreground)]">
+              <tr className="border-b">
+                <th className="text-left py-1 pr-3 font-medium">Landed</th>
+                <th className="text-left py-1 pr-3 font-medium">Client</th>
+                <th className="text-left py-1 pr-3 font-medium">Source</th>
+                <th className="text-right py-1 pr-3 font-medium">Amount</th>
+                <th className="text-left py-1 font-medium">{isAdmin ? "Credited to / reassign" : "Notes"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {countedPayments.map((p) => (
+                <tr key={p.id} className="border-b last:border-0">
+                  <td className="py-1 pr-3 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                  <td className="py-1 pr-3">{p.prospectName}</td>
+                  <td className="py-1 pr-3 uppercase text-[10px] tracking-wide">{p.leadSource === "self_sourced" ? "Self" : "Fed"}</td>
+                  <td className="py-1 pr-3 text-right font-medium text-green-600">{formatCents(p.amountCents)}</td>
+                  <td className="py-1">
+                    {isAdmin ? (
+                      <ReassignSelect
+                        dealId={p.dealId}
+                        currentCloserId={detail.closer.id}
+                        closers={detail.activeClosers}
+                        onReassign={onReassign}
+                      />
+                    ) : (
+                      <span className="text-[var(--muted-foreground)]">counted</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {detail.cash.refunds.map((r) => (
+                <tr key={r.id} className="border-b last:border-0">
+                  <td className="py-1 pr-3 whitespace-nowrap">{r.refundedAt ? formatDateShort(r.refundedAt) : "—"}</td>
+                  <td className="py-1 pr-3">{r.prospectName}</td>
+                  <td className="py-1 pr-3 uppercase text-[10px] tracking-wide">{r.leadSource === "self_sourced" ? "Self" : "Fed"}</td>
+                  <td className="py-1 pr-3 text-right font-medium text-red-600">−{formatCents(r.refundedCents)}</td>
+                  <td className="py-1 text-red-600">refund (collected {formatDateShort(r.paidAt)})</td>
+                </tr>
+              ))}
+              {excludedPayments.map((p) => (
+                <tr key={p.id} className="border-b last:border-0 text-[var(--muted-foreground)]">
+                  <td className="py-1 pr-3 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                  <td className="py-1 pr-3">{p.prospectName}</td>
+                  <td className="py-1 pr-3 uppercase text-[10px] tracking-wide">{p.leadSource === "self_sourced" ? "Self" : "Fed"}</td>
+                  <td className="py-1 pr-3 text-right line-through">{formatCents(p.amountCents)}</td>
+                  <td className="py-1">not counted — {p.excludedReason}</td>
+                </tr>
+              ))}
+              <tr className="font-semibold">
+                <td className="py-1.5 pr-3" colSpan={3}>Total (matches the board cell)</td>
+                <td className={`py-1.5 pr-3 text-right ${detail.cash.totalCents >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {formatCents(detail.cash.totalCents)}
+                </td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
+  );
+}
+
+// Deal-level closer reassignment, inline on the payment row. Moving a deal
+// moves ALL its cash (and its close) to the new closer — audit-logged via the
+// existing /api/deals PATCH.
+function ReassignSelect({
+  dealId,
+  currentCloserId,
+  closers,
+  onReassign,
+}: {
+  dealId: string;
+  currentCloserId: string;
+  closers: { id: string; name: string }[];
+  onReassign: (dealId: string, closerId: string) => void;
+}) {
+  return (
+    <select
+      className="text-xs border rounded px-1 py-0.5 bg-[var(--card)]"
+      value={currentCloserId}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (next && next !== currentCloserId && confirm("Move this deal (all its cash + its close) to the selected closer? This is audit-logged.")) {
+          onReassign(dealId, next);
+        } else {
+          e.target.value = currentCloserId;
+        }
+      }}
+    >
+      {closers.map((c) => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
   );
 }

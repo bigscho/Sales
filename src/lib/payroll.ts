@@ -142,10 +142,12 @@ export async function calculateSetterPay(setterId: string, weekId: string): Prom
 // Company (§4.5) — no commission.
 const UPFRONT_WINDOW_HOURS = 24;
 
-type DealMeta = { firstPaidAt: Date; isNewBusiness: boolean };
+export type DealMeta = { firstPaidAt: Date; isNewBusiness: boolean };
 
 // First payment per deal → month-1 anchor + deal-level new-business test.
-async function loadDealMeta(dealIds: string[]): Promise<Map<string, DealMeta>> {
+// Exported (with isCommissionable) so the scoreboard's cash-collected column
+// uses the IDENTICAL rule as commission — one definition, no drift.
+export async function loadDealMeta(dealIds: string[]): Promise<Map<string, DealMeta>> {
   const meta = new Map<string, DealMeta>();
   if (dealIds.length === 0) return meta;
   const payments = await prisma.payment.findMany({
@@ -163,17 +165,31 @@ async function loadDealMeta(dealIds: string[]): Promise<Map<string, DealMeta>> {
   return meta;
 }
 
-function isCommissionable(
+export function isCommissionable(
   p: { paidAt: Date; status: string; revenueType: string; revenueTypeOverride: string | null; dealId: string | null },
   meta: Map<string, DealMeta>
 ): boolean {
-  if (!p.dealId) return false;
-  if (p.status === "failed") return false;
-  if ((p.revenueTypeOverride || p.revenueType) === "misc") return false;
+  return commissionExclusionReason(p, meta) === null;
+}
+
+// Why a payment does NOT count as upfront sales cash — null means it counts.
+// The scoreboard drill-down shows these verbatim so a human can reconcile any
+// number back to its rows; keep the checks in lockstep with the rule above.
+export function commissionExclusionReason(
+  p: { paidAt: Date; status: string; revenueType: string; revenueTypeOverride: string | null; dealId: string | null },
+  meta: Map<string, DealMeta>
+): string | null {
+  if (!p.dealId) return "not linked to a deal";
+  if (p.status === "failed") return "failed payment";
+  if ((p.revenueTypeOverride || p.revenueType) === "misc") return "marked misc";
   const dm = meta.get(p.dealId);
-  if (!dm || !dm.isNewBusiness) return false; // reorder/repeat client → Company's revenue (§4.5)
+  if (!dm) return "deal has no successful payments";
+  if (!dm.isNewBusiness) return "reorder deal (already-paying client) — company revenue"; // §4.5
   const windowMs = UPFRONT_WINDOW_HOURS * 60 * 60 * 1000;
-  return p.paidAt.getTime() - dm.firstPaidAt.getTime() <= windowMs; // later charges = reorders/renewals, not commissionable
+  if (p.paidAt.getTime() - dm.firstPaidAt.getTime() > windowMs) {
+    return "later charge (>24h after first payment) — reorder/renewal, company revenue";
+  }
+  return null;
 }
 
 // Commission + clawback for a date range, cash-collected basis (§4.7):

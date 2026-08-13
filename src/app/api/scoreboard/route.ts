@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { type TimeDimension, getDateRange } from "@/lib/time-range";
 import { getWeekRange, computeShowRate } from "@/lib/utils";
+import { loadDealMeta, isCommissionable, commissionExclusionReason } from "@/lib/payroll";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
@@ -102,6 +103,70 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Cash collected this period on this closer's deals — payment by payment,
+    // counted rows AND excluded rows (with the reason), so the column total can
+    // always be traced by hand. Same commissionable rule as payroll.
+    const rawPayments = await prisma.payment.findMany({
+      where: {
+        ...(dateFilter ? { paidAt: dateFilter } : {}),
+        deal: { closerId: detailCloserId },
+      },
+      include: { deal: { select: { id: true, prospectName: true, leadSource: true, status: true } } },
+      orderBy: { paidAt: "asc" },
+    });
+    const rawRefunds = await prisma.payment.findMany({
+      where: {
+        refundedCents: { gt: 0 },
+        ...(dateFilter ? { refundedAt: dateFilter } : { refundedAt: { not: null } }),
+        deal: { closerId: detailCloserId },
+      },
+      include: { deal: { select: { id: true, prospectName: true, leadSource: true, status: true } } },
+      orderBy: { refundedAt: "asc" },
+    });
+    const cashMeta = await loadDealMeta([
+      ...new Set([...rawPayments, ...rawRefunds].map((p) => p.dealId!).filter(Boolean)),
+    ]);
+    const exclusionReason = (p: (typeof rawPayments)[number]): string | null =>
+      p.deal!.status !== "closed_won"
+        ? `deal is ${p.deal!.status.replace("_", " ")}, not closed-won`
+        : commissionExclusionReason(p, cashMeta);
+
+    let cashTotalCents = 0;
+    const paymentRows = rawPayments.map((p) => {
+      const reason = exclusionReason(p);
+      if (reason === null) cashTotalCents += p.amountCents;
+      return {
+        id: p.id,
+        paidAt: p.paidAt,
+        prospectName: p.deal!.prospectName,
+        dealId: p.deal!.id,
+        leadSource: p.deal!.leadSource,
+        amountCents: p.amountCents,
+        counted: reason === null,
+        excludedReason: reason,
+      };
+    });
+    const refundRows = rawRefunds
+      .filter((p) => exclusionReason(p) === null) // only reverse cash we counted (now or in a prior period)
+      .map((p) => {
+        cashTotalCents -= p.refundedCents;
+        return {
+          id: `refund-${p.id}`,
+          refundedAt: p.refundedAt,
+          paidAt: p.paidAt,
+          prospectName: p.deal!.prospectName,
+          dealId: p.deal!.id,
+          leadSource: p.deal!.leadSource,
+          refundedCents: p.refundedCents,
+        };
+      });
+
+    const activeClosers = await prisma.teamMember.findMany({
+      where: { role: "closer", isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
     const closeRows = closedDeals.map((deal) => {
       const demoDate = deal.demo?.booking?.demoDate || null;
       const demoInPeriod =
@@ -122,6 +187,12 @@ export async function GET(request: NextRequest) {
       dimension,
       demos: demoRows,
       closes: closeRows,
+      cash: {
+        payments: paymentRows,
+        refunds: refundRows,
+        totalCents: cashTotalCents,
+      },
+      activeClosers,
       tallies: {
         demos: t.shows + t.noShows + t.pending + t.cancelled,
         ...t,
@@ -254,6 +325,47 @@ export async function GET(request: NextRequest) {
   for (const d of closerDeals) {
     closesByCloser[d.closerId!] = (closesByCloser[d.closerId!] || 0) + 1;
   }
+
+  // === CASH COLLECTED (Colin, 2026-08-13: cash per closer is team-visible on
+  // this board). Upfront payments that LANDED in the period on closed-won deals
+  // minus refunds that landed in the period — the same commissionable rule and
+  // cash-collected basis as payroll, so this column always reconciles with
+  // commission. The ?closerId drill-down lists every row behind each cell.
+  const boardPayments = await prisma.payment.findMany({
+    where: {
+      ...(dateFilter ? { paidAt: dateFilter } : {}),
+      dealId: { not: null },
+      deal: { status: "closed_won" },
+    },
+    include: { deal: { select: { closerId: true } } },
+  });
+  const boardRefunds = await prisma.payment.findMany({
+    where: {
+      refundedCents: { gt: 0 },
+      ...(dateFilter ? { refundedAt: dateFilter } : { refundedAt: { not: null } }),
+      dealId: { not: null },
+      deal: { status: "closed_won" },
+    },
+    include: { deal: { select: { closerId: true } } },
+  });
+  const boardMeta = await loadDealMeta([
+    ...new Set([...boardPayments, ...boardRefunds].map((p) => p.dealId!)),
+  ]);
+  const cashByCloser: Record<string, number> = {};
+  let unattributedCashCents = 0;
+  for (const p of boardPayments) {
+    if (!isCommissionable(p, boardMeta)) continue;
+    const cid = p.deal!.closerId;
+    if (cid) cashByCloser[cid] = (cashByCloser[cid] || 0) + p.amountCents;
+    else unattributedCashCents += p.amountCents;
+  }
+  for (const p of boardRefunds) {
+    if (!isCommissionable(p, boardMeta)) continue;
+    const cid = p.deal!.closerId;
+    if (cid) cashByCloser[cid] = (cashByCloser[cid] || 0) - p.refundedCents;
+    else unattributedCashCents -= p.refundedCents;
+  }
+
   const closerBoard = closers
     .map((c) => {
       const r = closerAgg[c.id] || { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
@@ -266,9 +378,10 @@ export async function GET(request: NextRequest) {
         showRate: computeShowRate(r.shows, r.noShows, r.cancelled),
         closes,
         closeRate: r.shows > 0 ? closes / r.shows : 0,
+        cashCents: cashByCloser[c.id] || 0,
       };
     })
-    .filter((c) => c.demos > 0 || c.closes > 0);
+    .filter((c) => c.demos > 0 || c.closes > 0 || c.cashCents !== 0);
 
   // Build scoreboard entries
   const scoreboard = [...setters, ...activeCloserSetters].map((s) => {
@@ -299,6 +412,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     scoreboard,
     closerBoard,
+    unattributedCashCents,
     teamTotals: {
       activity: { newBookings: activityTotal, asBooked: asBookedTotal },
       results: { ...resultsTotal, showRate: teamShowRate },
