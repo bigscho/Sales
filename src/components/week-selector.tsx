@@ -84,15 +84,15 @@ export function WeekSelector() {
     [router, pathname]
   );
 
-  if (loading) return <div className="h-10 w-56 bg-[var(--muted)] animate-pulse rounded-lg" />;
+  if (loading) return <div className="h-10 w-40 md:w-56 bg-[var(--muted)] animate-pulse rounded-lg" />;
 
   return (
-    <div className="flex items-center gap-3">
-      <label className="text-sm font-medium text-[var(--muted-foreground)]">Week:</label>
+    <div className="flex items-center gap-2 md:gap-3 min-w-0">
+      <label className="hidden sm:inline text-sm font-medium text-[var(--muted-foreground)]">Week:</label>
       <select
         value={currentWeekId}
         onChange={handleChange}
-        className="h-10 px-3 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+        className="h-10 px-2 md:px-3 min-w-0 max-w-full rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
       >
         {weeks.length === 0 && <option value="">No weeks yet</option>}
         {weeks.map((w) => (
@@ -101,7 +101,7 @@ export function WeekSelector() {
           </option>
         ))}
       </select>
-      <span className="text-sm text-[var(--muted-foreground)] hidden md:inline">{formatToday()}</span>
+      <span className="text-sm text-[var(--muted-foreground)] hidden lg:inline">{formatToday()}</span>
     </div>
   );
 }

@@ -41,7 +41,7 @@ const ceoNavItems = [
   { href: "/ceo/pnl", label: "CEO P&L", icon: "💹" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const session = useSession();
@@ -66,11 +66,11 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-56 flex-shrink-0 bg-[var(--navbar)] border-r border-[var(--border)] min-h-screen flex flex-col">
-      <div className="h-16 border-b border-white/10 flex items-center justify-center px-4">
+    <aside className="w-56 flex-shrink-0 bg-[var(--navbar)] border-r border-[var(--border)] h-full min-h-0 flex flex-col">
+      <div className="h-16 shrink-0 border-b border-white/10 flex items-center justify-center px-4">
         <Image src="/logos/logo-light.png" alt="Grassfed" width={180} height={48} className="h-10 w-auto" />
       </div>
-      <nav className="flex-1 p-2">
+      <nav className="flex-1 p-2 overflow-y-auto">
         {visibleItems.map((item) => {
           const href = getHref(item);
           const isExternal = href.startsWith("http");
@@ -83,6 +83,7 @@ export function Sidebar() {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
                   "text-white/60 hover:bg-white/10 hover:text-white"
@@ -98,6 +99,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
                 isActive
@@ -123,6 +125,7 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={onNavigate}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5",
                     isActive

@@ -828,14 +828,16 @@ export default function DemosPage() {
 
       {/* ===== TOP: WEEK CALENDAR VIEW ===== */}
       {loading ? (
-        <div className="grid grid-cols-7 gap-2">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="h-32 bg-[var(--card)] rounded-xl border animate-pulse" />
-          ))}
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-7 gap-2 min-w-[720px]">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="h-32 bg-[var(--card)] rounded-xl border animate-pulse" />
+            ))}
+          </div>
         </div>
       ) : (
-        <div className="py-2 px-1">
-          <div className="grid grid-cols-7 gap-2">
+        <div className="py-2 px-1 overflow-x-auto">
+          <div className="grid grid-cols-7 gap-2 min-w-[720px]">
             {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => {
               const dayDemos = demosByDay[dayIndex];
               const isToday = new Date().getDay() === dayIndex;

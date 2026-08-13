@@ -21,8 +21,8 @@ export function UserMenu() {
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="text-[var(--muted-foreground)]">{session.name}</span>
-      <span className="text-xs text-[var(--muted-foreground)]/70">({session.isAdmin ? "admin" : session.role})</span>
+      <span className="hidden sm:inline text-[var(--muted-foreground)]">{session.name}</span>
+      <span className="hidden md:inline text-xs text-[var(--muted-foreground)]/70">({session.isAdmin ? "admin" : session.role})</span>
       <button
         onClick={handleLogout}
         className="text-xs text-[var(--muted-foreground)]/70 hover:text-red-500 ml-1"

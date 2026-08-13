@@ -241,11 +241,12 @@ export default function ScoreboardPage() {
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                 }`}
               >
-                {v === "setters" ? "Setter Scoreboard" : "Closer Scoreboard"}
+                <span className="sm:hidden">{v === "setters" ? "Setters" : "Closers"}</span>
+                <span className="hidden sm:inline">{v === "setters" ? "Setter Scoreboard" : "Closer Scoreboard"}</span>
               </button>
             ))}
           </div>
-          <p className="text-sm text-[var(--muted-foreground)]">{dimLabel} performance</p>
+          <p className="hidden sm:block text-sm text-[var(--muted-foreground)]">{dimLabel} performance</p>
         </div>
         <TimeDimensionToggle value={dimension} onChange={setDimension} />
       </div>
@@ -343,7 +344,7 @@ export default function ScoreboardPage() {
           <Card>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Cash Collected</p>
-              <p className={`text-3xl font-bold tracking-tight mt-1 ${closerTotals.cashCents > 0 ? "text-green-600" : closerTotals.cashCents < 0 ? "text-red-600" : "text-[var(--muted-foreground)]"}`}>
+              <p className={`text-2xl md:text-3xl font-bold tracking-tight mt-1 ${closerTotals.cashCents > 0 ? "text-green-600" : closerTotals.cashCents < 0 ? "text-red-600" : "text-[var(--muted-foreground)]"}`}>
                 {closerTotals.cashCents !== 0 ? formatCents(closerTotals.cashCents) : "—"}
               </p>
               <p className="text-xs text-[var(--muted-foreground)]">upfront cash landed {dimLabel.toLowerCase()}</p>
@@ -356,16 +357,16 @@ export default function ScoreboardPage() {
         ) : (
         <div>
           <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-[var(--muted)] border-b">
                 <tr>
-                  <th className="text-left p-3 font-medium">Closer</th>
-                  <th className="text-right p-3 font-medium">Demos</th>
-                  <th className="text-right p-3 font-medium">Shows</th>
-                  <th className="text-right p-3 font-medium">No-Shows</th>
-                  <th className="text-right p-3 font-medium">Show Rate</th>
-                  <th className="text-right p-3 font-medium">Closes</th>
-                  <th className="text-right p-3 font-medium">Close Rate</th>
+                  <th className="text-left p-3 font-medium whitespace-nowrap">Closer</th>
+                  <th className="text-right p-3 font-medium whitespace-nowrap">Demos</th>
+                  <th className="text-right p-3 font-medium whitespace-nowrap">Shows</th>
+                  <th className="text-right p-3 font-medium whitespace-nowrap">No-Shows</th>
+                  <th className="text-right p-3 font-medium whitespace-nowrap">Show Rate</th>
+                  <th className="text-right p-3 font-medium whitespace-nowrap">Closes</th>
+                  <th className="text-right p-3 font-medium whitespace-nowrap">Close Rate</th>
                   <th className="text-right p-3 font-medium" title="Upfront cash landed this period, net of refunds — same rule as commission">Cash Collected</th>
                 </tr>
               </thead>
@@ -404,8 +405,8 @@ export default function ScoreboardPage() {
       {/* Show Rate Rep Card */}
       {view === "setters" && showRateRep && (
         <Card className="border-green-200 bg-green-50/30">
-          <CardContent className="pt-4 pb-4 px-6">
-            <div className="flex items-center justify-between">
+          <CardContent className="pt-4 pb-4 px-4 md:px-6">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
                 <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Show Rate Rep</p>
                 <p className="text-xl font-bold mt-1">{showRateRep.name}</p>

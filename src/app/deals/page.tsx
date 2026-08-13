@@ -184,8 +184,8 @@ export default function DealsPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-[var(--card)] rounded-xl border overflow-hidden overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-[var(--muted)] border-b">
               <tr>
                 <th className="text-left p-3 font-medium">Prospect</th>
@@ -320,8 +320,8 @@ export default function DealsPage() {
           <p className="text-sm text-[var(--muted-foreground)] mb-3">
             These payments are in Stripe but not linked to a deal yet. Create a deal above to associate them.
           </p>
-          <div className="bg-[var(--card)] rounded-xl border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-[var(--card)] rounded-xl border overflow-hidden overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
               <thead className="bg-[var(--muted)] border-b">
                 <tr>
                   <th className="text-left p-3 font-medium">Customer</th>

@@ -252,7 +252,7 @@ export default function EconomicsPage() {
                 <span className="text-sm font-normal text-[var(--muted-foreground)] ml-2">click a row to inspect it</span>
               </h3>
               <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
-                <table className="w-full text-sm [font-variant-numeric:tabular-nums]">
+                <table className="w-full min-w-[640px] text-sm [font-variant-numeric:tabular-nums]">
                   <thead className="bg-[var(--muted)] border-b">
                     <tr>
                       <th className="text-left p-3 font-medium">Period</th>
@@ -316,7 +316,7 @@ export default function EconomicsPage() {
                     Setter economics — cash landed this period via their bookings ÷ their activity this period
                   </p>
                   <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
-                    <table className="w-full text-sm [font-variant-numeric:tabular-nums]">
+                    <table className="w-full min-w-[640px] text-sm [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b">
                         <tr>
                           <th className="text-left p-2.5 font-medium">Setter</th>
@@ -356,7 +356,7 @@ export default function EconomicsPage() {
                     Demos in this period ({detail.demoRows.length} rows) — the cohort behind booked/shows/closes and the per-X tiles
                   </p>
                   <div className="bg-[var(--card)] rounded-xl border overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="w-full text-xs [font-variant-numeric:tabular-nums]">
+                    <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b sticky top-0">
                         <tr>
                           <th className="text-left p-2 font-medium">Date</th>
@@ -396,7 +396,7 @@ export default function EconomicsPage() {
                     <p className="text-sm text-[var(--muted-foreground)]">None.</p>
                   ) : (
                     <div className="bg-[var(--card)] rounded-xl border overflow-x-auto">
-                      <table className="w-full text-xs [font-variant-numeric:tabular-nums]">
+                      <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
                         <thead className="bg-[var(--muted)] border-b">
                           <tr>
                             <th className="text-left p-2 font-medium">Closed</th>
@@ -440,7 +440,7 @@ export default function EconomicsPage() {
                     {" · "}{formatCents(detail.unlinkedRows.reduce((s, p) => s + p.amountCents, 0))} unlinked
                   </p>
                   <div className="bg-[var(--card)] rounded-xl border overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="w-full text-xs [font-variant-numeric:tabular-nums]">
+                    <table className="w-full min-w-[560px] text-xs [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b sticky top-0">
                         <tr>
                           <th className="text-left p-2 font-medium">Landed</th>
@@ -739,7 +739,7 @@ function StatTile({
     <Card>
       <CardContent className="pt-4 pb-3 px-4">
         <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">{label}</p>
-        <p className={`text-3xl font-bold tracking-tight mt-1 ${valueCents > 0 ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}`}>
+        <p className={`text-2xl md:text-3xl font-bold tracking-tight mt-1 ${valueCents > 0 ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}`}>
           {valueCents !== 0 ? formatCents(valueCents) : "—"}
         </p>
         <p className="text-xs text-[var(--muted-foreground)]">{context}</p>
