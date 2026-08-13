@@ -81,6 +81,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Stripe webhook** → instant payment with MRR/one-time + new/returning classification
 - **Financial feed** with clickable badges (revenue type, customer status) + match dropdown
 - **Setter Scoreboard** page
+- **Closer board drill-down** (Aug 13): every closer row on /scoreboard expands to show the raw demos + closed-won deals behind its numbers, with the formula math spelled out (show-rate denominator, pending excluded, rescheduled rows listed-but-not-counted, closes-by-close-date vs demos-by-demo-date mismatch flagged per deal). Served by `/api/scoreboard?closerId=X` — same route, same dateFilter as the board, so detail can NEVER drift from the aggregate. No cash in it (team-visible).
 - **Demos page**: day/week view, bulk select, side-by-side financials, no-flash refresh
 - **Day locking** system
 - **Dismissed events** (deleted demos stay deleted)

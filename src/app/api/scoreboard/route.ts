@@ -37,6 +37,101 @@ export async function GET(request: NextRequest) {
     ? { gte: dateRange.start, lt: dimension === "weekly" ? new Date(dateRange.end.getTime() + 1) : dateRange.end }
     : undefined;
 
+  // === CLOSER DRILL-DOWN: ?closerId=X returns the raw rows behind that closer's
+  // board numbers, using the SAME dateFilter as the board itself so the detail
+  // can never drift from the aggregate. Tallies are recomputed from the listed
+  // rows — the drill-down IS the audit trail. No cash anywhere (team-visible).
+  const detailCloserId = request.nextUrl.searchParams.get("closerId");
+  if (detailCloserId) {
+    const closer = await prisma.teamMember.findUnique({ where: { id: detailCloserId } });
+    if (!closer) return NextResponse.json({ error: "Unknown closer" }, { status: 404 });
+
+    const demos = await prisma.demo.findMany({
+      where: {
+        closerId: detailCloserId,
+        ...(dateFilter ? { booking: { demoDate: dateFilter } } : {}),
+      },
+      include: {
+        booking: {
+          select: {
+            prospectName: true,
+            demoDate: true,
+            leadSource: true,
+            setter: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { booking: { demoDate: "asc" } },
+    });
+
+    const closedDeals = await prisma.deal.findMany({
+      where: {
+        status: "closed_won",
+        closerId: detailCloserId,
+        ...(dateFilter ? { closedAt: dateFilter } : {}),
+      },
+      include: {
+        demo: { include: { booking: { select: { demoDate: true } } } },
+      },
+      orderBy: { closedAt: "asc" },
+    });
+
+    // Mirror the board's bucketing exactly: rescheduled rows fall through every
+    // branch and are NOT part of the demo count (frozen history of a moved demo).
+    const t = { shows: 0, noShows: 0, pending: 0, cancelled: 0, rescheduled: 0 };
+    const demoRows = demos.map((d) => {
+      if (d.status === "showed") t.shows++;
+      else if (d.status === "no_show") t.noShows++;
+      else if (d.status === "pending") t.pending++;
+      else if (d.status === "cancelled") t.cancelled++;
+      else if (d.status === "rescheduled") t.rescheduled++;
+      const countsAs =
+        d.status === "showed" || d.status === "no_show" || d.status === "cancelled"
+          ? "show-rate denominator"
+          : d.status === "pending"
+          ? "demo count only (still TBD)"
+          : "not counted (moved/frozen)";
+      return {
+        id: d.id,
+        demoDate: d.booking.demoDate,
+        prospectName: d.booking.prospectName,
+        setterName: d.booking.setter?.name || "—",
+        leadSource: d.booking.leadSource,
+        status: d.status,
+        countsAs,
+      };
+    });
+
+    const closeRows = closedDeals.map((deal) => {
+      const demoDate = deal.demo?.booking?.demoDate || null;
+      const demoInPeriod =
+        !dateFilter || (demoDate !== null && demoDate >= dateFilter.gte && demoDate < dateFilter.lt);
+      return {
+        id: deal.id,
+        prospectName: deal.prospectName,
+        closedAt: deal.closedAt,
+        leadSource: deal.leadSource,
+        demoDate,
+        demoInPeriod,
+      };
+    });
+
+    return NextResponse.json({
+      closer: { id: closer.id, name: closer.name },
+      range: dateRange ? { start: dateRange.start, end: dateRange.end } : null,
+      dimension,
+      demos: demoRows,
+      closes: closeRows,
+      tallies: {
+        demos: t.shows + t.noShows + t.pending + t.cancelled,
+        ...t,
+        showRate: computeShowRate(t.shows, t.noShows, t.cancelled),
+        closes: closeRows.length,
+        closeRate: t.shows > 0 ? closeRows.length / t.shows : 0,
+      },
+    });
+  }
+
   // === ACTIVITY: bookings by bookedAt (with createdAt fallback) in range ===
   // Includes gcal_sync so the leaderboard stays accurate when the Calendly webhook is down —
   // gcal_sync is the 10-min backup path and writes real setterId from the event description.

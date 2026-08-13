@@ -186,7 +186,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `/api/team` | GET, POST, PATCH | Team member CRUD (name, role, tier, slackUserId) |
 | `/api/weeks` | GET, POST | Week management, auto-creates current + future weeks |
 | `/api/kpis` | GET | Weekly KPI calculations |
-| `/api/scoreboard` | GET | Setter scoreboard with weekly + all-time stats |
+| `/api/scoreboard` | GET | Setter scoreboard with weekly + all-time stats; closer board. `?closerId=X` → drill-down: the raw demos + closed-won deals behind that closer's board numbers (same dateFilter as the board so detail cannot drift), tallies recomputed from the listed rows, no cash |
 | `/api/expenses` | GET, POST, DELETE | Expense tracking |
 | `/api/payroll` | GET, POST | Payroll generation |
 | `/api/settings` | GET, POST | Sync logs, expense categories |

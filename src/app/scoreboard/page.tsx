@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBar } from "@/components/ui/status-bar";
 import { TimeDimensionToggle } from "@/components/time-dimension-toggle";
 import { useTimeDimension } from "@/lib/hooks/use-time-dimension";
-import { formatPercent } from "@/lib/utils";
+import { formatPercent, formatDateShort } from "@/lib/utils";
 import { showRateColor, closeRateColor } from "@/lib/perf-color";
 import { SetterLeaderboards } from "@/components/dashboard/setter-leaderboards";
 
@@ -21,6 +21,42 @@ interface CloserScore {
   showRate: number;
   closes: number;
   closeRate: number;
+}
+
+interface CloserDetailDemo {
+  id: string;
+  demoDate: string;
+  prospectName: string;
+  setterName: string;
+  leadSource: string;
+  status: string;
+  countsAs: string;
+}
+
+interface CloserDetailClose {
+  id: string;
+  prospectName: string;
+  closedAt: string | null;
+  leadSource: string;
+  demoDate: string | null;
+  demoInPeriod: boolean;
+}
+
+interface CloserDetail {
+  closer: { id: string; name: string };
+  demos: CloserDetailDemo[];
+  closes: CloserDetailClose[];
+  tallies: {
+    demos: number;
+    shows: number;
+    noShows: number;
+    pending: number;
+    cancelled: number;
+    rescheduled: number;
+    showRate: number;
+    closes: number;
+    closeRate: number;
+  };
 }
 
 interface SetterScore {
@@ -62,6 +98,27 @@ export default function ScoreboardPage() {
   const { dimension, setDimension } = useTimeDimension();
   const [data, setData] = useState<ScoreboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedCloser, setExpandedCloser] = useState<string | null>(null);
+  const [closerDetail, setCloserDetail] = useState<CloserDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const toggleCloserDetail = useCallback((closerId: string) => {
+    if (expandedCloser === closerId) {
+      setExpandedCloser(null);
+      setCloserDetail(null);
+      return;
+    }
+    setExpandedCloser(closerId);
+    setCloserDetail(null);
+    setDetailLoading(true);
+    const params = new URLSearchParams({ closerId });
+    if (weekId) params.set("weekId", weekId);
+    if (dimension !== "weekly") params.set("dimension", dimension);
+    fetch(`/api/scoreboard?${params.toString()}`)
+      .then((r) => r.json())
+      .then((d) => { setCloserDetail(d); setDetailLoading(false); })
+      .catch(() => setDetailLoading(false));
+  }, [expandedCloser, weekId, dimension]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -75,6 +132,8 @@ export default function ScoreboardPage() {
   }, [weekId, dimension]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  // Collapse any open drill-down when the period changes — its rows are stale.
+  useEffect(() => { setExpandedCloser(null); setCloserDetail(null); }, [weekId, dimension]);
 
   if (loading) {
     return (
@@ -171,20 +230,17 @@ export default function ScoreboardPage() {
               <tbody>
                 {closerBoard.map((c) => {
                   const rateDenom = c.shows + c.noShows + c.cancelled;
+                  const isExpanded = expandedCloser === c.id;
                   return (
-                    <tr key={c.id} className="border-b last:border-0">
-                      <td className="p-3 font-medium">{c.name}</td>
-                      <td className="p-3 text-right">{c.demos}</td>
-                      <td className="p-3 text-right text-green-600 font-medium">{c.shows}</td>
-                      <td className="p-3 text-right text-red-600">{c.noShows}</td>
-                      <td className={`p-3 text-right font-medium ${rateDenom > 0 ? showRateColor(c.showRate) : ""}`}>
-                        {rateDenom > 0 ? formatPercent(c.showRate) : "—"}
-                      </td>
-                      <td className="p-3 text-right font-medium">{c.closes}</td>
-                      <td className={`p-3 text-right font-medium ${c.shows > 0 ? closeRateColor(c.closeRate) : ""}`}>
-                        {c.shows > 0 ? formatPercent(c.closeRate) : "—"}
-                      </td>
-                    </tr>
+                    <CloserRowGroup
+                      key={c.id}
+                      closer={c}
+                      rateDenom={rateDenom}
+                      isExpanded={isExpanded}
+                      detail={isExpanded ? closerDetail : null}
+                      detailLoading={isExpanded && detailLoading}
+                      onToggle={() => toggleCloserDetail(c.id)}
+                    />
                   );
                 })}
               </tbody>
@@ -219,6 +275,175 @@ export default function ScoreboardPage() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+const DEMO_STATUS_STYLES: Record<string, string> = {
+  showed: "bg-green-100 text-green-700",
+  no_show: "bg-red-100 text-red-700",
+  pending: "bg-yellow-100 text-yellow-700",
+  cancelled: "bg-gray-200 text-gray-600",
+  rescheduled: "bg-gray-100 text-gray-400 line-through",
+};
+
+const DEMO_STATUS_LABELS: Record<string, string> = {
+  showed: "Showed",
+  no_show: "No-Show",
+  pending: "Pending",
+  cancelled: "Cancelled",
+  rescheduled: "Rescheduled →",
+};
+
+function CloserRowGroup({
+  closer: c,
+  rateDenom,
+  isExpanded,
+  detail,
+  detailLoading,
+  onToggle,
+}: {
+  closer: CloserScore;
+  rateDenom: number;
+  isExpanded: boolean;
+  detail: CloserDetail | null;
+  detailLoading: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <tr
+        className={`border-b last:border-0 cursor-pointer hover:bg-[var(--muted)]/50 ${isExpanded ? "bg-[var(--muted)]/40" : ""}`}
+        onClick={onToggle}
+        title="Click to see the demos and closes behind these numbers"
+      >
+        <td className="p-3 font-medium">
+          <span className="inline-block w-4 text-[var(--muted-foreground)]">{isExpanded ? "▾" : "▸"}</span>
+          {c.name}
+        </td>
+        <td className="p-3 text-right">{c.demos}</td>
+        <td className="p-3 text-right text-green-600 font-medium">{c.shows}</td>
+        <td className="p-3 text-right text-red-600">{c.noShows}</td>
+        <td className={`p-3 text-right font-medium ${rateDenom > 0 ? showRateColor(c.showRate) : ""}`}>
+          {rateDenom > 0 ? formatPercent(c.showRate) : "—"}
+        </td>
+        <td className="p-3 text-right font-medium">{c.closes}</td>
+        <td className={`p-3 text-right font-medium ${c.shows > 0 ? closeRateColor(c.closeRate) : ""}`}>
+          {c.shows > 0 ? formatPercent(c.closeRate) : "—"}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr className="border-b last:border-0 bg-[var(--muted)]/20">
+          <td colSpan={7} className="p-0">
+            {detailLoading && (
+              <p className="p-4 text-sm text-[var(--muted-foreground)]">Loading detail…</p>
+            )}
+            {detail && <CloserDetailPanel detail={detail} />}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function CloserDetailPanel({ detail }: { detail: CloserDetail }) {
+  const t = detail.tallies;
+  const rateDenom = t.shows + t.noShows + t.cancelled;
+  return (
+    <div className="p-4 space-y-4 text-sm">
+      {/* The math, spelled out from the rows below */}
+      <div className="rounded-lg border bg-[var(--card)] p-3 space-y-1 font-mono text-xs">
+        <p>
+          <span className="font-semibold">Demos = {t.demos}</span>
+          {"  ("}{t.shows} showed + {t.noShows} no-show + {t.pending} pending + {t.cancelled} cancelled{")"}
+          {t.rescheduled > 0 && (
+            <span className="text-[var(--muted-foreground)]"> · {t.rescheduled} rescheduled row{t.rescheduled === 1 ? "" : "s"} not counted</span>
+          )}
+        </p>
+        <p>
+          <span className="font-semibold">Show Rate</span> = {t.shows} showed ÷ ({t.shows} showed + {t.noShows} no-show + {t.cancelled} cancelled) ={" "}
+          {rateDenom > 0 ? formatPercent(t.showRate) : "— (nothing decided yet)"}
+          <span className="text-[var(--muted-foreground)]"> · pending excluded until confirmed</span>
+        </p>
+        <p>
+          <span className="font-semibold">Close Rate</span> = {t.closes} close{t.closes === 1 ? "" : "s"} ÷ {t.shows} show{t.shows === 1 ? "" : "s"} ={" "}
+          {t.shows > 0 ? formatPercent(t.closeRate) : "—"}
+          <span className="text-[var(--muted-foreground)]"> · closes count by close date, so a close here may come from an earlier period&apos;s demo</span>
+        </p>
+      </div>
+
+      {/* Every demo behind the count */}
+      <div>
+        <p className="font-semibold mb-1">Demos on {detail.closer.name}&apos;s calendar this period ({detail.demos.length} rows)</p>
+        {detail.demos.length === 0 ? (
+          <p className="text-[var(--muted-foreground)]">None.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="text-[var(--muted-foreground)]">
+              <tr className="border-b">
+                <th className="text-left py-1 pr-3 font-medium">Date</th>
+                <th className="text-left py-1 pr-3 font-medium">Prospect</th>
+                <th className="text-left py-1 pr-3 font-medium">Set by</th>
+                <th className="text-left py-1 pr-3 font-medium">Source</th>
+                <th className="text-left py-1 pr-3 font-medium">Status</th>
+                <th className="text-left py-1 font-medium">Counts as</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.demos.map((d) => (
+                <tr key={d.id} className="border-b last:border-0">
+                  <td className="py-1 pr-3 whitespace-nowrap">{formatDateShort(d.demoDate)}</td>
+                  <td className={`py-1 pr-3 ${d.status === "rescheduled" ? "text-[var(--muted-foreground)] line-through" : ""}`}>{d.prospectName}</td>
+                  <td className="py-1 pr-3">{d.setterName}</td>
+                  <td className="py-1 pr-3 uppercase text-[10px] tracking-wide">{d.leadSource === "self_sourced" ? "Self" : "Fed"}</td>
+                  <td className="py-1 pr-3">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${DEMO_STATUS_STYLES[d.status] || "bg-gray-100"}`}>
+                      {DEMO_STATUS_LABELS[d.status] || d.status}
+                    </span>
+                  </td>
+                  <td className="py-1 text-[var(--muted-foreground)]">{d.countsAs}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Every close behind the count */}
+      <div>
+        <p className="font-semibold mb-1">Deals closed-won this period ({detail.closes.length})</p>
+        {detail.closes.length === 0 ? (
+          <p className="text-[var(--muted-foreground)]">None.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="text-[var(--muted-foreground)]">
+              <tr className="border-b">
+                <th className="text-left py-1 pr-3 font-medium">Closed</th>
+                <th className="text-left py-1 pr-3 font-medium">Client</th>
+                <th className="text-left py-1 pr-3 font-medium">Source</th>
+                <th className="text-left py-1 font-medium">Demo ran</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.closes.map((d) => (
+                <tr key={d.id} className="border-b last:border-0">
+                  <td className="py-1 pr-3 whitespace-nowrap">{d.closedAt ? formatDateShort(d.closedAt) : "—"}</td>
+                  <td className="py-1 pr-3">{d.prospectName}</td>
+                  <td className="py-1 pr-3 uppercase text-[10px] tracking-wide">{d.leadSource === "self_sourced" ? "Self" : "Fed"}</td>
+                  <td className="py-1">
+                    {d.demoDate ? formatDateShort(d.demoDate) : <span className="text-[var(--muted-foreground)]">no linked demo</span>}
+                    {!d.demoInPeriod && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">
+                        {d.demoDate ? "demo outside this period" : "counts toward closes, not show rate"}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
