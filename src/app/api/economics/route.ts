@@ -76,6 +76,33 @@ async function landedCashByPeriod(periods: PeriodDef[]): Promise<number[]> {
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
 
+  // === DEMO SEARCH (reconcile drawer): find a demo in ANY week to match a
+  // payment to — past demos are the common case for late-arriving cash.
+  const demoSearch = params.get("demoSearch");
+  if (demoSearch !== null) {
+    if (demoSearch.trim().length < 2) return NextResponse.json({ demos: [] });
+    const demos = await prisma.demo.findMany({
+      where: { booking: { prospectName: { contains: demoSearch.trim(), mode: "insensitive" } } },
+      include: {
+        booking: { select: { prospectName: true, demoDate: true } },
+        closer: { select: { name: true } },
+        deal: { select: { status: true } },
+      },
+      orderBy: { booking: { demoDate: "desc" } },
+      take: 10,
+    });
+    return NextResponse.json({
+      demos: demos.map((d) => ({
+        id: d.id,
+        prospectName: d.booking.prospectName,
+        demoDate: d.booking.demoDate,
+        status: d.status,
+        closerName: d.closer?.name || null,
+        dealStatus: d.deal?.status || null,
+      })),
+    });
+  }
+
   // === RECEIPTS for one period ===
   if (params.get("detail") === "true") {
     const start = new Date(params.get("start") || 0);
@@ -178,7 +205,13 @@ export async function GET(request: NextRequest) {
       isNew: (p.customerStatusOverride || p.customerStatus) === "new",
     }));
 
-    return NextResponse.json({ demoRows, setters, landedRows, refundRows, unlinkedRows });
+    const activeClosers = await prisma.teamMember.findMany({
+      where: { role: "closer", isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
+    return NextResponse.json({ demoRows, setters, landedRows, refundRows, unlinkedRows, activeClosers });
   }
 
   // === PERIOD SERIES ===

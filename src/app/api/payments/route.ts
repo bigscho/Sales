@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { paymentId, revenueTypeOverride, customerStatusOverride, upfrontOverride, matchToDemoId, customerName, customerEmail, matchStatus } = body;
+  const { paymentId, revenueTypeOverride, customerStatusOverride, upfrontOverride, matchToDemoId, organicCloserId, customerName, customerEmail, matchStatus } = body;
 
   if (!paymentId) {
     return NextResponse.json({ error: "paymentId required" }, { status: 400 });
@@ -83,6 +83,50 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  // Organic new revenue — no demo ever happened. Creates a demo-less
+  // closed-won deal under the chosen closer and force-counts the payment
+  // (upfrontOverride=include). Cash flows to landed totals, the closer's
+  // scoreboard, and commission; it deliberately stays OUT of cohort
+  // cash-per-call/show — no call produced it. leadSource defaults to fed
+  // (§4.12b: ambiguity protects the company) — flip on /deals if it was
+  // truly self-sourced.
+  if (organicCloserId && !matchToDemoId) {
+    const closer = await prisma.teamMember.findUnique({ where: { id: organicCloserId } });
+    if (!closer) return NextResponse.json({ error: "Closer not found" }, { status: 404 });
+    const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+
+    let weekId = payment.weekId;
+    if (!weekId) {
+      const week = await prisma.week.findFirst({
+        where: { weekStart: { lte: payment.paidAt }, weekEnd: { gte: payment.paidAt } },
+        orderBy: { weekStart: "desc" },
+      });
+      weekId = week?.id || (await prisma.week.findFirstOrThrow({ orderBy: { weekStart: "desc" } })).id;
+    }
+
+    const deal = await prisma.deal.create({
+      data: {
+        weekId,
+        closerId: organicCloserId,
+        prospectName: payment.customerName || payment.customerEmail || "Unknown",
+        prospectEmail: payment.customerEmail,
+        stripeCustomerId: payment.stripeCustomerId,
+        dealType: "one_time",
+        leadSource: "fed",
+        status: "closed_won",
+        closedAt: payment.paidAt,
+        month1Cash: payment.amountCents,
+        notes: "Organic new revenue — no demo (reconciled)",
+      },
+    });
+
+    updates.dealId = deal.id;
+    updates.matchStatus = "matched";
+    updates.matchReason = `Organic new revenue — no demo, closer ${closer.name} (reconciled)`;
+    updates.upfrontOverride = "include";
+  }
+
   const before = await prisma.payment.findUnique({ where: { id: paymentId } });
 
   const payment = await prisma.payment.update({
@@ -92,7 +136,7 @@ export async function PATCH(request: NextRequest) {
 
   // Overrides and matches are comp-relevant (they flip cash + commission) —
   // audit WHO reconciled what (§4.11c: company records are the comp source).
-  if (before && (upfrontOverride !== undefined || customerStatusOverride !== undefined || revenueTypeOverride !== undefined || matchToDemoId)) {
+  if (before && (upfrontOverride !== undefined || customerStatusOverride !== undefined || revenueTypeOverride !== undefined || matchToDemoId || organicCloserId)) {
     const session = await getSession();
     await prisma.auditLog.create({
       data: {

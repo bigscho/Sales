@@ -72,6 +72,16 @@ interface EconDetail {
     amountCents: number;
     isNew: boolean;
   }[];
+  activeClosers: { id: string; name: string }[];
+}
+
+interface DemoSearchResult {
+  id: string;
+  prospectName: string;
+  demoDate: string;
+  status: string;
+  closerName: string | null;
+  dealStatus: string | null;
 }
 
 const DEMO_STATUS_LABELS: Record<string, string> = {
@@ -529,22 +539,12 @@ function ReconcileDrawer({
                     {r.isNew ? "⚠ new client, unmatched — counts nowhere" : "unlinked — returning client"}
                     {r.email ? ` · ${r.email}` : ""}
                   </p>
-                  <select
-                    className="mt-1.5 w-full text-xs border rounded px-1.5 py-1 bg-[var(--card)]"
-                    defaultValue=""
+                  <MatchControls
+                    paymentId={r.id}
+                    closers={detail.activeClosers}
                     disabled={saving !== null}
-                    onChange={(e) => { if (e.target.value) onReconcile(r.id, { matchToDemoId: e.target.value }); }}
-                  >
-                    <option value="">Match to a demo in this period…</option>
-                    {detail.demoRows.filter((d) => d.status !== "rescheduled").map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.prospectName} — {formatDateShort(d.demoDate)}{d.closerName ? ` (${d.closerName})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">
-                    Demo in a different period? Match it from the Demos page financial feed.
-                  </p>
+                    onReconcile={onReconcile}
+                  />
                 </>
               )}
             </div>
@@ -564,6 +564,92 @@ function ReconcileDrawer({
             <p className="p-4 text-sm text-[var(--muted-foreground)]">No transactions this period.</p>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Matcher for an unlinked payment: search demos across ALL weeks (late cash
+// usually belongs to a past demo), or declare it organic — no demo — under a
+// chosen closer. Organic keeps per-demo economics clean by design: the cash
+// counts (landed, closer scoreboard, commission) but no cohort inherits it.
+function MatchControls({
+  paymentId,
+  closers,
+  disabled,
+  onReconcile,
+}: {
+  paymentId: string;
+  closers: { id: string; name: string }[];
+  disabled: boolean;
+  onReconcile: (paymentId: string, patch: Record<string, unknown>) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<DemoSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      fetch(`/api/economics?demoSearch=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((d) => { setResults(d.demos || []); setSearching(false); })
+        .catch(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Match to a demo — search any week by name…"
+        disabled={disabled}
+        className="w-full text-xs border rounded px-1.5 py-1 bg-[var(--card)]"
+      />
+      {searching && <p className="text-[10px] text-[var(--muted-foreground)]">searching…</p>}
+      {results.length > 0 && (
+        <div className="border rounded divide-y max-h-40 overflow-y-auto">
+          {results.map((d) => (
+            <button
+              key={d.id}
+              disabled={disabled}
+              onClick={() => onReconcile(paymentId, { matchToDemoId: d.id })}
+              className="w-full text-left text-xs px-1.5 py-1 hover:bg-[var(--muted)] disabled:opacity-50"
+            >
+              <span className="font-medium">{d.prospectName}</span> — {formatDateShort(d.demoDate)} · {d.status.replace("_", " ")}
+              {d.closerName ? ` · ${d.closerName}` : ""}
+              {d.dealStatus ? <span className="text-[var(--muted-foreground)]"> · deal {d.dealStatus.replace("_", " ")}</span> : ""}
+            </button>
+          ))}
+        </div>
+      )}
+      {query.trim().length >= 2 && !searching && results.length === 0 && (
+        <p className="text-[10px] text-[var(--muted-foreground)]">no demos match &quot;{query.trim()}&quot;</p>
+      )}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] text-[var(--muted-foreground)] shrink-0">or organic (no demo) —</span>
+        <select
+          className="flex-1 text-xs border rounded px-1.5 py-1 bg-[var(--card)]"
+          defaultValue=""
+          disabled={disabled}
+          onChange={(e) => {
+            if (e.target.value && confirm("Count this as organic new revenue (no demo) under the selected closer? It will flow into their cash and commission. Audit-logged.")) {
+              onReconcile(paymentId, { organicCloserId: e.target.value });
+            } else {
+              e.target.value = "";
+            }
+          }}
+        >
+          <option value="">new revenue under closer…</option>
+          {closers.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
       </div>
     </div>
   );
