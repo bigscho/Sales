@@ -15,6 +15,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "📊", roles: ["admin"] },
+  { href: "/economics", label: "Economics", icon: "🧮", roles: ["admin"] },
   { href: "/demos", label: "Demos", icon: "📞" },
   { href: "/deals", label: "Deals", icon: "💰", roles: ["closer", "admin"] },
   { href: "/scoreboard", label: "Scoreboard", icon: "🏆", roles: ["setter", "closer", "show_rate_rep", "admin"] },

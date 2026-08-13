@@ -187,6 +187,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `/api/weeks` | GET, POST | Week management, auto-creates current + future weeks |
 | `/api/kpis` | GET | Weekly KPI calculations |
 | `/api/scoreboard` | GET | Setter scoreboard with weekly + all-time stats; closer board. `?closerId=X` → drill-down: the raw demos + closed-won deals behind that closer's board numbers (same dateFilter as the board so detail cannot drift), tallies recomputed from the listed rows, no cash |
+| `/api/economics` | GET | Admin sales economics. `?granularity=weekly\|monthly\|all_time` → period series (cohort per-X metrics + landed cash); `?detail=true&start&end` → receipts: per-setter cohort economics, every demo row, every landed payment with counted/excluded verdict |
 | `/api/expenses` | GET, POST, DELETE | Expense tracking |
 | `/api/payroll` | GET, POST | Payroll generation |
 | `/api/settings` | GET, POST | Sync logs, expense categories |
