@@ -203,21 +203,45 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Find by name + date (fallback if no email match)
+      // Find by name + date (fallback if no email match). This matcher decides
+      // "same person" — a wrong match MERGES two different prospects (marks one
+      // rescheduled, jumbles the other's identity), which is far worse than the
+      // duplicate row a missed match creates. So it is deliberately strict:
+      //
+      //  1) WHOLE-token prefix match, not first-name prefix. "Nick Mercado" ↔
+      //     "Nick Mercado Schofield" matches (the motivating case); "Jan Norris"
+      //     ↔ "Janice Pruss" does NOT ("Jan" ≠ "Janice" as a whole token —
+      //     2026-08-13: first-name startsWith merged those two real prospects
+      //     booked 30 minutes apart).
+      //  2) If both sides have an email and they differ, they are different
+      //     people, period — never name-match across conflicting emails.
       if (inviteeName && demoDate) {
         const windowStart = new Date(demoDate.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(demoDate.getTime() + 4 * 60 * 60 * 1000);
-        // Use first name only for matching to handle "Nick Mercado" vs "Nick Mercado Schofield"
-        const firstName = inviteeName.split(/\s+/)[0];
-        if (firstName && firstName.length > 2) {
-          const byNameDate = await prisma.booking.findFirst({
+        const tokens = (s: string) => s.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+        const inviteeTokens = tokens(inviteeName);
+        const sameNameStrict = (otherName: string) => {
+          const otherTokens = tokens(otherName);
+          if (inviteeTokens.length === 0 || otherTokens.length === 0) return false;
+          const short = inviteeTokens.length <= otherTokens.length ? inviteeTokens : otherTokens;
+          const long = short === inviteeTokens ? otherTokens : inviteeTokens;
+          // A lone first name ("Jan") may only match exactly — never absorb "Jan Hart".
+          if (short.length < 2 && long.length !== short.length) return false;
+          return short.every((t, i) => t === long[i]);
+        };
+        if (inviteeTokens[0] && inviteeTokens[0].length > 2) {
+          const windowCandidates = await prisma.booking.findMany({
             where: {
-              prospectName: { startsWith: firstName, mode: "insensitive" },
               demoDate: { gte: windowStart, lte: windowEnd },
               supersededAt: null,
             },
             include: { demo: true },
           });
+          const byNameDate = windowCandidates.find(
+            (b) =>
+              sameNameStrict(b.prospectName) &&
+              !(b.prospectEmail && inviteeEmail && b.prospectEmail.toLowerCase() !== inviteeEmail.toLowerCase())
+          );
           if (byNameDate) return byNameDate;
         }
       }
