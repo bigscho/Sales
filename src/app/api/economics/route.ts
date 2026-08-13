@@ -160,7 +160,24 @@ export async function GET(request: NextRequest) {
         refundedCents: p.refundedCents,
       }));
 
-    return NextResponse.json({ demoRows, setters, landedRows, refundRows });
+    // Unlinked payments landed in the period — money that counts NOWHERE.
+    // New-client ones are a work queue (match on the demos-page financial
+    // feed and they flow into cash + commission); returning ones are shown
+    // grayed so "total money in" always reconciles against Stripe.
+    const unlinked = await prisma.payment.findMany({
+      where: { paidAt: { gte: start, lt: end }, dealId: null, status: { not: "failed" } },
+      orderBy: { paidAt: "asc" },
+    });
+    const unlinkedRows = unlinked.map((p) => ({
+      id: p.id,
+      paidAt: p.paidAt,
+      name: p.customerName || p.customerEmail || "Unknown",
+      email: p.customerEmail,
+      amountCents: p.amountCents,
+      isNew: (p.customerStatusOverride || p.customerStatus) === "new",
+    }));
+
+    return NextResponse.json({ demoRows, setters, landedRows, refundRows, unlinkedRows });
   }
 
   // === PERIOD SERIES ===
@@ -180,6 +197,24 @@ export async function GET(request: NextRequest) {
   });
 
   const landed = await landedCashByPeriod(periods);
+
+  // Unmatched NEW-client payments: cash that counts nowhere until an operator
+  // matches it to a demo (demos-page financial feed). Surfaced as a standing
+  // work queue (all time, not just the visible span) so it can't rot silently.
+  const allUnlinked = await prisma.payment.findMany({
+    where: { dealId: null, status: { not: "failed" } },
+    orderBy: { paidAt: "desc" },
+  });
+  const unmatchedNewQueue = allUnlinked
+    .filter((p) => (p.customerStatusOverride || p.customerStatus) === "new")
+    .map((p) => ({
+      id: p.id,
+      paidAt: p.paidAt,
+      name: p.customerName || p.customerEmail || "Unknown",
+      email: p.customerEmail,
+      amountCents: p.amountCents,
+    }));
+
   const series = [];
   for (const p of periods) {
     const inPeriod = demos.filter((d) => d.booking.demoDate >= p.start && d.booking.demoDate < p.end);
@@ -202,11 +237,14 @@ export async function GET(request: NextRequest) {
       closes,
       cohortCashCents,
       landedCashCents: landed[series.length],
+      unmatchedNewCents: unmatchedNewQueue
+        .filter((u) => u.paidAt >= p.start && u.paidAt < p.end)
+        .reduce((s, u) => s + u.amountCents, 0),
       cashPerCallCents: bookedCalls > 0 ? Math.round(cohortCashCents / bookedCalls) : 0,
       cashPerShowCents: shows > 0 ? Math.round(cohortCashCents / shows) : 0,
       cashPerCloseCents: closes > 0 ? Math.round(cohortCashCents / closes) : 0,
     });
   }
 
-  return NextResponse.json({ granularity, periods: series });
+  return NextResponse.json({ granularity, periods: series, unmatchedNewQueue });
 }

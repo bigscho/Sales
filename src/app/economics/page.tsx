@@ -15,9 +15,18 @@ interface EconPeriod {
   closes: number;
   cohortCashCents: number;
   landedCashCents: number;
+  unmatchedNewCents: number;
   cashPerCallCents: number;
   cashPerShowCents: number;
   cashPerCloseCents: number;
+}
+
+interface UnmatchedNewPayment {
+  id: string;
+  paidAt: string;
+  name: string;
+  email: string | null;
+  amountCents: number;
 }
 
 interface EconDetail {
@@ -54,6 +63,14 @@ interface EconDetail {
     prospectName: string;
     refundedCents: number;
   }[];
+  unlinkedRows: {
+    id: string;
+    paidAt: string;
+    name: string;
+    email: string | null;
+    amountCents: number;
+    isNew: boolean;
+  }[];
 }
 
 const DEMO_STATUS_LABELS: Record<string, string> = {
@@ -67,6 +84,7 @@ const DEMO_STATUS_LABELS: Record<string, string> = {
 export default function EconomicsPage() {
   const [granularity, setGranularity] = useState<TimeDimension>("weekly");
   const [periods, setPeriods] = useState<EconPeriod[]>([]);
+  const [unmatchedNew, setUnmatchedNew] = useState<UnmatchedNewPayment[]>([]);
   const [selected, setSelected] = useState(0);
   const [detail, setDetail] = useState<EconDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +96,7 @@ export default function EconomicsPage() {
     setDetail(null);
     fetch(`/api/economics?granularity=${granularity}`)
       .then((r) => r.json())
-      .then((d) => { setPeriods(d.periods || []); setLoading(false); })
+      .then((d) => { setPeriods(d.periods || []); setUnmatchedNew(d.unmatchedNewQueue || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [granularity]);
 
@@ -123,6 +141,32 @@ export default function EconomicsPage() {
         />
       </div>
 
+      {/* Standing work queue: new-client cash that counts NOWHERE until matched.
+          Global (not period-scoped) so an old unmatched payment can't rot silently. */}
+      {unmatchedNew.length > 0 && (
+        <div className="rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-700 p-4">
+          <p className="font-semibold text-yellow-800 dark:text-yellow-200">
+            ⚠ {formatCents(unmatchedNew.reduce((s, u) => s + u.amountCents, 0))} of new-client cash across {unmatchedNew.length} payments isn&apos;t matched to any deal — it counts nowhere right now
+          </p>
+          <div className="max-h-56 overflow-y-auto mt-2">
+          <table className="text-sm [font-variant-numeric:tabular-nums]">
+            <tbody>
+              {unmatchedNew.map((u) => (
+                <tr key={u.id}>
+                  <td className="pr-4 py-0.5 whitespace-nowrap text-yellow-900 dark:text-yellow-100">{formatDateShort(u.paidAt)}</td>
+                  <td className="pr-4 py-0.5">{u.name}{u.email ? <span className="text-yellow-700 dark:text-yellow-300"> &lt;{u.email}&gt;</span> : null}</td>
+                  <td className="py-0.5 text-right font-medium">{formatCents(u.amountCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
+            Match each one to its demo on the <a href="/demos" className="underline font-medium">Demos page</a> financial feed — once matched, the cash flows into these numbers (and commission) automatically. Older rows may predate demo tracking or be Farm subscriptions with no demo to match.
+          </p>
+        </div>
+      )}
+
       {period && (
         <>
           {/* Headline tiles for the selected period */}
@@ -154,6 +198,7 @@ export default function EconomicsPage() {
               context={`hit the bank ${granularity === "all_time" ? "all-time" : "in " + period.label}`}
               priorCents={prior?.landedCashCents}
               priorLabel={prior?.label}
+              warning={period.unmatchedNewCents > 0 ? `+ ${formatCents(period.unmatchedNewCents)} unmatched new cash not counted` : undefined}
             />
           </div>
 
@@ -294,6 +339,15 @@ export default function EconomicsPage() {
                   <p className="font-medium text-sm mb-1">
                     Payments landed in this period — behind the &quot;Cash collected (landed)&quot; tile
                   </p>
+                  <p className="text-xs text-[var(--muted-foreground)] mb-1 [font-variant-numeric:tabular-nums]">
+                    Total money in: {formatCents(
+                      detail.landedRows.reduce((s, p) => s + p.amountCents, 0) +
+                      detail.unlinkedRows.reduce((s, p) => s + p.amountCents, 0)
+                    )}
+                    {" = "}{formatCents(detail.landedRows.filter((p) => p.counted).reduce((s, p) => s + p.amountCents, 0))} counted new
+                    {" · "}{formatCents(detail.landedRows.filter((p) => !p.counted).reduce((s, p) => s + p.amountCents, 0))} reorders/excluded
+                    {" · "}{formatCents(detail.unlinkedRows.reduce((s, p) => s + p.amountCents, 0))} unlinked
+                  </p>
                   <div className="bg-[var(--card)] rounded-xl border overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-xs [font-variant-numeric:tabular-nums]">
                       <thead className="bg-[var(--muted)] border-b sticky top-0">
@@ -329,6 +383,18 @@ export default function EconomicsPage() {
                             <td className="p-2">not counted — {p.excludedReason}</td>
                           </tr>
                         ))}
+                        {detail.unlinkedRows.map((p) => (
+                          <tr key={p.id} className={`border-b last:border-0 ${p.isNew ? "text-yellow-700 dark:text-yellow-400" : "text-[var(--muted-foreground)]"}`}>
+                            <td className="p-2 whitespace-nowrap">{formatDateShort(p.paidAt)}</td>
+                            <td className="p-2">{p.name}</td>
+                            <td className={`p-2 text-right ${p.isNew ? "font-medium" : "line-through"}`}>{formatCents(p.amountCents)}</td>
+                            <td className="p-2">
+                              {p.isNew
+                                ? "⚠ unmatched NEW cash — counts nowhere, match it on the Demos page"
+                                : "unlinked — returning client (would be excluded anyway)"}
+                            </td>
+                          </tr>
+                        ))}
                         <tr className="font-semibold">
                           <td className="p-2" colSpan={2}>Total (matches the landed tile)</td>
                           <td className={`p-2 text-right ${period.landedCashCents >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -355,12 +421,14 @@ function StatTile({
   context,
   priorCents,
   priorLabel,
+  warning,
 }: {
   label: string;
   valueCents: number;
   context: string;
   priorCents?: number;
   priorLabel?: string;
+  warning?: string;
 }) {
   return (
     <Card>
@@ -375,6 +443,7 @@ function StatTile({
             prior ({priorLabel}): {priorCents !== 0 ? formatCents(priorCents) : "—"}
           </p>
         )}
+        {warning && <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium mt-0.5">⚠ {warning}</p>}
       </CardContent>
     </Card>
   );
