@@ -165,22 +165,32 @@ export async function loadDealMeta(dealIds: string[]): Promise<Map<string, DealM
   return meta;
 }
 
-export function isCommissionable(
-  p: { paidAt: Date; status: string; revenueType: string; revenueTypeOverride: string | null; dealId: string | null },
-  meta: Map<string, DealMeta>
-): boolean {
+type CommissionablePayment = {
+  paidAt: Date;
+  status: string;
+  revenueType: string;
+  revenueTypeOverride: string | null;
+  dealId: string | null;
+  upfrontOverride?: string | null; // include | exclude | null — human final word (reconcile drawer)
+};
+
+export function isCommissionable(p: CommissionablePayment, meta: Map<string, DealMeta>): boolean {
   return commissionExclusionReason(p, meta) === null;
 }
 
 // Why a payment does NOT count as upfront sales cash — null means it counts.
 // The scoreboard drill-down shows these verbatim so a human can reconcile any
 // number back to its rows; keep the checks in lockstep with the rule above.
+// upfrontOverride beats every automatic rule except no-deal/failed — an
+// operator's reconcile verdict is final and flows into commission identically.
 export function commissionExclusionReason(
-  p: { paidAt: Date; status: string; revenueType: string; revenueTypeOverride: string | null; dealId: string | null },
+  p: CommissionablePayment,
   meta: Map<string, DealMeta>
 ): string | null {
   if (!p.dealId) return "not linked to a deal";
   if (p.status === "failed") return "failed payment";
+  if (p.upfrontOverride === "exclude") return "manually marked NOT new revenue (reconciled)";
+  if (p.upfrontOverride === "include") return null;
   if ((p.revenueTypeOverride || p.revenueType) === "misc") return "marked misc";
   const dm = meta.get(p.dealId);
   if (!dm) return "deal has no successful payments";

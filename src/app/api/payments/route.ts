@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { paymentId, revenueTypeOverride, customerStatusOverride, matchToDemoId, customerName, customerEmail, matchStatus } = body;
+  const { paymentId, revenueTypeOverride, customerStatusOverride, upfrontOverride, matchToDemoId, customerName, customerEmail, matchStatus } = body;
 
   if (!paymentId) {
     return NextResponse.json({ error: "paymentId required" }, { status: 400 });
@@ -11,6 +12,13 @@ export async function PATCH(request: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updates: Record<string, any> = {};
+
+  if (upfrontOverride !== undefined) {
+    if (!["include", "exclude", null].includes(upfrontOverride)) {
+      return NextResponse.json({ error: "Invalid upfrontOverride" }, { status: 400 });
+    }
+    updates.upfrontOverride = upfrontOverride;
+  }
 
   if (revenueTypeOverride !== undefined) {
     if (!["mrr", "one_time", "misc", null].includes(revenueTypeOverride)) {
@@ -75,10 +83,38 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  const before = await prisma.payment.findUnique({ where: { id: paymentId } });
+
   const payment = await prisma.payment.update({
     where: { id: paymentId },
     data: updates,
   });
+
+  // Overrides and matches are comp-relevant (they flip cash + commission) —
+  // audit WHO reconciled what (§4.11c: company records are the comp source).
+  if (before && (upfrontOverride !== undefined || customerStatusOverride !== undefined || revenueTypeOverride !== undefined || matchToDemoId)) {
+    const session = await getSession();
+    await prisma.auditLog.create({
+      data: {
+        entityType: "payment",
+        entityId: paymentId,
+        action: "payment_reconcile",
+        oldValue: JSON.stringify({
+          upfrontOverride: before.upfrontOverride,
+          customerStatusOverride: before.customerStatusOverride,
+          revenueTypeOverride: before.revenueTypeOverride,
+          dealId: before.dealId,
+        }),
+        newValue: JSON.stringify({
+          upfrontOverride: payment.upfrontOverride,
+          customerStatusOverride: payment.customerStatusOverride,
+          revenueTypeOverride: payment.revenueTypeOverride,
+          dealId: payment.dealId,
+        }),
+        performedBy: session?.name || "admin",
+      },
+    });
+  }
 
   return NextResponse.json({ payment });
 }

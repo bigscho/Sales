@@ -159,6 +159,10 @@ model Payment {
   customerEmail         String?
   matchStatus           String   @default("unmatched") // matched | unmatched | needs_review
   matchReason           String?
+  // Human final word on "is this new upfront revenue": include | exclude | null (auto).
+  // Checked FIRST by payroll.commissionExclusionReason and cash.dealUpfrontCents, so
+  // one override propagates to economics, scoreboard cash, and commission alike.
+  upfrontOverride       String?
   createdAt             DateTime @default(now())
 
   deal Deal? @relation(fields: [dealId], references: [id])

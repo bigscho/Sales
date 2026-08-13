@@ -149,6 +149,7 @@ export async function GET(request: NextRequest) {
         amountCents: p.amountCents,
         counted: reason === null,
         excludedReason: reason,
+        override: p.upfrontOverride, // include | exclude | null — drives the reconcile drawer controls
       };
     });
     const refundRows = refs

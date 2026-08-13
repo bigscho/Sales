@@ -56,6 +56,7 @@ interface EconDetail {
     amountCents: number;
     counted: boolean;
     excludedReason: string | null;
+    override: string | null;
   }[];
   refundRows: {
     id: string;
@@ -89,6 +90,8 @@ export default function EconomicsPage() {
   const [detail, setDetail] = useState<EconDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -114,6 +117,25 @@ export default function EconomicsPage() {
   useEffect(() => {
     if (period) loadDetail(period);
   }, [period, loadDetail]);
+
+  // Reconcile action: write the verdict/match via the audited payments PATCH,
+  // then refetch the series — the detail refetches itself because the period
+  // object identity changes, so every number on screen moves together.
+  const reconcile = useCallback(async (paymentId: string, patch: Record<string, unknown>) => {
+    setSaving(paymentId);
+    try {
+      await fetch("/api/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId, ...patch }),
+      });
+      const d = await fetch(`/api/economics?granularity=${granularity}`).then((r) => r.json());
+      setPeriods(d.periods || []);
+      setUnmatchedNew(d.unmatchedNewQueue || []);
+    } finally {
+      setSaving(null);
+    }
+  }, [granularity]);
 
   if (loading) {
     return (
@@ -255,7 +277,15 @@ export default function EconomicsPage() {
 
           {/* Receipts for the selected period */}
           <div>
-            <h3 className="text-lg font-semibold mb-2">Receipts — {period.label}</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold">Receipts — {period.label}</h3>
+              <button
+                onClick={() => setReconcileOpen(true)}
+                className="text-sm font-medium px-3 py-1.5 rounded-lg border bg-[var(--card)] hover:bg-[var(--muted)]"
+              >
+                Reconcile transactions{detail ? ` (${detail.landedRows.length + detail.unlinkedRows.length})` : ""}
+              </button>
+            </div>
             {detailLoading && <p className="text-sm text-[var(--muted-foreground)]">Loading receipts…</p>}
             {detail && !detailLoading && (
               <div className="space-y-5">
@@ -411,7 +441,145 @@ export default function EconomicsPage() {
           </div>
         </>
       )}
+
+      {reconcileOpen && period && detail && (
+        <ReconcileDrawer
+          periodLabel={period.label}
+          detail={detail}
+          saving={saving}
+          onClose={() => setReconcileOpen(false)}
+          onReconcile={reconcile}
+        />
+      )}
     </div>
+  );
+}
+
+function ReconcileDrawer({
+  periodLabel,
+  detail,
+  saving,
+  onClose,
+  onReconcile,
+}: {
+  periodLabel: string;
+  detail: EconDetail;
+  saving: string | null;
+  onClose: () => void;
+  onReconcile: (paymentId: string, patch: Record<string, unknown>) => void;
+}) {
+  const rows = [
+    ...detail.landedRows.map((p) => ({ kind: "linked" as const, ...p })),
+    ...detail.unlinkedRows.map((p) => ({ kind: "unlinked" as const, ...p })),
+  ].sort((a, b) => new Date(a.paidAt).getTime() - new Date(b.paidAt).getTime());
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-md h-full bg-[var(--card)] border-l shadow-xl flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <p className="font-semibold">Reconcile — {periodLabel}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Every transaction this period. Verdicts here are final — they flow into cash, the scoreboard, and commission, audit-logged.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-xl px-2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto divide-y">
+          {rows.map((r) => (
+            <div key={r.id} className={`p-3 text-sm ${saving === r.id ? "opacity-50" : ""}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{r.kind === "linked" ? r.prospectName : r.name}</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">{formatDateShort(r.paidAt)}</p>
+                </div>
+                <p className="font-semibold [font-variant-numeric:tabular-nums]">{formatCents(r.amountCents)}</p>
+              </div>
+
+              {r.kind === "linked" ? (
+                <>
+                  <p className={`text-xs mt-1 ${r.counted ? "text-green-600" : "text-[var(--muted-foreground)]"}`}>
+                    {r.counted ? "✓ counted as new revenue" : `✗ not counted — ${r.excludedReason}`}
+                    {r.override && <span className="ml-1 px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">reconciled by hand</span>}
+                  </p>
+                  <div className="flex gap-1 mt-1.5">
+                    <VerdictButton
+                      label="New revenue"
+                      active={r.override === "include"}
+                      disabled={saving !== null}
+                      onClick={() => onReconcile(r.id, { upfrontOverride: r.override === "include" ? null : "include" })}
+                    />
+                    <VerdictButton
+                      label="Not new"
+                      active={r.override === "exclude"}
+                      disabled={saving !== null}
+                      onClick={() => onReconcile(r.id, { upfrontOverride: r.override === "exclude" ? null : "exclude" })}
+                    />
+                    {r.override && (
+                      <VerdictButton label="Auto" active={false} disabled={saving !== null} onClick={() => onReconcile(r.id, { upfrontOverride: null })} />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className={`text-xs mt-1 ${r.isNew ? "text-yellow-700 dark:text-yellow-400" : "text-[var(--muted-foreground)]"}`}>
+                    {r.isNew ? "⚠ new client, unmatched — counts nowhere" : "unlinked — returning client"}
+                    {r.email ? ` · ${r.email}` : ""}
+                  </p>
+                  <select
+                    className="mt-1.5 w-full text-xs border rounded px-1.5 py-1 bg-[var(--card)]"
+                    defaultValue=""
+                    disabled={saving !== null}
+                    onChange={(e) => { if (e.target.value) onReconcile(r.id, { matchToDemoId: e.target.value }); }}
+                  >
+                    <option value="">Match to a demo in this period…</option>
+                    {detail.demoRows.filter((d) => d.status !== "rescheduled").map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.prospectName} — {formatDateShort(d.demoDate)}{d.closerName ? ` (${d.closerName})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">
+                    Demo in a different period? Match it from the Demos page financial feed.
+                  </p>
+                </>
+              )}
+            </div>
+          ))}
+          {detail.refundRows.map((r) => (
+            <div key={r.id} className="p-3 text-sm text-red-600">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">{r.prospectName}</p>
+                  <p className="text-xs">refund · {r.refundedAt ? formatDateShort(r.refundedAt) : "—"}</p>
+                </div>
+                <p className="font-semibold [font-variant-numeric:tabular-nums]">−{formatCents(r.refundedCents)}</p>
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 && detail.refundRows.length === 0 && (
+            <p className="p-4 text-sm text-[var(--muted-foreground)]">No transactions this period.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VerdictButton({ label, active, disabled, onClick }: { label: string; active: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-xs px-2 py-1 rounded-md border font-medium ${
+        active
+          ? "bg-[var(--foreground)] text-[var(--background)] border-transparent"
+          : "bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

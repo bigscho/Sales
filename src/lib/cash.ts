@@ -15,6 +15,7 @@ export type CashPayment = {
   paidAt: Date | string;
   customerStatus: string;
   customerStatusOverride: string | null;
+  upfrontOverride?: string | null; // include | exclude | null — human final word (reconcile drawer)
 };
 
 export function netCents(p: { amountCents: number; refundedCents: number; status: string }): number {
@@ -23,13 +24,21 @@ export function netCents(p: { amountCents: number; refundedCents: number; status
 
 // Upfront cash for one deal's payments. Returns 0 for reorder deals
 // (first payment from an already-paying client) — that's not sales cash.
+// A per-payment upfrontOverride beats every automatic rule except "failed":
+// operators reconcile edge cases (e.g. a real month-1 installment outside the
+// 24h window) and the override must win everywhere the same way.
 export function dealUpfrontCents(payments: CashPayment[]): number {
   const real = payments.filter((p) => p.status !== "failed");
   if (real.length === 0) return 0;
   const first = real.reduce((a, b) => (new Date(a.paidAt) <= new Date(b.paidAt) ? a : b));
-  if ((first.customerStatusOverride || first.customerStatus) === "returning") return 0;
+  const dealIsNew = (first.customerStatusOverride || first.customerStatus) !== "returning";
   const firstMs = new Date(first.paidAt).getTime();
   return real
-    .filter((p) => new Date(p.paidAt).getTime() - firstMs <= UPFRONT_WINDOW_MS)
+    .filter((p) => {
+      if (p.upfrontOverride === "exclude") return false;
+      if (p.upfrontOverride === "include") return true;
+      if (!dealIsNew) return false;
+      return new Date(p.paidAt).getTime() - firstMs <= UPFRONT_WINDOW_MS;
+    })
     .reduce((s, p) => s + netCents(p), 0);
 }
