@@ -163,29 +163,31 @@ export default function EconomicsPage() {
         />
       </div>
 
-      {/* Standing work queue: new-client cash that counts NOWHERE until matched.
-          Global (not period-scoped) so an old unmatched payment can't rot silently. */}
-      {unmatchedNew.length > 0 && (
-        <div className="rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-700 p-4">
-          <p className="font-semibold text-yellow-800 dark:text-yellow-200">
-            ⚠ {formatCents(unmatchedNew.reduce((s, u) => s + u.amountCents, 0))} of new-client cash across {unmatchedNew.length} payments isn&apos;t matched to any deal — it counts nowhere right now
+      {/* Unmatched new-client cash: one quiet line, not an alarm. Amber only when
+          the SELECTED period has some (that's actionable now); the historical
+          backlog is a gray aside. The reconcile drawer is where the work happens. */}
+      {period && (period.unmatchedNewCents > 0 || unmatchedNew.length > 0) && (
+        <div
+          className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${
+            period.unmatchedNewCents > 0
+              ? "border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-700"
+              : "border-[var(--border)] bg-[var(--card)]"
+          }`}
+        >
+          <p className={period.unmatchedNewCents > 0 ? "text-yellow-800 dark:text-yellow-200" : "text-[var(--muted-foreground)]"}>
+            {period.unmatchedNewCents > 0
+              ? <>⚠ {formatCents(period.unmatchedNewCents)} of unmatched new-client cash in {period.label} isn&apos;t counted yet</>
+              : <>No unmatched new cash in {period.label}</>}
+            <span className="text-[var(--muted-foreground)]">
+              {" "}· {formatCents(unmatchedNew.reduce((s, u) => s + u.amountCents, 0))} all-time backlog (mostly pre-tracking / Farm subs — use All-Time to sweep it)
+            </span>
           </p>
-          <div className="max-h-56 overflow-y-auto mt-2">
-          <table className="text-sm [font-variant-numeric:tabular-nums]">
-            <tbody>
-              {unmatchedNew.map((u) => (
-                <tr key={u.id}>
-                  <td className="pr-4 py-0.5 whitespace-nowrap text-yellow-900 dark:text-yellow-100">{formatDateShort(u.paidAt)}</td>
-                  <td className="pr-4 py-0.5">{u.name}{u.email ? <span className="text-yellow-700 dark:text-yellow-300"> &lt;{u.email}&gt;</span> : null}</td>
-                  <td className="py-0.5 text-right font-medium">{formatCents(u.amountCents)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
-            Match each one to its demo on the <a href="/demos" className="underline font-medium">Demos page</a> financial feed — once matched, the cash flows into these numbers (and commission) automatically. Older rows may predate demo tracking or be Farm subscriptions with no demo to match.
-          </p>
+          <button
+            onClick={() => setReconcileOpen(true)}
+            className="shrink-0 text-sm font-medium px-3 py-1 rounded-md border bg-[var(--card)] hover:bg-[var(--muted)]"
+          >
+            Reconcile →
+          </button>
         </div>
       )}
 
