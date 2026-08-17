@@ -380,6 +380,17 @@ export async function POST(request: NextRequest) {
           });
         }
 
+        // Activity credit (bookedAt) stays anchored to the ORIGINAL booking. A
+        // reschedule of a still-pending demo is the SAME booking moving to a new
+        // time, not a new booking, so the successor inherits the original's
+        // bookedAt — mirroring the gcal in-place drag path ("a drag is not a new
+        // booking event"). Only a re-engagement AFTER a terminal outcome
+        // (showed / no_show / cancelled) is a genuinely new meeting and earns a
+        // fresh bookedAt on the day it was rebooked.
+        const priorTerminal =
+          !!existing.demo && ["showed", "no_show", "cancelled"].includes(existing.demo.status);
+        const successorBookedAt = priorTerminal ? new Date() : existing.bookedAt ?? existing.createdAt;
+
         const successor = await prisma.booking.create({
           data: {
             weekId: newWeek.id,
@@ -389,7 +400,7 @@ export async function POST(request: NextRequest) {
             listingAddress: listingAddress || existing.listingAddress,
             prospectTimezone: prospectTimezone || existing.prospectTimezone,
             setterId: successorSetterId,
-            bookedAt: new Date(),
+            bookedAt: successorBookedAt,
             demoDate: demoDate!,
             calendarEventId: calendlyId,
             source: "calendly_webhook",
