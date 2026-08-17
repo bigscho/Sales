@@ -102,6 +102,12 @@ model Demo {
   confirmedAt            DateTime?
   firefliesTranscriptId  String?
   hasFirefliesRecording  Boolean   @default(false)
+  // Advisory ONLY — the primary presenter Fireflies detected from transcript
+  // talk-share. Never auto-applied to closerId (respects the shadowing rule +
+  // "automation must not overwrite manual corrections"); it surfaces a reconcile
+  // badge on /demos so an admin can one-click reassign a double-booked jump-in.
+  detectedCloserId       String?
+  detectedCloserShare    Float?    // 0-1 share of internal talk the presenter held; null when co-run/ambiguous
   notes                  String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt

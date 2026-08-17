@@ -146,6 +146,58 @@ function verifyRealShow(t: FirefliesTranscript, teamNames: string[]): boolean {
   return true;
 }
 
+// Match a Fireflies speaker name to a closer TeamMember (full-name or first-name).
+// Only closers are candidates — a demo can only be "run by" a closer, so setters
+// and the prospect never match.
+function matchCloserId(speakerName: string, closers: { id: string; name: string }[]): string | null {
+  const nm = speakerName.trim().toLowerCase();
+  if (!nm) return null;
+  const nmFirst = nm.split(/\s+/)[0];
+  for (const c of closers) {
+    const cn = c.name.toLowerCase();
+    const cFirst = cn.split(/\s+/)[0];
+    if (nm === cn) return c.id;
+    if (cFirst && nmFirst && cFirst === nmFirst && cFirst.length > 2) return c.id;
+  }
+  return null;
+}
+
+// Detect the primary presenter of a demo from its transcript — the closer who
+// did the most talking (talk-share proxy = sentence count). Returns that closer
+// + their share of INTERNAL talk, or null when no closer is identifiable or the
+// call is genuinely co-run (no clear majority). Advisory only: the caller stores
+// this to surface a reconcile badge, never to overwrite closerId.
+const PRESENTER_MIN_SHARE = 0.6;
+function detectPresenter(
+  t: FirefliesTranscript,
+  closers: { id: string; name: string }[]
+): { id: string; share: number } | null {
+  const sentences = t.sentences || [];
+  if (!sentences.length || !closers.length) return null;
+
+  const byCloser = new Map<string, number>();
+  for (const s of sentences) {
+    if (!s.speaker_name) continue;
+    const id = matchCloserId(s.speaker_name, closers);
+    if (id) byCloser.set(id, (byCloser.get(id) || 0) + 1);
+  }
+
+  let total = 0;
+  for (const c of byCloser.values()) total += c;
+  if (total === 0) return null;
+
+  let bestId: string | null = null;
+  let best = 0;
+  for (const [id, c] of byCloser) {
+    if (c > best) { best = c; bestId = id; }
+  }
+  if (!bestId) return null;
+
+  const share = best / total;
+  if (share < PRESENTER_MIN_SHARE) return null; // co-run / ambiguous — don't flag
+  return { id: bestId, share };
+}
+
 // GET handler for Vercel cron
 export async function GET() {
   return POST();
@@ -165,6 +217,12 @@ export async function POST() {
   // Load all team member names for speaker cross-reference (Signal 6)
   const teamMembers = await prisma.teamMember.findMany({ select: { name: true } });
   const teamNames = teamMembers.map(m => m.name.toLowerCase());
+
+  // Closers only — candidates for "who actually ran the demo" (presenter detection)
+  const closers = await prisma.teamMember.findMany({
+    where: { role: "closer" },
+    select: { id: true, name: true },
+  });
 
   // Get all demos from the last 2 weeks that Fireflies hasn't verified yet
   const twoWeeksAgo = new Date();
@@ -231,12 +289,19 @@ export async function POST() {
           (p) => p.toLowerCase() === prospectEmail
         );
 
-        // Check name match in title
-        const nameParts = prospectName.split(/\s+/);
-        const titleLower = t.title.toLowerCase();
-        const nameMatch = nameParts.length > 0 && nameParts.some(
-          (part) => part.length > 2 && titleLower.includes(part)
-        );
+        // Check name match against the title's prospect portion ("Prospect and
+        // Closer"). Use WHOLE-WORD tokens, not substrings, and require BOTH the
+        // first and last name — a substring match let "Jan Norris" hijack the
+        // "Janice Pruss" transcript ("jan" ⊂ "janice"), mis-linking the demo.
+        const andMatch = t.title.match(/^(.+?)\s+and\s+/i);
+        const titleProspect = (andMatch ? andMatch[1] : t.title).toLowerCase();
+        const titleTokens = new Set(titleProspect.split(/[^a-z0-9]+/).filter(Boolean));
+        const prospectTokens = prospectName.split(/[^a-z0-9]+/).filter((tok) => tok.length > 1);
+        const firstTok = prospectTokens[0];
+        const lastTok = prospectTokens[prospectTokens.length - 1];
+        const nameMatch = prospectTokens.length > 0
+          && !!lastTok && titleTokens.has(lastTok)
+          && (prospectTokens.length < 2 || (!!firstTok && titleTokens.has(firstTok)));
 
         return emailMatch || nameMatch;
       });
@@ -246,6 +311,9 @@ export async function POST() {
         // Check for genuine two-party interaction:
         const isRealShow = verifyRealShow(match, teamNames);
 
+        // Who actually presented? (advisory — never overwrites closerId)
+        const presenter = detectPresenter(match, closers);
+
         // Always link the transcript to the demo for reference
         const wasAlreadyConfirmed = demo.status === "showed";
         await prisma.demo.update({
@@ -253,6 +321,9 @@ export async function POST() {
           data: {
             hasFirefliesRecording: true,
             firefliesTranscriptId: match.id,
+            ...(presenter
+              ? { detectedCloserId: presenter.id, detectedCloserShare: presenter.share }
+              : {}),
             // Only auto-mark as showed if it was a real conversation
             ...(isRealShow && !wasAlreadyConfirmed
               ? { status: "showed", confirmedBy: "fireflies_auto", confirmedAt: new Date() }
@@ -295,6 +366,31 @@ export async function POST() {
       results.errors.push(String(e).slice(0, 100));
     }
   }
+
+  // Backfill presenter detection for already-recorded demos that predate this
+  // feature, reusing the transcripts we already fetched. Advisory field only —
+  // never touches closerId, and skips rows that already have a detection.
+  try {
+    const undetected = await prisma.demo.findMany({
+      where: {
+        firefliesTranscriptId: { not: null },
+        detectedCloserId: null,
+        booking: { demoDate: { gte: twoWeeksAgo } },
+      },
+      select: { id: true, firefliesTranscriptId: true },
+    });
+    for (const d of undetected) {
+      const t = transcripts.find((tr) => tr.id === d.firefliesTranscriptId);
+      if (!t) continue;
+      const presenter = detectPresenter(t, closers);
+      if (presenter) {
+        await prisma.demo.update({
+          where: { id: d.id },
+          data: { detectedCloserId: presenter.id, detectedCloserShare: presenter.share },
+        });
+      }
+    }
+  } catch { /* presenter backfill is best-effort */ }
 
   // Log sync
   await prisma.syncLog.create({

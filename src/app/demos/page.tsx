@@ -33,6 +33,10 @@ interface DemoRecord {
   };
   closer: { id: string; name: string } | null;
   deal: { id: string; status: string } | null;
+  // Advisory: the primary presenter Fireflies detected (talk-share). When it
+  // disagrees with `closer`, the demos tab shows a one-click reconcile badge.
+  detectedCloserId?: string | null;
+  detectedCloserShare?: number | null;
 }
 
 interface DayLockRecord {
@@ -471,7 +475,84 @@ export default function DemosPage() {
                     </select>
                   )}
                 </td>
-                <td className="p-2">{demo.closer?.name || "—"}</td>
+                <td className="p-2">
+                  {(() => {
+                    const detected = demo.detectedCloserId
+                      ? closers.find((c) => c.id === demo.detectedCloserId)
+                      : null;
+                    const creditedId = demo.closer?.id || "";
+                    const mismatch = !!detected && detected.id !== creditedId;
+                    const sharePct = demo.detectedCloserShare != null
+                      ? Math.round(demo.detectedCloserShare * 100)
+                      : null;
+                    // A non-admin closer can CLAIM a demo the transcript says they ran.
+                    const iRanIt = !!session?.memberId && demo.detectedCloserId === session.memberId && creditedId !== session.memberId;
+                    return (
+                      <div className="flex flex-col gap-1">
+                        {isCloser ? (
+                          <span className="text-xs">{demo.closer?.name || "—"}</span>
+                        ) : (
+                          <select
+                            value={creditedId}
+                            onChange={(e) => {
+                              if (dayLock) return;
+                              if (!confirm("Reassign this demo's closer? This moves the close and its commission too.")) return;
+                              updateDemo(demo.id, { closerId: e.target.value || null });
+                            }}
+                            disabled={!!dayLock}
+                            className={`border rounded px-2 py-1 text-xs ${dayLock ? "opacity-50 cursor-not-allowed" : ""}`}
+                          >
+                            <option value="">—</option>
+                            {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        )}
+
+                        {/* Admin: one-click reassign to the detected presenter */}
+                        {!isCloser && mismatch && detected && (
+                          <button
+                            onClick={() => {
+                              if (dayLock) return;
+                              if (!confirm(`Fireflies detected ${detected.name} ran this demo (${sharePct}% of the talking), not ${demo.closer?.name || "—"}. Reassign to ${detected.name}? This moves the close and its commission too.`)) return;
+                              updateDemo(demo.id, { closerId: detected.id });
+                            }}
+                            disabled={!!dayLock}
+                            title={`Fireflies detected ${detected.name} as the presenter${sharePct != null ? ` (${sharePct}% of internal talk)` : ""}. Click to reassign.`}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 ${
+                              dayLock ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-70"
+                            }`}
+                          >
+                            ▲ ran: {detected.name.split(/\s+/)[0]}{sharePct != null ? ` ${sharePct}%` : ""} →
+                          </button>
+                        )}
+
+                        {/* Closer: claim a demo the transcript shows you ran */}
+                        {isCloser && iRanIt && (
+                          <button
+                            onClick={() => {
+                              if (dayLock) return;
+                              if (!confirm(`Claim this demo? Fireflies shows you ran it${sharePct != null ? ` (${sharePct}% of the talking)` : ""}. This credits you the demo and its commission.`)) return;
+                              updateDemo(demo.id, { closerId: session!.memberId });
+                            }}
+                            disabled={!!dayLock}
+                            title="Fireflies detected you as the presenter — claim your credit."
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 ${
+                              dayLock ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-70"
+                            }`}
+                          >
+                            ✋ Claim — you ran this
+                          </button>
+                        )}
+
+                        {/* Closer: passive note when someone else was detected */}
+                        {isCloser && mismatch && !iRanIt && detected && (
+                          <span className="text-[10px] text-[var(--muted-foreground)]" title={`Fireflies detected ${detected.name} as the presenter`}>
+                            ▲ ran: {detected.name.split(/\s+/)[0]}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </td>
                 <td className="p-2">
                   <button
                     onClick={() => {

@@ -31,12 +31,26 @@ export async function PATCH(request: NextRequest) {
   const session = await getSession();
   const performedBy = session?.name || "admin";
 
-  // Check if demo's day is locked
   const existingDemo = await prisma.demo.findUnique({
     where: { id: demoId },
-    include: { booking: { include: { setter: true } } },
+    include: { booking: { include: { setter: true } }, deal: true },
   });
-  if (existingDemo && (status || setterId !== undefined)) {
+
+  // Closer self-claim (EOD "make sure you got credit for what you ran"): a
+  // non-admin closer may reassign a demo ONLY to themselves, and ONLY when
+  // Fireflies detected them as the presenter — evidence-gated so no one can pull
+  // a teammate's demo (and its commission). Admins reassign freely.
+  if (closerId !== undefined && session?.role === "closer" && !session?.isAdmin) {
+    if (closerId !== session.memberId) {
+      return NextResponse.json({ error: "You can only claim a demo to yourself." }, { status: 403 });
+    }
+    if (existingDemo?.detectedCloserId !== session.memberId) {
+      return NextResponse.json({ error: "You can only claim demos the transcript shows you ran." }, { status: 403 });
+    }
+  }
+
+  // Check if demo's day is locked
+  if (existingDemo && (status || setterId !== undefined || closerId !== undefined)) {
     const demoDate = new Date(existingDemo.booking.demoDate);
     const dayStart = new Date(Date.UTC(demoDate.getUTCFullYear(), demoDate.getUTCMonth(), demoDate.getUTCDate()));
     const lock = await prisma.dayLock.findUnique({
@@ -147,6 +161,39 @@ export async function PATCH(request: NextRequest) {
       performedBy,
     },
   });
+
+  // Closer reassignment cascades to the linked deal so commission (payroll reads
+  // deal.closerId on demand) and the close follow the presenter — "moves both"
+  // (Colin, 2026-08-17). Day-lock above already protects confirmed/paid weeks.
+  // This is the reconcile path when two closers cover each other's double-bookings.
+  if (closerId !== undefined && closerId !== existingDemo?.closerId) {
+    await prisma.auditLog.create({
+      data: {
+        entityType: "demo",
+        entityId: demoId,
+        action: "closer_reassigned",
+        oldValue: JSON.stringify({ closerId: existingDemo?.closerId ?? null }),
+        newValue: JSON.stringify({ closerId: closerId ?? null }),
+        performedBy,
+      },
+    });
+    if (existingDemo?.deal) {
+      await prisma.deal.update({
+        where: { id: existingDemo.deal.id },
+        data: { closerId: closerId ?? null },
+      });
+      await prisma.auditLog.create({
+        data: {
+          entityType: "deal",
+          entityId: existingDemo.deal.id,
+          action: "closer_reassigned",
+          oldValue: JSON.stringify({ closerId: existingDemo.deal.closerId }),
+          newValue: JSON.stringify({ closerId: closerId ?? null }),
+          performedBy,
+        },
+      });
+    }
+  }
 
   // Show rate notification — fires when a demo is newly marked as showed
   if (status === "showed" && oldDemo?.status !== "showed") {
