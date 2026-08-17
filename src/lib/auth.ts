@@ -8,6 +8,7 @@ export interface SessionPayload {
   memberId: string;
   name: string;
   role: string;
+  accessRole?: string | null; // overrides `role` for nav/route access only
   isAdmin: boolean;
 }
 
@@ -27,6 +28,7 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
       memberId: payload.memberId as string,
       name: payload.name as string,
       role: payload.role as string,
+      accessRole: (payload.accessRole as string | undefined) ?? null,
       isAdmin: payload.isAdmin as boolean,
     };
   } catch {

@@ -124,7 +124,7 @@ export default function ConfirmationsPage() {
   const noGroupCount = active.filter((r) => r.blockReason === "no_group").length;
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="max-w-5xl">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
         <div>
@@ -135,7 +135,7 @@ export default function ConfirmationsPage() {
               : "Today's testimonial reminders"}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {!live && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
               🧪 Dry run — no real texts fire
@@ -176,7 +176,7 @@ export default function ConfirmationsPage() {
       {/* Readiness strip (T-1 only) */}
       {view === "t1" && readiness && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 mb-5">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3">
             <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
               Automation readiness · last {readiness.windowDays}d
             </span>

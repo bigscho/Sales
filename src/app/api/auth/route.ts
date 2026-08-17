@@ -36,12 +36,13 @@ export async function POST(request: NextRequest) {
       memberId: member.id,
       name: member.name,
       role: member.role,
+      accessRole: member.accessRole,
       isAdmin: member.isAdmin,
     });
 
     const response = NextResponse.json({
       success: true,
-      session: { memberId: member.id, name: member.name, role: member.role, isAdmin: member.isAdmin },
+      session: { memberId: member.id, name: member.name, role: member.role, accessRole: member.accessRole, isAdmin: member.isAdmin },
     });
 
     response.cookies.set(SESSION_COOKIE, token, {

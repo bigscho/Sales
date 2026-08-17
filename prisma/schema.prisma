@@ -11,6 +11,7 @@ model TeamMember {
   id                      String   @id @default(cuid())
   name                    String
   role                    String   // setter | closer | show_rate_rep
+  accessRole              String?  // overrides `role` for dashboard nav/route access ONLY; `role` still drives attribution + leaderboards
   tier                    Int      @default(1) // 1-4 for setters
   pin                     String?  // 4-6 digit login PIN
   isAdmin                 Boolean  @default(false)

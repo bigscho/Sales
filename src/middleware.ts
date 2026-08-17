@@ -30,12 +30,17 @@ const ROLE_ROUTES: Record<string, string[]> = {
   // payments feed stay scoped to their own (revenue figures are admin-only).
   closer: ["/", "/demos", "/deals", "/scoreboard", "/api/demos", "/api/deals", "/api/scoreboard", "/api/closer"],
   show_rate_rep: ["/", "/scoreboard", "/demos", "/confirmations", "/api/scoreboard", "/api/demos", "/api/kpis", "/api/confirmations"],
+  // Confirmations-only rep: sees just the Scoreboard and Confirmations tabs.
+  // Used as an `accessRole` override so a member can keep their attribution
+  // `role` (e.g. setter) while their visible surface is limited to these two.
+  confirmations_rep: ["/scoreboard", "/confirmations", "/api/scoreboard", "/api/confirmations"],
 };
 
 // Default landing page per role (when they hit "/")
 const ROLE_DEFAULT: Record<string, string> = {
   setter: "/demos",
   closer: "/demos",
+  confirmations_rep: "/confirmations",
 };
 
 export async function middleware(request: NextRequest) {
@@ -71,7 +76,8 @@ export async function middleware(request: NextRequest) {
   // Verify JWT
   try {
     const { payload } = await jwtVerify(token, SECRET);
-    const role = payload.role as string;
+    // `accessRole` (when set) governs nav/route access; `role` stays for data/attribution.
+    const role = (payload.accessRole as string) || (payload.role as string);
     const isAdmin = payload.isAdmin as boolean;
 
     // Admins can access everything

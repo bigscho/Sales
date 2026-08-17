@@ -16,10 +16,10 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "📊", roles: ["admin"] },
   { href: "/economics", label: "Economics", icon: "🧮", roles: ["admin"] },
-  { href: "/demos", label: "Demos", icon: "📞" },
+  { href: "/demos", label: "Demos", icon: "📞", roles: ["setter", "closer", "show_rate_rep", "admin"] },
   { href: "/deals", label: "Deals", icon: "💰", roles: ["closer", "admin"] },
-  { href: "/scoreboard", label: "Scoreboard", icon: "🏆", roles: ["setter", "closer", "show_rate_rep", "admin"] },
-  { href: "/confirmations", label: "Confirmations", icon: "📆", roles: ["show_rate_rep", "admin"] },
+  { href: "/scoreboard", label: "Scoreboard", icon: "🏆", roles: ["setter", "closer", "show_rate_rep", "confirmations_rep", "admin"] },
+  { href: "/confirmations", label: "Confirmations", icon: "📆", roles: ["show_rate_rep", "confirmations_rep", "admin"] },
   { href: "/blasts", label: "Text Blast", icon: "📲", roles: ["setter", "admin"] },
   { href: "/blasts/admin", label: "Blast Admin", icon: "⚡", roles: ["admin"] },
   { href: "/agents", label: "Agents", icon: "🏠", roles: ["admin"] },
@@ -48,7 +48,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const weekId = searchParams.get("weekId") || "";
 
   const isAdmin = session?.isAdmin ?? false;
-  const role = session?.role || "";
+  // `accessRole` (when set) governs which nav items show; falls back to `role`.
+  const role = session?.accessRole || session?.role || "";
 
   // Filter nav items by role
   const visibleItems = navItems.filter(item => {

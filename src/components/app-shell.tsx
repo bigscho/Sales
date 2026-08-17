@@ -14,6 +14,7 @@ export interface Session {
   memberId: string;
   name: string;
   role: string;
+  accessRole?: string | null; // overrides `role` for nav/route access only
   isAdmin: boolean;
 }
 
@@ -90,7 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Suspense>
             </div>
             <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
-              {session?.role === "setter" && (
+              {session && (session.accessRole || session.role) === "setter" && (
                 <a href="/blasts"><CreditBadge setterId={session.memberId} /></a>
               )}
               <SyncButton />
