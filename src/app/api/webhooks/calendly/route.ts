@@ -390,6 +390,11 @@ export async function POST(request: NextRequest) {
         const priorTerminal =
           !!existing.demo && ["showed", "no_show", "cancelled"].includes(existing.demo.status);
         const successorBookedAt = priorTerminal ? new Date() : existing.bookedAt ?? existing.createdAt;
+        // A fresh bookedAt = a genuine new booking event (re-book after a terminal outcome)
+        // and earns its own activity credit; an inherited bookedAt = the same meeting moved,
+        // so it must not double-count. Mirrors the isBookingEvent backfill definition exactly.
+        const successorIsBookingEvent =
+          existing.bookedAt == null || successorBookedAt.getTime() !== existing.bookedAt.getTime();
 
         const successor = await prisma.booking.create({
           data: {
@@ -401,6 +406,7 @@ export async function POST(request: NextRequest) {
             prospectTimezone: prospectTimezone || existing.prospectTimezone,
             setterId: successorSetterId,
             bookedAt: successorBookedAt,
+            isBookingEvent: successorIsBookingEvent,
             demoDate: demoDate!,
             calendarEventId: calendlyId,
             source: "calendly_webhook",

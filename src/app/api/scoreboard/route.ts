@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { type TimeDimension, getDateRange } from "@/lib/time-range";
 import { getWeekRange, computeShowRate } from "@/lib/utils";
 import { loadDealMeta, isCommissionable, commissionExclusionReason } from "@/lib/payroll";
+import { newBookingActivityWhere } from "@/lib/booking-activity";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
@@ -206,23 +207,14 @@ export async function GET(request: NextRequest) {
   // === ACTIVITY: bookings by bookedAt (with createdAt fallback) in range ===
   // Includes gcal_sync so the leaderboard stays accurate when the Calendly webhook is down —
   // gcal_sync is the 10-min backup path and writes real setterId from the event description.
-  // bookedAt is the ORIGINAL booking moment and is never re-stamped: a reschedule freezes
-  // the old row and creates a successor that INHERITS the original bookedAt, so a rescheduled
-  // demo keeps its activity credit in the week it was first booked (it is not a new booking).
-  // Only live rows count — superseded (frozen) rows are excluded so a demo rescheduled more
-  // than once is never counted more than once. Matches every other aggregate in the app.
+  // Counts CHAIN ROOTS ONLY (see newBookingActivityWhere): one credit per prospect, in the
+  // week it was first booked, under the original setter. A rescheduled/rebooked successor is
+  // never its own activity, so a past week's count is frozen once the week ends and can no
+  // longer restate. Matches every other activity aggregate in the app (all use the same helper).
   const activityBookings = await prisma.booking.findMany({
     where: {
-      ...(dateFilter
-        ? {
-            OR: [
-              { bookedAt: dateFilter },
-              { AND: [{ bookedAt: null }, { createdAt: dateFilter }] },
-            ],
-          }
-        : {}),
+      ...newBookingActivityWhere(dateFilter ?? undefined),
       source: { in: ["calendly_webhook", "manual", "gcal_sync"] },
-      supersededAt: null,
     },
     select: { setterId: true },
   });

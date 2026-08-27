@@ -320,10 +320,11 @@ export async function DELETE(request: NextRequest) {
     });
   }
 
-  // Unlink any successor booking that points at this one in a reschedule chain
+  // Unlink any successor booking that points at this one in a reschedule chain.
+  // It becomes a standalone booking, so it now counts as its own booking event.
   await prisma.booking.updateMany({
     where: { rescheduledFromId: demo.bookingId },
-    data: { rescheduledFromId: null },
+    data: { rescheduledFromId: null, isBookingEvent: true },
   });
 
   // Delete demo then booking

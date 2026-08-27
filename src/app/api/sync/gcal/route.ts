@@ -260,6 +260,10 @@ async function supersedeAndCreate(opts: {
       prospectPhone: opts.old.prospectPhone,
       setterId: opts.setterId,
       bookedAt: opts.bookedAt,
+      // supersedeAndCreate is only reached for a re-engagement after a TERMINAL outcome
+      // (pending drags move in place, never here), so the successor is always a genuine
+      // new booking event with a fresh bookedAt — it earns its own activity credit.
+      isBookingEvent: true,
       demoDate: opts.newDemoDate,
       calendarEventId: newEventId,
       source: "gcal_sync",

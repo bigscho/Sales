@@ -82,6 +82,12 @@ model Booking {
   // linked via rescheduledFromId. Frozen rows keep their week's activity + outcome forever.
   supersededAt      DateTime?
   rescheduledFromId String?  @unique
+  // Activity/"New Bookings" counting flag (see src/lib/booking-activity.ts). True for a
+  // real booking EVENT: an original booking, or a genuine re-book after a terminal outcome
+  // (new setter effort → its own credit in the rebooker's week). False only for a
+  // pending-reschedule successor (same meeting moved to a new time, inherited bookedAt) so
+  // a time change is never double-counted. Frozen at creation; never restated.
+  isBookingEvent    Boolean  @default(true)
   createdAt        DateTime @default(now())
 
   week              Week        @relation(fields: [weekId], references: [id])

@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { newBookingActivityWhere } from "./booking-activity";
 import { computeShowRate } from "./utils";
 import { dealUpfrontCents } from "./cash";
 
@@ -65,12 +66,10 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
 
   const totalBookings = allDemos.length;
 
-  const activityDateFilter = {
-    OR: [
-      { bookedAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) } },
-      { AND: [{ bookedAt: null }, { createdAt: { gte: week.weekStart, lt: new Date(week.weekEnd.getTime() + 1) } }] },
-    ],
-  };
+  const activityDateFilter = newBookingActivityWhere({
+    gte: week.weekStart,
+    lt: new Date(week.weekEnd.getTime() + 1),
+  });
 
   // Activity metric: bookings credited during this week (regardless of demo date).
   // Includes gcal_sync (backup path writes real setter bookings — same sources as the

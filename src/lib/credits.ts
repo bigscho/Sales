@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { newBookingActivityWhere } from "./booking-activity";
 import { sendSlackSetter } from "./slack";
 import { formatMention } from "./setter-game";
 import { computeShowRate } from "./utils";
@@ -105,10 +106,7 @@ export async function computeWeeklyCredits(setterId: string, weekId: string): Pr
   const bookings = await prisma.booking.count({
     where: {
       setterId,
-      OR: [
-        { bookedAt: { gte: week.weekStart, lte: week.weekEnd } },
-        { AND: [{ bookedAt: null }, { createdAt: { gte: week.weekStart, lte: week.weekEnd } }] },
-      ],
+      ...newBookingActivityWhere({ gte: week.weekStart, lte: week.weekEnd }),
     },
   });
 

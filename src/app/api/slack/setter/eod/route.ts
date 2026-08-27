@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAllSetterScoresToday, formatSetterMention, formatMention, getPipelineCount, isWeekday, PIGEON_GIFS, getSetterWeeklyShows, getTierForCount, getWeeklyShowStats } from "@/lib/setter-game";
 import { sendSlackSetter } from "@/lib/slack";
 import { prisma } from "@/lib/db";
+import { newBookingActivityWhere } from "@/lib/booking-activity";
 import { getWeekRange, computeShowRate } from "@/lib/utils";
 
 export async function POST() {
@@ -98,12 +99,7 @@ export async function POST() {
 
   if (todayDay === "Friday") {
     const { start: lbWeekStart } = getWeekRange(new Date());
-    const activityFilter = {
-      OR: [
-        { bookedAt: { gte: lbWeekStart } },
-        { AND: [{ bookedAt: null }, { createdAt: { gte: lbWeekStart } }] },
-      ],
-    };
+    const activityFilter = newBookingActivityWhere({ gte: lbWeekStart });
 
     // Get weekly bookings per setter
     const activeSetters = await prisma.teamMember.findMany({

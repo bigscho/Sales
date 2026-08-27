@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { newBookingActivityWhere } from "@/lib/booking-activity";
 import { sendSlackVerify, sendSlackCEO } from "@/lib/slack";
 import { formatMention, isWeekday, getWeeklyShowStats } from "@/lib/setter-game";
 import { getWeekRange, computeShowRate } from "@/lib/utils";
@@ -33,10 +34,7 @@ export async function POST() {
     const newBookings = await prisma.booking.count({
       where: {
         setterId: setter.id,
-        OR: [
-          { bookedAt: { gte: weekStart, lt: new Date(weekEnd.getTime() + 1) } },
-          { AND: [{ bookedAt: null }, { createdAt: { gte: weekStart, lt: new Date(weekEnd.getTime() + 1) } }] },
-        ],
+        ...newBookingActivityWhere({ gte: weekStart, lt: new Date(weekEnd.getTime() + 1) }),
         source: { in: ["calendly_webhook", "manual"] },
       },
     });

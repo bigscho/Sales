@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { newBookingActivityWhere } from "./booking-activity";
 import { sendSlackSetter } from "./slack";
 
 // === PIGEON TIER DEFINITIONS ===
@@ -103,10 +104,7 @@ export async function getSetterTodayBookings(setterId: string): Promise<{ count:
   const count = await prisma.booking.count({
     where: {
       setterId,
-      OR: [
-        { bookedAt: { gte: start, lt: end } },
-        { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
-      ],
+      ...newBookingActivityWhere({ gte: start, lt: end }),
     },
   });
 
@@ -203,10 +201,7 @@ export async function getAllSetterScoresToday(): Promise<Array<{
     const count = await prisma.booking.count({
       where: {
         setterId: setter.id,
-        OR: [
-          { bookedAt: { gte: start, lt: end } },
-          { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
-        ],
+        ...newBookingActivityWhere({ gte: start, lt: end }),
       },
     });
     const tier = getTierForCount(count);
@@ -234,19 +229,13 @@ export async function getTeamTotalToday(): Promise<{ total: number; setterTotal:
   const [total, setterTotal] = await Promise.all([
     prisma.booking.count({
       where: {
-        OR: [
-          { bookedAt: { gte: start, lt: end } },
-          { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
-        ],
+        ...newBookingActivityWhere({ gte: start, lt: end }),
       },
     }),
     prisma.booking.count({
       where: {
         setterId: { in: setterIds },
-        OR: [
-          { bookedAt: { gte: start, lt: end } },
-          { AND: [{ bookedAt: null }, { createdAt: { gte: start, lt: end } }] },
-        ],
+        ...newBookingActivityWhere({ gte: start, lt: end }),
       },
     }),
   ]);
