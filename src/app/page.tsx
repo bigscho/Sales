@@ -179,7 +179,7 @@ export default function Dashboard() {
               }
             />
           </div>
-          <StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} size="md" />
+          <StatusBar showed={kpis.totalShows} noShow={kpis.totalNoShows} pending={kpis.totalPending} cancelled={kpis.totalCancelled} size="md" />
         </div>
 
         <KPICard

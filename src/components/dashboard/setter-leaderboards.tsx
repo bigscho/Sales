@@ -119,7 +119,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 </span>
               </div>
               <div className="flex-1">
-                <StatusBar showed={setter.results.shows} noShow={setter.results.noShows} pending={setter.results.pending} size="sm" />
+                <StatusBar showed={setter.results.shows} noShow={setter.results.noShows} pending={setter.results.pending} cancelled={setter.results.cancelled} size="sm" />
               </div>
               <div className="w-16 text-right flex-shrink-0">
                 <p className={`text-lg font-bold ${
@@ -127,6 +127,11 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 }`}>
                   {(setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 ? formatPercent(setter.results.showRate) : "—"}
                 </p>
+                {(setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 && (
+                  <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">
+                    {setter.results.shows}/{setter.results.shows + setter.results.noShows + setter.results.cancelled}
+                  </p>
+                )}
               </div>
             </div>
           ))}
@@ -137,12 +142,17 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                 <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
               </div>
               <div className="flex-1">
-                <StatusBar showed={unattributed.results.shows} noShow={unattributed.results.noShows} pending={unattributed.results.pending} size="sm" />
+                <StatusBar showed={unattributed.results.shows} noShow={unattributed.results.noShows} pending={unattributed.results.pending} cancelled={unattributed.results.cancelled} size="sm" />
               </div>
               <div className="w-16 text-right flex-shrink-0">
                 <p className="text-lg font-bold text-yellow-600">
                   {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled) > 0 ? formatPercent(unattributed.results.showRate) : "—"}
                 </p>
+                {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled) > 0 && (
+                  <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">
+                    {unattributed.results.shows}/{unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled}
+                  </p>
+                )}
               </div>
             </div>
           )}

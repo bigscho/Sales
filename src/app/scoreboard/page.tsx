@@ -270,7 +270,7 @@ export default function ScoreboardPage() {
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Demo Results</p>
-            <StatusBar showed={teamTotals.results.shows} noShow={teamTotals.results.noShows} pending={teamTotals.results.pending} size="sm" className="mt-2" />
+            <StatusBar showed={teamTotals.results.shows} noShow={teamTotals.results.noShows} pending={teamTotals.results.pending} cancelled={teamTotals.results.cancelled} size="sm" className="mt-2" />
           </CardContent>
         </Card>
         <Card>
