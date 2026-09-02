@@ -197,9 +197,11 @@ export async function POST(request: NextRequest) {
           include: { demo: true },
         });
         if (byEmail && demoDate) {
-          // Only match if within same week (7 days)
+          // Only match if within same week. Inclusive of exactly 7 days:
+          // "same slot, one week earlier/later" is the most common double-book
+          // pattern and a strict < missed it by 0ms (Ilia Durham, 2026-09-01).
           const diff = Math.abs(new Date(byEmail.demoDate).getTime() - demoDate.getTime());
-          if (diff < 7 * 24 * 60 * 60 * 1000) return byEmail;
+          if (diff <= 7 * 24 * 60 * 60 * 1000) return byEmail;
         }
       }
 
