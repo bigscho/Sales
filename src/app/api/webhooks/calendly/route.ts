@@ -401,7 +401,13 @@ export async function POST(request: NextRequest) {
         const successor = await prisma.booking.create({
           data: {
             weekId: newWeek.id,
-            prospectName: existing.prospectName,
+            // The new invitee's name is the freshest identity — same rule as email/
+            // phone below. Carrying the old row's name forward propagated Calendly's
+            // browser-autofill mistakes: a setter booking two prospects back-to-back
+            // got prospect A's name on prospect B's booking, then the corrected
+            // rebook matched by email and kept the wrong name (Erica Anderson,
+            // 2026-09-03). The frozen original keeps its name as history.
+            prospectName: inviteeName?.trim() ? inviteeName : existing.prospectName,
             prospectEmail: inviteeEmail || existing.prospectEmail,
             prospectPhone: phone || existing.prospectPhone,
             listingAddress: listingAddress || existing.listingAddress,
@@ -440,7 +446,7 @@ export async function POST(request: NextRequest) {
         try {
           const { sendSlackTeam } = await import("@/lib/slack");
           const dateStr = demoDate!.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-          await sendSlackTeam(`🔁 Rescheduled: ${existing.prospectName} moved to ${dateStr}${incomingSetterName ? ` (reset by ${incomingSetterName})` : ""}`);
+          await sendSlackTeam(`🔁 Rescheduled: ${successor.prospectName} moved to ${dateStr}${incomingSetterName ? ` (reset by ${incomingSetterName})` : ""}`);
         } catch (err) { console.error("reschedule Slack post failed:", err); }
 
         return NextResponse.json({ received: true, action: "rescheduled_split", bookingId: successor.id });
