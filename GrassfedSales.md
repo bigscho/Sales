@@ -106,9 +106,10 @@ tierCrossings (CSV: "4,9,12")
 ### DayLock
 ```
 id, weekId, date, dayOfWeek, demoCount, showCount,
-noShowCount, cashCents, lockedBy, lockedAt
+noShowCount, cancelledCount, cashCents, lockedBy, lockedAt
 @@unique([weekId, date])
 ```
+Show rate on locked days = showCount/(showCount+noShowCount+cancelledCount) — the one app-wide definition (`computeShowRate`), matching the Slack lock recap, scoreboard, and payroll. `cancelledCount` added Sep 2026 (backfilled).
 
 ### DismissedEvent
 ```

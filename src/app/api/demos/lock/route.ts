@@ -93,12 +93,14 @@ export async function POST(request: NextRequest) {
       demoCount,
       showCount,
       noShowCount,
+      cancelledCount,
       cashCents: cashCents + unlinkedCash,
     },
     update: {
       demoCount,
       showCount,
       noShowCount,
+      cancelledCount,
       cashCents: cashCents + unlinkedCash,
     },
   });
@@ -124,7 +126,7 @@ export async function POST(request: NextRequest) {
       entityType: "day_lock",
       entityId: dayLock.id,
       action: "lock_day",
-      newValue: JSON.stringify({ date: lockDate, demoCount, showCount, noShowCount, cashCents: cashCents + unlinkedCash }),
+      newValue: JSON.stringify({ date: lockDate, demoCount, showCount, noShowCount, cancelledCount, cashCents: cashCents + unlinkedCash }),
       performedBy: "admin",
     },
   });

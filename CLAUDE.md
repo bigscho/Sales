@@ -106,7 +106,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Slack #show-rate-tpds**: show notifications tagging setter + closer + weekly totals + Friday report
 - **Slack #closer-tpds**: close/payment notifications tagging closer + revenue totals
 - **Reschedule handling**: Calendly reschedules update booking date in-place (not mark+recreate)
-- **Show rate formula**: uses shows/(shows+noShows) everywhere — pending excluded
+- **Show rate formula**: ONE definition everywhere — `computeShowRate` in `src/lib/utils.ts` = shows/(shows+noShows+cancelled), pending/rescheduled excluded (standardized Sep 2026; the demos-page day-lock card previously excluded cancelled and disagreed with the Slack lock recap/scoreboard/payroll). `DayLock.cancelledCount` is persisted at lock time (backfilled for all 124 historical locks) so frozen days render the official rate. The lock card's "X/Y showed" fraction uses the same denominator. `kpis.ts` `confirmedShowRate` (shows/(shows+noShows)) is a deliberately separate reference metric — leave it.
 - **Booking feed**: shows all bookings created today across all weeks
 - **Team page**: Slack user ID field on add/edit forms for real @mentions
 - **Video game tier system**: COMMON/UNCOMMON/RARE/LEGENDARY pigeon tiers

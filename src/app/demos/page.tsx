@@ -46,6 +46,7 @@ interface DayLockRecord {
   demoCount: number;
   showCount: number;
   noShowCount: number;
+  cancelledCount: number;
   cashCents: number;
 }
 
@@ -956,9 +957,10 @@ export default function DemosPage() {
                   {lock && (
                     <div className="absolute inset-0 top-[38px] bg-[var(--card)]/75 backdrop-blur-[1px] rounded-b-xl flex flex-col items-center justify-center z-10 pointer-events-none">
                       <span className="text-lg">🔒</span>
-                      <p className="text-sm font-bold mt-1">{lock.showCount}/{lock.demoCount} showed</p>
+                      {/* Must match computeShowRate: shows/(shows+noShows+cancelled) — the official rate posted to Slack at lock time */}
+                      <p className="text-sm font-bold mt-1">{lock.showCount}/{lock.showCount + lock.noShowCount + lock.cancelledCount} showed</p>
                       <p className="text-xs text-[var(--muted-foreground)]">
-                        {(lock.showCount + lock.noShowCount) > 0 ? ((lock.showCount / (lock.showCount + lock.noShowCount)) * 100).toFixed(0) : 0}% show rate
+                        {(lock.showCount + lock.noShowCount + lock.cancelledCount) > 0 ? ((lock.showCount / (lock.showCount + lock.noShowCount + lock.cancelledCount)) * 100).toFixed(0) : 0}% show rate
                       </p>
                       {lock.cashCents > 0 && !isCloser && (
                         <p className="text-xs font-medium text-green-600 mt-0.5">{formatCents(lock.cashCents)}</p>
