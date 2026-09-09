@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/confirmations/worklist";
+import { maybeSendOriginationReply } from "@/lib/confirmations/origination";
 import { SENDBLUE_LINE } from "@/lib/sendblue";
 
-// SendBlue inbound webhook. One job in v1: learn group_ids and match them to
-// bookings by prospect phone. The setter creates the iMessage group at booking
-// and adds our line — the first message in that group is the inbound event
-// that registers the group here and makes the booking sendable.
+// SendBlue inbound webhook. Two jobs:
+//  1. Learn group_ids and match them to bookings by prospect phone. The setter
+//     creates the iMessage group at booking and adds our line — the first
+//     message in that group is the inbound event that registers the group here
+//     and makes the booking sendable.
+//  2. Origination reply: answer that first setter text within seconds
+//     ("Thanks Jake, talk Tuesday John. Definitely check out the FAQ^!").
+//     Gated + deduped in lib/confirmations/origination.ts — safe to call on
+//     every inbound message.
 //
-// Replies themselves are read by the rep in the SendBlue app (v1 does no
+// Prospect replies themselves are read by the rep in the SendBlue app (no
 // content parsing); we only stamp lastInboundAt.
 
 export async function POST(request: NextRequest) {
@@ -89,10 +95,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Origination reply on inbound traffic only (our own sends echo back with
+    // is_outbound=true). Never let a reply failure 500 the webhook — SendBlue
+    // would retry and we'd rather log and move on.
+    let origination: { action: string; reason?: string } | null = null;
+    if (!isOutbound) {
+      try {
+        origination = await maybeSendOriginationReply(groupId);
+      } catch (err) {
+        console.error("Origination reply failed:", err);
+        origination = { action: "failed", reason: String(err) };
+      }
+    }
+
     return NextResponse.json({
       received: true,
       action: existing ? "group_updated" : "group_captured",
       matched: !!matchedBookingId,
+      origination,
     });
   } catch (error) {
     console.error("SendBlue webhook error:", error);

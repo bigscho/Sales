@@ -51,6 +51,11 @@ export function etDayRange(offsetDays: number): { start: Date; end: Date } {
 
 // === ROW SHAPE ===
 
+export type Touchpoint = "t1" | "day_of" | "origination";
+
+/** origination logs its match tier in the same variant column as day-of. */
+export type SendVariant = DayOfVariant | "phone_matched" | "time_matched";
+
 export interface WorklistRow {
   bookingId: string;
   prospectName: string;
@@ -69,7 +74,7 @@ export interface WorklistRow {
   emailCount: number | null;
   // Message
   body: string;
-  variant?: DayOfVariant; // day-of only
+  variant?: SendVariant; // day-of + origination
   // Send routing
   groupId: string | null;
   // State
@@ -209,8 +214,8 @@ export async function syncGroupsFromApi(): Promise<void> {
  * "Ever texted this prospect this touchpoint" — the hard dedup gate. Counts
  * REAL sends only (dry runs don't mark a prospect as contacted).
  */
-async function everSent(
-  touchpoint: "t1" | "day_of",
+export async function everSent(
+  touchpoint: Touchpoint,
   email: string | null,
   phone: string | null
 ): Promise<boolean> {
@@ -227,7 +232,7 @@ async function everSent(
 }
 
 /** Latest send for this booking+touchpoint — drives row status display. */
-async function latestSend(bookingId: string, touchpoint: "t1" | "day_of") {
+async function latestSend(bookingId: string, touchpoint: Touchpoint) {
   return prisma.confirmationSend.findFirst({
     where: { bookingId, touchpoint, status: { in: ["sent", "failed"] } },
     orderBy: { createdAt: "desc" },

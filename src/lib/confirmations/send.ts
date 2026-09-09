@@ -3,7 +3,7 @@
 // of truth for dedup, variants, and the automation-readiness metrics.
 import { prisma } from "@/lib/db";
 import { sendGroupMessage, isLive } from "@/lib/sendblue";
-import type { WorklistRow } from "./worklist";
+import type { WorklistRow, Touchpoint } from "./worklist";
 
 /** Day-of testimonial video attachment. */
 const TESTIMONIAL_URL = process.env.TESTIMONIAL_VIDEO_URL;
@@ -17,12 +17,16 @@ export interface SendOutcome {
 
 export async function sendConfirmation(
   row: WorklistRow,
-  touchpoint: "t1" | "day_of",
-  opts: { editedBody?: string; approvedBy?: string; autoSent?: boolean } = {}
+  touchpoint: Touchpoint,
+  // forceDryRun: touchpoint-level kill-switch layered on SENDBLUE_LIVE — lets a
+  // new touchpoint (origination) log dry-run rows in a prod env that's already
+  // live for t1/day-of.
+  opts: { editedBody?: string; approvedBy?: string; autoSent?: boolean; forceDryRun?: boolean } = {}
 ): Promise<SendOutcome> {
   const body = opts.editedBody?.trim() || row.body;
   const edited = !!opts.editedBody && opts.editedBody.trim() !== row.body;
-  const dryRun = !isLive();
+  const dryRun = opts.forceDryRun || !isLive();
+  const live = opts.forceDryRun ? false : undefined; // undefined -> sendblue's global gate
 
   if (!row.groupId) {
     await logSend(row, touchpoint, body, edited, opts, {
@@ -41,12 +45,13 @@ export async function sendConfirmation(
     // the file is large). The asset is now compressed (~2.4MB) so it processes
     // in seconds; a short pause here lets it lead. Best-effort, not guaranteed.
     if (touchpoint === "day_of" && TESTIMONIAL_URL) {
-      await sendGroupMessage({ groupId: row.groupId, mediaUrl: TESTIMONIAL_URL, content: "" });
+      await sendGroupMessage({ groupId: row.groupId, mediaUrl: TESTIMONIAL_URL, content: "", live });
       await new Promise((resolve) => setTimeout(resolve, 4000));
     }
     const result = await sendGroupMessage({
       groupId: row.groupId,
       content: body,
+      live,
     });
     await logSend(row, touchpoint, body, edited, opts, {
       status: "sent",
@@ -67,7 +72,7 @@ export async function sendConfirmation(
 
 async function logSend(
   row: WorklistRow,
-  touchpoint: "t1" | "day_of",
+  touchpoint: Touchpoint,
   body: string,
   edited: boolean,
   opts: { approvedBy?: string; autoSent?: boolean },

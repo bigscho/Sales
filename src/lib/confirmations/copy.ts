@@ -140,6 +140,61 @@ export function renderT1({ caseType, addressVariable, count }: T1Args): string {
   return `${lead} email counts are done. ${countSentence} ${TAIL} ${CTA}`;
 }
 
+// === ORIGINATION (instant reply when the setter creates the group) ===
+
+export interface OriginationArgs {
+  setterFirstName: string | null;
+  dayLabel: string; // "today" | "tomorrow" | weekday name, prospect-local
+  prospectFirstName: string; // firstNameOf() output — "there" when unknown
+  // Time-matched (not phone-matched) booking: names come from a probably-right
+  // booking, so drop BOTH — a wrong setter name would sit visibly contradicted
+  // in the same thread. The day survives (protected by the exactly-one rule).
+  generic?: boolean;
+}
+
+/**
+ * Render the origination reply — fires seconds after the setter's handoff text
+ * in a brand-new group. The ^ points up at the setter's message, which carries
+ * the FAQ link, so this is text-only. Colin's locked wording (2026-09-09).
+ */
+export function renderOrigination({
+  setterFirstName,
+  dayLabel,
+  prospectFirstName,
+  generic,
+}: OriginationArgs): string {
+  const thanks = setterFirstName && !generic ? `Thanks ${setterFirstName},` : `Thanks,`;
+  // firstNameOf falls back to "there" — "talk Tuesday there" reads wrong, drop it
+  const name =
+    !generic && prospectFirstName && prospectFirstName !== "there"
+      ? ` ${prospectFirstName}`
+      : "";
+  return `${thanks} talk ${dayLabel}${name}. Definitely check out the FAQ^!`;
+}
+
+/**
+ * "today" / "tomorrow" / weekday name for the demo, in the prospect's local
+ * timezone. Falls back to ET like formatDemoTime.
+ */
+export function formatDemoDay(demoDate: Date, timezone?: string | null): string {
+  const tz = timezone && timezone.trim() ? timezone : "America/New_York";
+  const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) => {
+    try {
+      return new Intl.DateTimeFormat("en-US", { ...opts, timeZone: tz }).format(d);
+    } catch {
+      return new Intl.DateTimeFormat("en-US", {
+        ...opts,
+        timeZone: "America/New_York",
+      }).format(d);
+    }
+  };
+  const key = (d: Date) => fmt(d, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const now = new Date();
+  if (key(demoDate) === key(now)) return "today";
+  if (key(demoDate) === key(new Date(now.getTime() + 24 * 60 * 60 * 1000))) return "tomorrow";
+  return fmt(demoDate, { weekday: "long" });
+}
+
 export type DayOfVariant = "standard" | "again";
 
 export interface DayOfArgs {
