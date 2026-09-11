@@ -29,6 +29,9 @@ interface DemoRecord {
     createdAt: string;
     source: string;
     leadSource: string;
+    // Prospect-side GCal RSVP captured by the 10-min sync (invitee only — the
+    // closer's own auto-accept is excluded at capture time).
+    inviteStatus?: string | null;
     setter: { id: string; name: string } | null;
   };
   closer: { id: string; name: string } | null;
@@ -87,6 +90,24 @@ function netCents(p: { amountCents: number; refundedCents?: number; status?: str
 // Sales views show UPFRONT cash only (charges within 24h of a deal's first
 // payment, first-time clients) — renewals/reorders live in Stripe.
 const UPFRONT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Prospect's GCal invite RSVP chip. Hidden when nothing was captured (calendar
+// not tracked at the time) so untracked history doesn't read as "no response".
+function InviteChip({ status }: { status?: string | null }) {
+  if (!status) return null;
+  const map: Record<string, { label: string; cls: string }> = {
+    accepted: { label: "✓ Accepted", cls: "bg-green-50 text-green-700 border-green-200" },
+    declined: { label: "✗ Declined", cls: "bg-red-50 text-red-700 border-red-200" },
+    tentative: { label: "~ Tentative", cls: "bg-yellow-50 text-yellow-800 border-yellow-200" },
+    needsAction: { label: "○ No reply", cls: "bg-[var(--muted)] text-[var(--muted-foreground)] border-[var(--border)]" },
+  };
+  const m = map[status] || map.needsAction;
+  return (
+    <span title="Prospect's calendar-invite response" className={`inline-block border rounded-full px-1.5 py-px text-[10px] leading-4 whitespace-nowrap ${m.cls}`}>
+      {m.label}
+    </span>
+  );
+}
 
 function shortName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -455,6 +476,7 @@ export default function DemosPage() {
                   {demo.booking.prospectEmail && (
                     <div className="text-xs text-[var(--muted-foreground)] truncate max-w-[160px]">{demo.booking.prospectEmail}</div>
                   )}
+                  <InviteChip status={demo.booking.inviteStatus} />
                 </td>
                 <td className="p-2 text-[var(--muted-foreground)] whitespace-nowrap">
                   {new Date(demo.booking.demoDate).toLocaleTimeString("en-US", {

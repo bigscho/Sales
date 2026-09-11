@@ -245,14 +245,30 @@ export async function GET(request: NextRequest) {
     where: {
       ...(dateFilter ? { booking: { demoDate: dateFilter } } : {}),
     },
-    include: { booking: { select: { setterId: true } } },
+    include: { booking: { select: { setterId: true, inviteStatus: true, supersededAt: true } } },
   });
 
   const resultsBySetterId: Record<string, { shows: number; noShows: number; pending: number; cancelled: number }> = {};
   const resultsTotal = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
 
+  // GCal invite acceptance (prospect-side RSVP from the gcal sync). Measured on
+  // LIVE rows only — a reschedule successor gets a fresh invite, so the setter
+  // isn't dinged for a superseded row's stale RSVP. captured = rows where the
+  // synced calendar reported any status; accepted/captured = acceptance rate.
+  const invitesBySetterId: Record<string, { accepted: number; captured: number }> = {};
+  const invitesTotal = { accepted: 0, captured: 0 };
+
   for (const demo of resultsDemos) {
     const sid = demo.booking.setterId || "unattributed";
+    if (demo.booking.supersededAt === null && demo.booking.inviteStatus) {
+      if (!invitesBySetterId[sid]) invitesBySetterId[sid] = { accepted: 0, captured: 0 };
+      invitesBySetterId[sid].captured++;
+      invitesTotal.captured++;
+      if (demo.booking.inviteStatus === "accepted") {
+        invitesBySetterId[sid].accepted++;
+        invitesTotal.accepted++;
+      }
+    }
     if (!resultsBySetterId[sid]) resultsBySetterId[sid] = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
     if (demo.status === "showed") { resultsBySetterId[sid].shows++; resultsTotal.shows++; }
     else if (demo.status === "no_show") { resultsBySetterId[sid].noShows++; resultsTotal.noShows++; }
@@ -394,6 +410,7 @@ export async function GET(request: NextRequest) {
         ...results,
         showRate: computeShowRate(results.shows, results.noShows, results.cancelled),
       },
+      invites: invitesBySetterId[s.id] || { accepted: 0, captured: 0 },
       pendingTotal,
     };
   });
@@ -412,6 +429,7 @@ export async function GET(request: NextRequest) {
     teamTotals: {
       activity: { newBookings: activityTotal, asBooked: asBookedTotal },
       results: { ...resultsTotal, showRate: teamShowRate },
+      invites: invitesTotal,
       pendingTotal: pendingTotalAll,
     },
     unattributed: {

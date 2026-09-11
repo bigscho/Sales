@@ -66,6 +66,10 @@ export interface WorklistRow {
   demoTimeLabel: string; // prospect-local, e.g. "10:00 AM PDT"
   closerName: string | null;
   setterName: string | null;
+  // Prospect's GCal invite RSVP (invitee-only, captured by the gcal sync).
+  // Surfaced so the show-rate rep pushes for the accept on the call — it does
+  // NOT change the SendBlue copy or send gating.
+  inviteStatus: string | null;
   // T-1 variable resolution
   caseType: CaseType;
   addressVariable: string | null;
@@ -278,6 +282,7 @@ async function buildT1Row(b: BookingWithRels): Promise<WorklistRow> {
     bookingId: b.id,
     prospectName: b.prospectName,
     prospectFirstName: firstNameOf(b.prospectName),
+    inviteStatus: b.inviteStatus ?? null,
     prospectPhone: b.prospectPhone,
     prospectEmail: b.prospectEmail,
     demoDate: b.demoDate.toISOString(),
@@ -334,6 +339,7 @@ async function buildDayOfRow(b: BookingWithRels): Promise<WorklistRow> {
     bookingId: b.id,
     prospectName: b.prospectName,
     prospectFirstName: firstNameOf(b.prospectName),
+    inviteStatus: b.inviteStatus ?? null,
     prospectPhone: b.prospectPhone,
     prospectEmail: b.prospectEmail,
     demoDate: b.demoDate.toISOString(),

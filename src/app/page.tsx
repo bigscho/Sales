@@ -20,6 +20,9 @@ interface KPIData {
   totalCancelled: number;
   showRate: number;
   confirmedShowRate: number;
+  gcalAcceptanceRate: number;
+  gcalAccepted: number;
+  gcalCaptured: number;
   totalConfirmed: number;
   totalCloses: number;
   totalHeld: number;
@@ -193,6 +196,12 @@ export default function Dashboard() {
           value={formatPercent(kpis.closeRate)}
           valueClassName={closeRateColor(kpis.closeRate)}
           subtitle={`${kpis.totalCloses} closes · ${kpis.totalHeld} held`}
+        />
+        <KPICard
+          title="GCal Acceptance Rate"
+          value={kpis.gcalCaptured > 0 ? formatPercent(kpis.gcalAcceptanceRate) : "\u2014"}
+          valueClassName={kpis.gcalCaptured > 0 ? (kpis.gcalAcceptanceRate >= 0.4 ? "text-green-600" : kpis.gcalAcceptanceRate >= 0.2 ? "text-yellow-600" : "text-red-600") : undefined}
+          subtitle={`${kpis.gcalAccepted}/${kpis.gcalCaptured} invites accepted · accepted invites show ~2x`}
         />
       </div>
 

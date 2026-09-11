@@ -173,6 +173,7 @@ export async function maybeSendOriginationReply(groupId: string): Promise<Origin
     bookingId: booking.id,
     prospectName: booking.prospectName,
     prospectFirstName,
+    inviteStatus: booking.inviteStatus ?? null,
     prospectPhone: booking.prospectPhone,
     prospectEmail: booking.prospectEmail,
     demoDate: booking.demoDate.toISOString(),

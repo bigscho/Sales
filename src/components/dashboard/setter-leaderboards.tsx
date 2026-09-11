@@ -11,6 +11,8 @@ interface SetterScore {
   tier: number;
   activity: { newBookings: number };
   results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
+  // GCal invite acceptance (prospect RSVP) — optional so older callers still render.
+  invites?: { accepted: number; captured: number };
   pendingTotal: number;
 }
 
@@ -46,6 +48,13 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
   const activityRanked = [...scoreboard].sort((a, b) => b.activity.newBookings - a.activity.newBookings);
   const resultsRanked = [...scoreboard].sort((a, b) => b.results.shows - a.results.shows);
   const maxActivity = Math.max(...scoreboard.map((s) => s.activity.newBookings), 1);
+  // GCal acceptance leaderboard: rank by accepted count (volume-first, like Shows),
+  // rate as the right-hand figure. Only setters with any captured RSVP appear.
+  const invitesRanked = scoreboard
+    .filter((s) => (s.invites?.captured || 0) > 0)
+    .sort((a, b) => (b.invites!.accepted - a.invites!.accepted) ||
+      (b.invites!.accepted / b.invites!.captured - a.invites!.accepted / a.invites!.captured));
+  const maxAccepted = Math.max(...invitesRanked.map((s) => s.invites!.accepted), 1);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -158,6 +167,52 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
           )}
         </CardContent>
       </Card>
+
+      {/* GCal Acceptance Leaderboard — a booking isn't firm until the invite says Accepted */}
+      {invitesRanked.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">GCal Invite Accepts</CardTitle>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Prospects who accepted the calendar invite {dimLabel.toLowerCase()} — accepted invites show ~2x
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {invitesRanked.map((setter, idx) => {
+              const inv = setter.invites!;
+              const rate = inv.accepted / inv.captured;
+              return (
+                <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-[var(--teal-tint)] transition-colors">
+                  <div className="w-8 text-center flex-shrink-0">
+                    {idx < 3 && inv.accepted > 0 ? (
+                      <span className="text-xl">{MEDALS[idx]}</span>
+                    ) : (
+                      <span className="text-sm font-bold text-[var(--muted-foreground)]/70">#{idx + 1}</span>
+                    )}
+                  </div>
+                  <div className="w-20 flex-shrink-0">
+                    <p className="font-bold text-sm">{setter.name}</p>
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${TIER_COLORS[setter.tier] || TIER_COLORS[1]}`}>
+                      {TIER_LABELS[setter.tier] || `Tier ${setter.tier}`}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <StatBar value={inv.accepted} max={maxAccepted} color="bg-green-500" />
+                  </div>
+                  <div className="w-16 text-right flex-shrink-0">
+                    <p className={`text-lg font-bold ${rate >= 0.4 ? "text-green-600" : rate >= 0.2 ? "text-yellow-600" : "text-red-600"}`}>
+                      {formatPercent(rate)}
+                    </p>
+                    <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">
+                      {inv.accepted}/{inv.captured}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

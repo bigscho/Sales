@@ -16,6 +16,11 @@ export interface WeeklyKPIs {
   totalCancelled: number;
   showRate: number; // shows / (shows + noShows + cancelled) — cancels count against us
   confirmedShowRate: number; // shows / (shows + noShows) — excludes cancels, for reference
+  // GCal Acceptance Rate — % of this week's live demos whose prospect accepted the
+  // calendar invite, among demos with RSVP captured. Accepted invites show ~2x.
+  gcalAcceptanceRate: number;
+  gcalAccepted: number;
+  gcalCaptured: number;
   totalConfirmed: number; // shows + noShows
   totalCloses: number;
   totalHeld: number;
@@ -98,6 +103,13 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const showRate = computeShowRate(totalShows, totalNoShows, totalCancelled);
   const totalConfirmed = totalShows + totalNoShows;
   const confirmedShowRate = totalConfirmed > 0 ? totalShows / totalConfirmed : 0;
+
+  // GCal invite acceptance — live rows only (a reschedule successor carries a fresh
+  // invite, so a superseded row's stale RSVP never counts for or against the week).
+  const rsvpDemos = allDemos.filter((d) => d.booking.supersededAt === null && d.booking.inviteStatus);
+  const gcalCaptured = rsvpDemos.length;
+  const gcalAccepted = rsvpDemos.filter((d) => d.booking.inviteStatus === "accepted").length;
+  const gcalAcceptanceRate = gcalCaptured > 0 ? gcalAccepted / gcalCaptured : 0;
 
   const deals = await prisma.deal.findMany({
     where: { weekId },
@@ -220,6 +232,9 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
     totalCancelled,
     showRate,
     confirmedShowRate,
+    gcalAcceptanceRate,
+    gcalAccepted,
+    gcalCaptured,
     totalConfirmed,
     totalCloses,
     totalHeld,

@@ -94,6 +94,7 @@ interface SetterScore {
   tier: number;
   activity: { newBookings: number };
   results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
+  invites?: { accepted: number; captured: number };
   pendingTotal: number;
 }
 

@@ -16,6 +16,7 @@ interface WorklistRow {
   demoTimeLabel: string;
   closerName: string | null;
   setterName: string | null;
+  inviteStatus: string | null;
   caseType: "single" | "multiple" | "zip" | "area";
   addressVariable: string | null;
   addressSource: "calendly" | "db_fallback" | "none";
@@ -366,6 +367,15 @@ function Row({
         )}
         {row.setterName && (
           <div className="text-[11px] text-[var(--muted-foreground)]">booked by {row.setterName}</div>
+        )}
+        {/* Talking point for the rep — accepted invites show ~2x. Display only;
+            never changes the text copy or send gating. */}
+        {row.inviteStatus === "accepted" ? (
+          <div className="text-[11px] font-medium text-green-700">✓ Invite accepted</div>
+        ) : (
+          <div className="text-[11px] font-semibold text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 inline-block">
+            {row.inviteStatus === "declined" ? "✗ Invite DECLINED" : "○ Invite not accepted"} — push for the accept on the call
+          </div>
         )}
       </div>
 
