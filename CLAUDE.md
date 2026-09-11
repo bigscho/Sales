@@ -30,7 +30,7 @@ DB: Neon PostgreSQL via Prisma ORM.
 - `Payment.isMonth1` is hardcoded true on every insert — meaningless, never use it.
 
 ## CRITICAL: Closer contract tracking (Aug 2026) — Will Farrell's 1099 comp
-- Active closers: Colin (`closer-colin`), Matthew (`closer-matthew`), **Will Farrell (`closer-will`)**. Mark departed (`closer-mark`, isActive=false — do NOT re-add his calendar to any sync list; it 404s).
+- Active closers: Colin (`closer-colin`), Matthew (`closer-matthew`). Departed: Mark (`closer-mark`) and Will Farrell (`closer-will`, departed Sep 2026) — both isActive=false; do NOT re-add their calendars to any sync list (they 404). Will's CLOSER_COMP entry is retained for historical payroll/clawback only.
 - **Will is the only comped closer** — comp config lives in `CLOSER_COMP` (src/lib/payroll.ts), keyed by TeamMember id: 16% fed / 25% self-sourced weekly commission on new-business cash collected, $3,500 monthly base with volume floor (<20 closes → $0) + quality floor (fed close rate <25% → −$200/pt, floor $1,500, needs 15+ fed demos showed), 60-day refund clawback. Colin/Matthew have no entry → tracked, unpaid.
 - **`leadSource` (fed | self_sourced)** on Booking + Deal is FIXED AT BOOKING (§4.6): self_sourced only when "Booked by" names the closer hosting the demo. Reschedule successors must always inherit the original row's leadSource — never re-derive it from the rescheduler. Ambiguity defaults to fed (§4.12(b) protects the company). Manual corrections via the FED/SELF toggle on /demos (audit `lead_source_update`); demo-side changes sync the linked deal.
 - Every code path that creates a Deal must copy `leadSource` from the demo's booking (stripe webhook autoMatchAndLink, /api/payments matchToDemoId, /api/reconcile, /api/deals POST).

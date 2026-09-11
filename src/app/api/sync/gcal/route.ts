@@ -10,9 +10,10 @@ import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOUR
 // NOTE: each calendar must be shared with the service account
 // (GOOGLE_SERVICE_ACCOUNT_EMAIL) or its sync 404s on every poll.
 
+// Departed closers (Mark, Will 2026-09) must be REMOVED from this list — their
+// calendars 404 on every poll once the account is gone.
 const CALENDARS = [
   { email: "colin@grsfd.co", closerName: "Colin" },
-  { email: "will.farrell@grsfd.co", closerName: "Will" },
 ];
 
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
