@@ -552,48 +552,33 @@ async function syncCalendar(
       const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
       const prospectPhone = parsePhone(description);
 
-      // Dedup: check by email + date window (catches Calendly webhook duplicates).
-      // A row in the ±4h window is the SAME meeting arriving via a second channel —
-      // just attach the GCal composite id for future tracking. No bookedAt bump, no
-      // setter re-parse (operator corrections stay put).
-      if (prospectEmail) {
+      // Dedup: a row in the ±4h window matching by email OR exact name is the SAME
+      // meeting arriving via a second channel. Superseded rows count too — a frozen
+      // no-show whose successor moved to a new date still owns its original meeting
+      // time, and re-ingesting the old event creates a phantom booking with backdated
+      // activity (bit us when Matthew's never-synced calendar was added 2026-09-11:
+      // 26 phantom duplicates from cold-start scan). Name matching runs even when the
+      // event HAS an email, because the webhook row's email can be autofill-wrong
+      // (booking-name trap) or the GCal attendee can differ from the Calendly invitee.
+      {
         const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
-        const byEmail = await prisma.booking.findFirst({
-          where: {
-            prospectEmail: { equals: prospectEmail, mode: "insensitive" },
-            demoDate: { gte: windowStart, lte: windowEnd },
-            supersededAt: null,
-          },
-          include: { demo: true },
-        });
-        if (byEmail) {
-          if (byEmail.calendarEventId !== compositeId && !byEmail.calendarEventId?.startsWith(event.id)) {
+        const identityOr: object[] = [];
+        if (prospectEmail) identityOr.push({ prospectEmail: { equals: prospectEmail, mode: "insensitive" } });
+        if (prospectName && prospectName !== "Unknown")
+          identityOr.push({ prospectName: { equals: prospectName, mode: "insensitive" } });
+        const twin = identityOr.length
+          ? await prisma.booking.findFirst({
+              where: { OR: identityOr, demoDate: { gte: windowStart, lte: windowEnd } },
+              orderBy: { supersededAt: { sort: "asc", nulls: "first" } }, // live row wins
+            })
+          : null;
+        if (twin) {
+          // Frozen history already owns this meeting — never re-ingest it.
+          if (twin.supersededAt) continue;
+          if (twin.calendarEventId !== compositeId && !twin.calendarEventId?.startsWith(event.id)) {
             await prisma.booking.update({
-              where: { id: byEmail.id },
-              data: { calendarEventId: compositeId },
-            });
-          }
-          continue;
-        }
-      }
-
-      // Dedup: check by exact full name + date window — only when the new event has
-      // no email AND no phone (otherwise the earlier email/phone path would have caught it).
-      if (prospectName && !prospectEmail && !prospectPhone) {
-        const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
-        const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
-        const byName = await prisma.booking.findFirst({
-          where: {
-            prospectName: { equals: prospectName, mode: "insensitive" },
-            demoDate: { gte: windowStart, lte: windowEnd },
-            supersededAt: null,
-          },
-        });
-        if (byName) {
-          if (byName.calendarEventId !== compositeId && !byName.calendarEventId?.startsWith(event.id)) {
-            await prisma.booking.update({
-              where: { id: byName.id },
+              where: { id: twin.id },
               data: { calendarEventId: compositeId },
             });
           }
