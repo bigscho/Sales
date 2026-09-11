@@ -88,6 +88,13 @@ model Booking {
   // pending-reschedule successor (same meeting moved to a new time, inherited bookedAt) so
   // a time change is never double-counted. Frozen at creation; never restated.
   isBookingEvent    Boolean  @default(true)
+  // Prospect's GCal invite RSVP, observed by the 10-min gcal sync (attendee responseStatus).
+  // inviteAcceptedAt = first sync pass that saw "accepted" — approximate to ±10 min going
+  // forward; for rows backfilled from past events it's just the backfill time, so use
+  // inviteStatus (final state) for historical correlation and inviteAcceptedAt for timing.
+  inviteStatus     String?   // accepted | declined | tentative | needsAction
+  inviteStatusAt   DateTime?
+  inviteAcceptedAt DateTime?
   createdAt        DateTime @default(now())
 
   week              Week        @relation(fields: [weekId], references: [id])

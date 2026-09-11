@@ -171,20 +171,33 @@ function parseProspectName(summary: string): string {
   return cleaned || summary || "Unknown";
 }
 
-function getProspectEmail(attendees: GCalAttendee[] | undefined, calendarOwner: string): string | null {
-  if (!attendees) return null;
-  for (const a of attendees) {
+function externalAttendees(attendees: GCalAttendee[] | undefined, calendarOwner: string): GCalAttendee[] {
+  if (!attendees) return [];
+  return attendees.filter((a) => {
     const email = a.email?.toLowerCase();
-    if (
+    return (
       email &&
       !email.endsWith("@grsfd.co") &&
       !email.includes("calendly") &&
       email !== calendarOwner.toLowerCase()
-    ) {
-      return a.email;
-    }
+    );
+  });
+}
+
+function getProspectEmail(attendees: GCalAttendee[] | undefined, calendarOwner: string): string | null {
+  return externalAttendees(attendees, calendarOwner)[0]?.email || null;
+}
+
+// Prospect-side RSVP for the invite. When the prospect added a partner, any external
+// acceptance counts (the meeting is confirmed by someone on their side).
+function getInviteStatus(attendees: GCalAttendee[] | undefined, calendarOwner: string): string | null {
+  const external = externalAttendees(attendees, calendarOwner);
+  if (external.length === 0) return null;
+  const statuses = external.map((a) => a.responseStatus || "needsAction");
+  for (const s of ["accepted", "tentative", "declined"]) {
+    if (statuses.includes(s)) return s;
   }
-  return null;
+  return "needsAction";
 }
 
 function getEventStart(event: GCalEvent): Date | null {
@@ -442,6 +455,21 @@ async function syncCalendar(
         // NOTE: do NOT re-attribute setter here. This branch fires on every cron poll for
         // already-known events; re-parsing the description would revert operator backfills.
 
+        // Track the prospect's invite RSVP (accepted/declined/tentative/needsAction).
+        const inviteStatus = getInviteStatus(event.attendees, calendarEmail);
+        if (inviteStatus && inviteStatus !== existing.inviteStatus) {
+          await prisma.booking.update({
+            where: { id: existing.id },
+            data: {
+              inviteStatus,
+              inviteStatusAt: new Date(),
+              ...(inviteStatus === "accepted" && !existing.inviteAcceptedAt
+                ? { inviteAcceptedAt: new Date() }
+                : {}),
+            },
+          });
+        }
+
         // Check for reschedule (time changed by more than 1 minute)
         const existingTime = existing.demoDate.getTime();
         const newTime = eventStart.getTime();
@@ -640,12 +668,16 @@ async function syncCalendar(
         update: {},
       });
 
+      const newInviteStatus = getInviteStatus(event.attendees, calendarEmail);
       const booking = await prisma.booking.create({
         data: {
           weekId: week.id,
           prospectName,
           prospectEmail,
           prospectPhone,
+          inviteStatus: newInviteStatus,
+          inviteStatusAt: newInviteStatus ? new Date() : null,
+          inviteAcceptedAt: newInviteStatus === "accepted" ? new Date() : null,
           setterId,
           // Use the GCal event's actual creation time so a historical event discovered
           // by sync (e.g. previously hidden by a dedup bug) lands on its real booking
