@@ -485,6 +485,10 @@ async function syncCalendar(
             // schedule a follow-up or re-engage. The outcome is frozen in its week —
             // split off a successor that takes over the event id. Same setter keeps
             // credit (a drag carries no new "Booked by" signal).
+            // ONLY a future new time is a real re-engagement. A past new time is stale
+            // drag noise (worst case: a cold-start scan of a newly added calendar
+            // replaying weeks of history — split 4 already-showed demos on 2026-09-11).
+            if (eventStart.getTime() <= Date.now()) continue;
             await supersedeAndCreate({
               old: existing,
               newDemoDate: eventStart,
