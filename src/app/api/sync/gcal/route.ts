@@ -14,6 +14,7 @@ import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOUR
 // calendars 404 on every poll once the account is gone.
 const CALENDARS = [
   { email: "colin@grsfd.co", closerName: "Colin" },
+  { email: "matthew@grsfd.co", closerName: "Matthew" }, // shared with service acct 2026-09-11
 ];
 
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
