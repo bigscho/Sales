@@ -115,6 +115,15 @@ function isHostedByOtherCloser(event: GCalEvent, calendarEmail: string, closerNa
 
 // Resolve the actual booking event time from the GCal event metadata.
 // Falls back to `updated` then `now` if `created` isn't available.
+// An event edited/created in the last 2h is a live change worth acting on even
+// if its start time has already passed; anything older with a past start is
+// replayed history. 2h comfortably covers cron gaps and webhook retry windows.
+function isFreshEdit(event: GCalEvent): boolean {
+  const stamp = event.updated || event.created;
+  if (!stamp) return false;
+  return Date.now() - new Date(stamp).getTime() < 2 * 60 * 60 * 1000;
+}
+
 function getEventBookedAt(event: GCalEvent): Date {
   return new Date(event.created || event.updated || Date.now());
 }
@@ -485,10 +494,11 @@ async function syncCalendar(
             // schedule a follow-up or re-engage. The outcome is frozen in its week —
             // split off a successor that takes over the event id. Same setter keeps
             // credit (a drag carries no new "Booked by" signal).
-            // ONLY a future new time is a real re-engagement. A past new time is stale
-            // drag noise (worst case: a cold-start scan of a newly added calendar
-            // replaying weeks of history — split 4 already-showed demos on 2026-09-11).
-            if (eventStart.getTime() <= Date.now()) continue;
+            // A future new time is a real re-engagement. A PAST new time counts only
+            // if the event was edited recently (a fresh "talk again at 3pm" drag);
+            // a stale past-time diff is replayed history (cold-start scan of a newly
+            // added calendar split 4 already-showed demos on 2026-09-11) — skip it.
+            if (eventStart.getTime() <= Date.now() && !isFreshEdit(event)) continue;
             await supersedeAndCreate({
               old: existing,
               newDemoDate: eventStart,
@@ -556,14 +566,20 @@ async function syncCalendar(
       const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
       const prospectPhone = parsePhone(description);
 
-      // Dedup: a row in the ±4h window matching by email OR exact name is the SAME
-      // meeting arriving via a second channel. Superseded rows count too — a frozen
-      // no-show whose successor moved to a new date still owns its original meeting
-      // time, and re-ingesting the old event creates a phantom booking with backdated
-      // activity (bit us when Matthew's never-synced calendar was added 2026-09-11:
-      // 26 phantom duplicates from cold-start scan). Name matching runs even when the
-      // event HAS an email, because the webhook row's email can be autofill-wrong
-      // (booking-name trap) or the GCal attendee can differ from the Calendly invitee.
+      // Dedup: a row in the ±4h window matching by email — or by name when emails
+      // can't disqualify it — is the SAME meeting arriving via a second channel.
+      // Superseded rows count too: a frozen no-show whose successor moved to a new
+      // date still owns its original meeting time, and re-ingesting the old event
+      // creates a phantom booking with backdated activity (26 phantoms from the
+      // cold-start scan when Matthew's calendar was added 2026-09-11). Rules:
+      //  - NEVER name-match across CONFLICTING emails — two "John Smith"s with
+      //    different emails are two people (same invariant as the Calendly webhook
+      //    matcher; looser matching caused real merges there).
+      //  - NEVER attach this event's id to a live row whose demo is already
+      //    terminal at a DIFFERENT time — that's a rebook, not the same meeting;
+      //    fall through so the rebook path below can split it properly.
+      //  - Tiebreak deterministically: exact-email match beats name match, live
+      //    beats superseded, then oldest row.
       {
         const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
@@ -571,24 +587,49 @@ async function syncCalendar(
         if (prospectEmail) identityOr.push({ prospectEmail: { equals: prospectEmail, mode: "insensitive" } });
         if (prospectName && prospectName !== "Unknown")
           identityOr.push({ prospectName: { equals: prospectName, mode: "insensitive" } });
-        const twin = identityOr.length
-          ? await prisma.booking.findFirst({
+        const candidates = identityOr.length
+          ? await prisma.booking.findMany({
               where: { OR: identityOr, demoDate: { gte: windowStart, lte: windowEnd } },
-              orderBy: { supersededAt: { sort: "asc", nulls: "first" } }, // live row wins
+              include: { demo: true },
+              orderBy: { createdAt: "asc" },
             })
-          : null;
+          : [];
+        const emailMatches = (t: { prospectEmail: string | null }) =>
+          !!prospectEmail && t.prospectEmail?.toLowerCase() === prospectEmail.toLowerCase();
+        const eligible = candidates.filter(
+          (t) => emailMatches(t) || !prospectEmail || !t.prospectEmail
+        );
+        eligible.sort(
+          (a, b) =>
+            (emailMatches(a) ? 0 : 2) + (a.supersededAt ? 1 : 0) -
+            ((emailMatches(b) ? 0 : 2) + (b.supersededAt ? 1 : 0))
+        );
+        const twin = eligible[0] || null;
         if (twin) {
           // Frozen history already owns this meeting — never re-ingest it.
           if (twin.supersededAt) continue;
-          if (twin.calendarEventId !== compositeId && !twin.calendarEventId?.startsWith(event.id)) {
-            await prisma.booking.update({
-              where: { id: twin.id },
-              data: { calendarEventId: compositeId },
-            });
+          const sameTime = Math.abs(twin.demoDate.getTime() - eventStart.getTime()) <= 60_000;
+          const twinTerminal =
+            !!twin.demo && ["showed", "no_show", "cancelled"].includes(twin.demo.status);
+          if (!(twinTerminal && !sameTime)) {
+            if (twin.calendarEventId !== compositeId && !twin.calendarEventId?.startsWith(event.id)) {
+              await prisma.booking.update({
+                where: { id: twin.id },
+                data: { calendarEventId: compositeId },
+              });
+            }
+            continue;
           }
-          continue;
+          // terminal twin at a different time → fall through to the rebook path
         }
       }
+
+      // Freshness gate for row-minting on PAST events: a genuine late-discovered
+      // booking or same-day rebook has a recent created/updated stamp; a stale one
+      // is replayed history (cold-start calendar scan, old drag residue) and must
+      // never mint rows — that's how phantom bookings with backdated activity
+      // happen. Future events always pass.
+      if (eventStart.getTime() <= Date.now() && !isFreshEdit(event)) continue;
 
       // A brand-new GCal event for a prospect whose previous demo no-showed or was
       // marked rescheduled = a real rebook event. The old row is frozen where it sits

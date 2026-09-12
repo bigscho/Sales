@@ -104,9 +104,12 @@ export async function calculateWeeklyKPIs(weekId: string): Promise<WeeklyKPIs> {
   const totalConfirmed = totalShows + totalNoShows;
   const confirmedShowRate = totalConfirmed > 0 ? totalShows / totalConfirmed : 0;
 
-  // GCal invite acceptance — live rows only (a reschedule successor carries a fresh
-  // invite, so a superseded row's stale RSVP never counts for or against the week).
-  const rsvpDemos = allDemos.filter((d) => d.booking.supersededAt === null && d.booking.inviteStatus);
+  // GCal invite acceptance — cohort gated on DEMO status, not booking.supersededAt:
+  // supersededAt is stamped after the fact when a terminal demo's prospect rebooks,
+  // and filtering on it silently restates past weeks (and biases the rate upward,
+  // since later-superseded rows skew non-accepted). A 'rescheduled' demo is the one
+  // case where the meeting moved and its successor carries the fresh invite.
+  const rsvpDemos = allDemos.filter((d) => d.status !== "rescheduled" && d.booking.inviteStatus);
   const gcalCaptured = rsvpDemos.length;
   const gcalAccepted = rsvpDemos.filter((d) => d.booking.inviteStatus === "accepted").length;
   const gcalAcceptanceRate = gcalCaptured > 0 ? gcalAccepted / gcalCaptured : 0;

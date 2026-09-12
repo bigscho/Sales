@@ -115,7 +115,7 @@ export default function Dashboard() {
       </div>
 
       {/* Top-level KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <KPICard
           title="New Bookings"
           value={String(kpis.newBookings)}

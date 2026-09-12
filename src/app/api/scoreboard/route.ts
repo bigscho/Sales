@@ -245,22 +245,23 @@ export async function GET(request: NextRequest) {
     where: {
       ...(dateFilter ? { booking: { demoDate: dateFilter } } : {}),
     },
-    include: { booking: { select: { setterId: true, inviteStatus: true, supersededAt: true } } },
+    include: { booking: { select: { setterId: true, inviteStatus: true } } },
   });
 
   const resultsBySetterId: Record<string, { shows: number; noShows: number; pending: number; cancelled: number }> = {};
   const resultsTotal = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
 
-  // GCal invite acceptance (prospect-side RSVP from the gcal sync). Measured on
-  // LIVE rows only — a reschedule successor gets a fresh invite, so the setter
-  // isn't dinged for a superseded row's stale RSVP. captured = rows where the
-  // synced calendar reported any status; accepted/captured = acceptance rate.
+  // GCal invite acceptance (prospect-side RSVP from the gcal sync). Cohort gated
+  // on DEMO status, not booking.supersededAt — supersededAt gets stamped later
+  // when a terminal demo's prospect rebooks, and filtering on it restates past
+  // weeks. Only 'rescheduled' demos are excluded (the meeting moved; the
+  // successor carries the fresh invite). captured = rows with any synced RSVP.
   const invitesBySetterId: Record<string, { accepted: number; captured: number }> = {};
   const invitesTotal = { accepted: 0, captured: 0 };
 
   for (const demo of resultsDemos) {
     const sid = demo.booking.setterId || "unattributed";
-    if (demo.booking.supersededAt === null && demo.booking.inviteStatus) {
+    if (demo.status !== "rescheduled" && demo.booking.inviteStatus) {
       if (!invitesBySetterId[sid]) invitesBySetterId[sid] = { accepted: 0, captured: 0 };
       invitesBySetterId[sid].captured++;
       invitesTotal.captured++;
@@ -438,6 +439,7 @@ export async function GET(request: NextRequest) {
         ...unattributedResults,
         showRate: computeShowRate(unattributedResults.shows, unattributedResults.noShows, unattributedResults.cancelled),
       },
+      invites: invitesBySetterId["unattributed"] || { accepted: 0, captured: 0 },
       pendingTotal: unattributedPendingTotal,
     },
     showRateRep: showRateRep ? {

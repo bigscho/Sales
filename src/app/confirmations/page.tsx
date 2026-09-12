@@ -369,13 +369,17 @@ function Row({
           <div className="text-[11px] text-[var(--muted-foreground)]">booked by {row.setterName}</div>
         )}
         {/* Talking point for the rep — accepted invites show ~2x. Display only;
-            never changes the text copy or send gating. */}
+            never changes the text copy or send gating. null = no invite tracked
+            (manual booking / no calendar event) — distinct from "not accepted"
+            so the rep isn't told to chase an invite that doesn't exist. */}
         {row.inviteStatus === "accepted" ? (
           <div className="text-[11px] font-medium text-green-700">✓ Invite accepted</div>
-        ) : (
+        ) : row.inviteStatus ? (
           <div className="text-[11px] font-semibold text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 inline-block">
             {row.inviteStatus === "declined" ? "✗ Invite DECLINED" : "○ Invite not accepted"} — push for the accept on the call
           </div>
+        ) : (
+          <div className="text-[11px] text-[var(--muted-foreground)]">— No invite tracked</div>
         )}
       </div>
 
