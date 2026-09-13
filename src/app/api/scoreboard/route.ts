@@ -256,18 +256,24 @@ export async function GET(request: NextRequest) {
   // when a terminal demo's prospect rebooks, and filtering on it restates past
   // weeks. Only 'rescheduled' demos are excluded (the meeting moved; the
   // successor carries the fresh invite). captured = rows with any synced RSVP.
-  const invitesBySetterId: Record<string, { accepted: number; captured: number }> = {};
-  const invitesTotal = { accepted: 0, captured: 0 };
+  // declined is broken out so the scoreboard's accept bar can render three
+  // segments (accepted / none / declined); none = captured − accepted − declined
+  // (needsAction + tentative RSVPs, i.e. "no answer yet").
+  const invitesBySetterId: Record<string, { accepted: number; declined: number; captured: number }> = {};
+  const invitesTotal = { accepted: 0, declined: 0, captured: 0 };
 
   for (const demo of resultsDemos) {
     const sid = demo.booking.setterId || "unattributed";
     if (demo.status !== "rescheduled" && demo.booking.inviteStatus) {
-      if (!invitesBySetterId[sid]) invitesBySetterId[sid] = { accepted: 0, captured: 0 };
+      if (!invitesBySetterId[sid]) invitesBySetterId[sid] = { accepted: 0, declined: 0, captured: 0 };
       invitesBySetterId[sid].captured++;
       invitesTotal.captured++;
       if (demo.booking.inviteStatus === "accepted") {
         invitesBySetterId[sid].accepted++;
         invitesTotal.accepted++;
+      } else if (demo.booking.inviteStatus === "declined") {
+        invitesBySetterId[sid].declined++;
+        invitesTotal.declined++;
       }
     }
     if (!resultsBySetterId[sid]) resultsBySetterId[sid] = { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
@@ -411,7 +417,7 @@ export async function GET(request: NextRequest) {
         ...results,
         showRate: computeShowRate(results.shows, results.noShows, results.cancelled),
       },
-      invites: invitesBySetterId[s.id] || { accepted: 0, captured: 0 },
+      invites: invitesBySetterId[s.id] || { accepted: 0, declined: 0, captured: 0 },
       pendingTotal,
     };
   });
@@ -439,7 +445,7 @@ export async function GET(request: NextRequest) {
         ...unattributedResults,
         showRate: computeShowRate(unattributedResults.shows, unattributedResults.noShows, unattributedResults.cancelled),
       },
-      invites: invitesBySetterId["unattributed"] || { accepted: 0, captured: 0 },
+      invites: invitesBySetterId["unattributed"] || { accepted: 0, declined: 0, captured: 0 },
       pendingTotal: unattributedPendingTotal,
     },
     showRateRep: showRateRep ? {
