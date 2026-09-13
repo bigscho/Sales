@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBar } from "@/components/ui/status-bar";
+import { InviteBar } from "@/components/ui/invite-bar";
 import { formatPercent } from "@/lib/utils";
 import { showRateColor } from "@/lib/perf-color";
 
@@ -12,7 +13,7 @@ interface SetterScore {
   activity: { newBookings: number };
   results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
   // GCal invite acceptance (prospect RSVP) — optional so older callers still render.
-  invites?: { accepted: number; captured: number };
+  invites?: { accepted: number; declined: number; captured: number };
   pendingTotal: number;
 }
 
@@ -21,9 +22,76 @@ interface SetterLeaderboardsProps {
   unattributed: {
     activity: { newBookings: number };
     results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
+    invites?: { accepted: number; declined: number; captured: number };
     pendingTotal: number;
   };
   dimLabel?: string;
+}
+
+// Accept-rate color thresholds — same cutoffs the standalone card used.
+function acceptRateColor(rate: number): string {
+  return rate >= 0.4 ? "text-green-600" : rate >= 0.2 ? "text-yellow-600" : "text-red-600";
+}
+
+// The paired Show + GCal-accept bars for one row, stacked so the eye can
+// compare them straight down the leaderboard. The GCal bar is a static RSVP
+// breakdown (accepted / no response / declined) — the prospect's answer to the
+// invite, independent of whether the demo has happened. A mostly-green accept
+// bar = a firm week at a glance. Each bar keeps its own rate on its own line
+// (show rate is shows-of-decided; accept rate is accepted-of-all-tracked-invites).
+function ShowAndAcceptBars({
+  results,
+  invites,
+}: {
+  results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
+  invites?: { accepted: number; declined: number; captured: number };
+}) {
+  const decided = results.shows + results.noShows + results.cancelled;
+  const inv = invites || { accepted: 0, declined: 0, captured: 0 };
+  const none = Math.max(0, inv.captured - inv.accepted - inv.declined);
+  const acceptRate = inv.captured > 0 ? inv.accepted / inv.captured : 0;
+  return (
+    <div className="flex-1 space-y-2">
+      {/* Show bar + decided-only show rate */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-medium text-[var(--muted-foreground)] w-11 flex-shrink-0">Show</span>
+        <div className="flex-1">
+          <StatusBar showed={results.shows} noShow={results.noShows} pending={results.pending} cancelled={results.cancelled} size="sm" />
+        </div>
+        <div className="w-14 text-right flex-shrink-0">
+          {decided > 0 ? (
+            <>
+              <p className={`text-base font-bold ${showRateColor(results.showRate)}`}>{formatPercent(results.showRate)}</p>
+              <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">{results.shows}/{decided}</p>
+            </>
+          ) : (
+            <p className="text-sm font-bold text-[var(--muted-foreground)]">—</p>
+          )}
+        </div>
+      </div>
+      {/* GCal accept bar + accept rate */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-medium text-[var(--muted-foreground)] w-11 flex-shrink-0">GCal</span>
+        <div className="flex-1">
+          {inv.captured > 0 ? (
+            <InviteBar accepted={inv.accepted} none={none} declined={inv.declined} size="sm" />
+          ) : (
+            <div className="h-2 rounded-full bg-[var(--muted)]" title="No calendar invites tracked yet for these demos" />
+          )}
+        </div>
+        <div className="w-14 text-right flex-shrink-0">
+          {inv.captured > 0 ? (
+            <>
+              <p className={`text-base font-bold ${acceptRateColor(acceptRate)}`}>{formatPercent(acceptRate)}</p>
+              <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">{inv.accepted}/{inv.captured}</p>
+            </>
+          ) : (
+            <p className="text-sm font-bold text-[var(--muted-foreground)]">—</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -48,16 +116,12 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
   const activityRanked = [...scoreboard].sort((a, b) => b.activity.newBookings - a.activity.newBookings);
   const resultsRanked = [...scoreboard].sort((a, b) => b.results.shows - a.results.shows);
   const maxActivity = Math.max(...scoreboard.map((s) => s.activity.newBookings), 1);
-  // GCal acceptance leaderboard: rank by accepted count (volume-first, like Shows),
-  // rate as the right-hand figure. Only setters with any captured RSVP appear.
-  const invitesRanked = scoreboard
-    .filter((s) => (s.invites?.captured || 0) > 0)
-    .sort((a, b) => (b.invites!.accepted - a.invites!.accepted) ||
-      (b.invites!.accepted / b.invites!.captured - a.invites!.accepted / a.invites!.captured));
-  const maxAccepted = Math.max(...invitesRanked.map((s) => s.invites!.accepted), 1);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    // Stacked full-width (not side-by-side): the Shows board now carries paired
+    // show + GCal-accept bars per setter and needs the room to read — it's the
+    // correlation centerpiece.
+    <div className="space-y-6">
       {/* Activity Leaderboard */}
       <Card>
         <CardHeader className="pb-3">
@@ -108,8 +172,10 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
       {/* Results Leaderboard */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Shows</CardTitle>
-          <p className="text-xs text-[var(--muted-foreground)]">Ranked by demos showed {dimLabel.toLowerCase()}</p>
+          <CardTitle className="text-lg">Shows &amp; GCal Acceptance</CardTitle>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Ranked by demos showed {dimLabel.toLowerCase()} · each setter&apos;s show bar over their GCal invite-accept bar (accepted invites show ~2×)
+          </p>
         </CardHeader>
         <CardContent className="space-y-3">
           {resultsRanked.map((setter, idx) => (
@@ -127,21 +193,7 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                   {TIER_LABELS[setter.tier] || `Tier ${setter.tier}`}
                 </span>
               </div>
-              <div className="flex-1">
-                <StatusBar showed={setter.results.shows} noShow={setter.results.noShows} pending={setter.results.pending} cancelled={setter.results.cancelled} size="sm" />
-              </div>
-              <div className="w-16 text-right flex-shrink-0">
-                <p className={`text-lg font-bold ${
-                  (setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 ? showRateColor(setter.results.showRate) : "text-[var(--muted-foreground)]"
-                }`}>
-                  {(setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 ? formatPercent(setter.results.showRate) : "—"}
-                </p>
-                {(setter.results.shows + setter.results.noShows + setter.results.cancelled) > 0 && (
-                  <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">
-                    {setter.results.shows}/{setter.results.shows + setter.results.noShows + setter.results.cancelled}
-                  </p>
-                )}
-              </div>
+              <ShowAndAcceptBars results={setter.results} invites={setter.invites} />
             </div>
           ))}
           {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.pending + unattributed.results.cancelled) > 0 && (
@@ -150,69 +202,12 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
               <div className="w-20 flex-shrink-0">
                 <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
               </div>
-              <div className="flex-1">
-                <StatusBar showed={unattributed.results.shows} noShow={unattributed.results.noShows} pending={unattributed.results.pending} cancelled={unattributed.results.cancelled} size="sm" />
-              </div>
-              <div className="w-16 text-right flex-shrink-0">
-                <p className="text-lg font-bold text-yellow-600">
-                  {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled) > 0 ? formatPercent(unattributed.results.showRate) : "—"}
-                </p>
-                {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled) > 0 && (
-                  <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">
-                    {unattributed.results.shows}/{unattributed.results.shows + unattributed.results.noShows + unattributed.results.cancelled}
-                  </p>
-                )}
-              </div>
+              <ShowAndAcceptBars results={unattributed.results} invites={unattributed.invites} />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* GCal Acceptance Leaderboard — a booking isn't firm until the invite says Accepted */}
-      {invitesRanked.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">GCal Invite Accepts</CardTitle>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Prospects who accepted the calendar invite {dimLabel.toLowerCase()} — accepted invites show ~2x
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {invitesRanked.map((setter, idx) => {
-              const inv = setter.invites!;
-              const rate = inv.accepted / inv.captured;
-              return (
-                <div key={setter.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--muted)] hover:bg-[var(--teal-tint)] transition-colors">
-                  <div className="w-8 text-center flex-shrink-0">
-                    {idx < 3 && inv.accepted > 0 ? (
-                      <span className="text-xl">{MEDALS[idx]}</span>
-                    ) : (
-                      <span className="text-sm font-bold text-[var(--muted-foreground)]/70">#{idx + 1}</span>
-                    )}
-                  </div>
-                  <div className="w-20 flex-shrink-0">
-                    <p className="font-bold text-sm">{setter.name}</p>
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${TIER_COLORS[setter.tier] || TIER_COLORS[1]}`}>
-                      {TIER_LABELS[setter.tier] || `Tier ${setter.tier}`}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <StatBar value={inv.accepted} max={maxAccepted} color="bg-green-500" />
-                  </div>
-                  <div className="w-16 text-right flex-shrink-0">
-                    <p className={`text-lg font-bold ${rate >= 0.4 ? "text-green-600" : rate >= 0.2 ? "text-yellow-600" : "text-red-600"}`}>
-                      {formatPercent(rate)}
-                    </p>
-                    <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums">
-                      {inv.accepted}/{inv.captured}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

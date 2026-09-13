@@ -94,7 +94,7 @@ interface SetterScore {
   tier: number;
   activity: { newBookings: number };
   results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
-  invites?: { accepted: number; captured: number };
+  invites?: { accepted: number; declined: number; captured: number };
   pendingTotal: number;
 }
 
@@ -110,6 +110,7 @@ interface ScoreboardData {
   unattributed: {
     activity: { newBookings: number };
     results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
+    invites?: { accepted: number; declined: number; captured: number };
     pendingTotal: number;
   };
   showRateRep: { id: string; name: string; showRate: number } | null;
