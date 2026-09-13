@@ -118,10 +118,10 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
   const maxActivity = Math.max(...scoreboard.map((s) => s.activity.newBookings), 1);
 
   return (
-    // Stacked full-width (not side-by-side): the Shows board now carries paired
-    // show + GCal-accept bars per setter and needs the room to read — it's the
-    // correlation centerpiece.
-    <div className="space-y-6">
+    // Side-by-side: New Bookings (left) · Shows & GCal Acceptance (right), no
+    // vertical scroll. The Shows board carries paired show + GCal-accept bars
+    // per setter; they're compact (size="sm") so both boards fit half-width.
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Activity Leaderboard */}
       <Card>
         <CardHeader className="pb-3">
