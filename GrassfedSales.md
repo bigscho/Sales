@@ -145,14 +145,14 @@ id, calendarEventId (unique), reason, dismissedAt
 ### Webhooks (instant, event-driven)
 | Route | Purpose |
 |-------|---------|
-| `POST /api/webhooks/calendly` | Calendly invitee.created/canceled → creates booking + demo, fires setter Slack |
+| `POST /api/webhooks/calendly` | Calendly invitee.created/canceled → creates booking + demo, fires setter Slack. Identity matching: calendly ID → email+date → strict name+date; same name + same phone overrides the different-emails veto (typo'd/alias emails), phone alone never matches (Sep 2026) |
 | `POST /api/webhooks/stripe` | payment_intent.succeeded → creates payment, classifies MRR/one-time + new/returning, auto-matches to demo |
 | `POST /api/webhooks/fireflies` | Transcription completed → matches to demo, marks showed |
 
 ### Sync Crons (scheduled polling)
 | Route | Schedule | Purpose |
 |-------|----------|---------|
-| `/api/sync/gcal` | Every 10 min | GCal service account reads Colin + Mark calendars, detects reschedules |
+| `/api/sync/gcal` | Every 10 min | GCal service account reads active closer calendars (Colin + Matthew), detects reschedules, captures invite RSVP. Twin dedup matches ALL external attendee emails + name-with-phone-override (Sep 2026); "Canceled:"-renamed events cancel-don't-mint; `flagDuplicatePairs()` tripwire Slacks any two live same-person rows within an hour (once per pair, AuditLog `duplicate_pair_flagged`) |
 | `/api/sync/fireflies` | Every 30 min | Fetches transcripts, auto-marks shows, flags missing transcripts |
 | `/api/sync` | Every 15 min | Legacy Stripe + Calendar sync |
 | `/api/sync/leaderboard` | Every 2hr weekdays | Setter leaderboard update |
@@ -180,7 +180,7 @@ id, calendarEventId (unique), reason, dismissedAt
 ### CRUD
 | Route | Methods | Purpose |
 |-------|---------|---------|
-| `/api/demos` | GET, POST, PATCH, DELETE | Demo management, bulk confirm, status updates |
+| `/api/demos` | GET, POST, PATCH, DELETE | Demo management, bulk confirm, status updates. Status writes are admin/closer-only; `showed`/`no_show` rejected before the meeting time (15-min grace). `bulk_confirm` is admin-only, skips not-yet-run demos + locked days, audit-logs per demo (Sep 2026 — was unauthenticated + unaudited, caused the phantom-shows incident) |
 | `/api/demos/lock` | GET, POST, DELETE | Day locking system |
 | `/api/deals` | GET, POST, PATCH | Deal management + unlinked payments |
 | `/api/payments` | PATCH | Override revenue type, customer status, match to demo |
