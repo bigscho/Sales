@@ -49,6 +49,25 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  // Demo outcomes are set by whoever ran or supervised the demo — admin or a
+  // closer. Setters and reps read this API for the page but never write status.
+  if (status && !(session?.isAdmin || session?.role === "closer")) {
+    return NextResponse.json({ error: "Only admins and closers can set demo status." }, { status: 403 });
+  }
+
+  // A demo can't have showed or no-showed before it happens — outcome stamps
+  // ahead of the meeting time are rejected (15-min grace for early joins).
+  // Cancellations/reschedules are legitimately recorded ahead of time.
+  if (existingDemo && (status === "showed" || status === "no_show")) {
+    const startMs = new Date(existingDemo.booking.demoDate).getTime();
+    if (Date.now() < startMs - 15 * 60 * 1000) {
+      return NextResponse.json(
+        { error: "This demo hasn't started yet — outcomes can only be set once the meeting time arrives." },
+        { status: 400 }
+      );
+    }
+  }
+
   // Check if demo's day is locked
   if (existingDemo && (status || setterId !== undefined || closerId !== undefined)) {
     const demoDate = new Date(existingDemo.booking.demoDate);
@@ -133,7 +152,7 @@ export async function PATCH(request: NextRequest) {
   const updateData: Record<string, unknown> = {};
   if (status) {
     updateData.status = status;
-    updateData.confirmedBy = "admin";
+    updateData.confirmedBy = performedBy;
     updateData.confirmedAt = new Date();
   }
   if (closerId !== undefined) updateData.closerId = closerId;
@@ -232,16 +251,68 @@ export async function POST(request: NextRequest) {
   const { action } = body;
 
   if (action === "bulk_confirm") {
+    const session = await getSession();
+    if (!session?.isAdmin) {
+      return NextResponse.json({ error: "Bulk status updates are admin-only." }, { status: 403 });
+    }
     const { demoIds, status } = body;
-    await prisma.demo.updateMany({
+    if (!Array.isArray(demoIds) || demoIds.length === 0 || !["showed", "no_show", "cancelled"].includes(status)) {
+      return NextResponse.json({ error: "Invalid bulk update." }, { status: 400 });
+    }
+
+    const targets = await prisma.demo.findMany({
       where: { id: { in: demoIds } },
-      data: {
-        status,
-        confirmedBy: "admin",
-        confirmedAt: new Date(),
-      },
+      select: { id: true, status: true, weekId: true, booking: { select: { demoDate: true } } },
     });
-    return NextResponse.json({ success: true });
+
+    // Same rules as single-row updates: outcomes can't be stamped ahead of the
+    // meeting time (15-min grace; cancellations may be recorded early), and
+    // locked days are frozen.
+    const locks = await prisma.dayLock.findMany({
+      where: { weekId: { in: [...new Set(targets.map((d) => d.weekId))] } },
+      select: { weekId: true, date: true },
+    });
+    const lockedDays = new Set(locks.map((l) => `${l.weekId}:${l.date.toISOString().slice(0, 10)}`));
+    const now = Date.now();
+    const graceMs = 15 * 60 * 1000;
+
+    let skippedFuture = 0;
+    let skippedLocked = 0;
+    const eligible: typeof targets = [];
+    for (const d of targets) {
+      if (status !== "cancelled" && new Date(d.booking.demoDate).getTime() - graceMs > now) {
+        skippedFuture++;
+        continue;
+      }
+      if (lockedDays.has(`${d.weekId}:${new Date(d.booking.demoDate).toISOString().slice(0, 10)}`)) {
+        skippedLocked++;
+        continue;
+      }
+      eligible.push(d);
+    }
+
+    if (eligible.length > 0) {
+      await prisma.demo.updateMany({
+        where: { id: { in: eligible.map((d) => d.id) } },
+        data: {
+          status,
+          confirmedBy: session.name,
+          confirmedAt: new Date(),
+        },
+      });
+      await prisma.auditLog.createMany({
+        data: eligible.map((d) => ({
+          entityType: "demo",
+          entityId: d.id,
+          action: "status_update",
+          oldValue: JSON.stringify({ status: d.status }),
+          newValue: JSON.stringify({ status }),
+          performedBy: session.name,
+        })),
+      });
+    }
+
+    return NextResponse.json({ success: true, updated: eligible.length, skippedFuture, skippedLocked });
   }
 
   if (action === "create") {

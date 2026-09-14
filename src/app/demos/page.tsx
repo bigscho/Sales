@@ -134,6 +134,7 @@ export default function DemosPage() {
   // Closers get a read-mostly view: their own demos, status + FED/SELF edits
   // only — no deletes, locks, bulk ops, setter reassignment, or payment edits.
   const isCloser = session?.role === "closer" && !session?.isAdmin;
+  const isAdmin = !!session?.isAdmin;
   const weekId = searchParams.get("weekId") || "";
   const setterFilter = searchParams.get("setter") || "";
   const [demos, setDemos] = useState<DemoRecord[]>([]);
@@ -217,11 +218,20 @@ export default function DemosPage() {
   const bulkMarkDay = async (dayDemos: DemoRecord[], status: string) => {
     const pendingIds = dayDemos.filter((d) => d.status === "pending").map((d) => d.id);
     if (pendingIds.length === 0) return;
-    await fetch("/api/demos", {
+    const res = await fetch("/api/demos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "bulk_confirm", demoIds: pendingIds, status }),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Bulk update failed");
+    } else if (data.skippedFuture > 0 || data.skippedLocked > 0) {
+      const parts = [];
+      if (data.skippedFuture > 0) parts.push(`${data.skippedFuture} upcoming demo(s) left pending — they haven't happened yet`);
+      if (data.skippedLocked > 0) parts.push(`${data.skippedLocked} on locked day(s) untouched`);
+      alert(`Updated ${data.updated}. ${parts.join("; ")}.`);
+    }
     loadData();
   };
 
@@ -322,11 +332,20 @@ export default function DemosPage() {
         });
       }
     } else {
-      await fetch("/api/demos", {
+      const res = await fetch("/api/demos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "bulk_confirm", demoIds: ids, status: action }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Bulk update failed");
+      } else if (data.skippedFuture > 0 || data.skippedLocked > 0) {
+        const parts = [];
+        if (data.skippedFuture > 0) parts.push(`${data.skippedFuture} upcoming demo(s) left pending — they haven't happened yet`);
+        if (data.skippedLocked > 0) parts.push(`${data.skippedLocked} on locked day(s) untouched`);
+        alert(`Updated ${data.updated}. ${parts.join("; ")}.`);
+      }
     }
     setSelectedIds(new Set());
     loadData();
@@ -413,9 +432,13 @@ export default function DemosPage() {
         <div className="bg-blue-50 border-b px-4 py-2 flex items-center justify-between">
           <span className="text-sm font-medium text-blue-700">{selectedIds.size} selected</span>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => bulkAction("showed")}>Mark Showed</Button>
-            <Button size="sm" variant="destructive" onClick={() => bulkAction("no_show")}>Mark No Show</Button>
-            <Button size="sm" variant="ghost" onClick={() => bulkAction("delete")}>Delete</Button>
+            {isAdmin && (
+              <>
+                <Button size="sm" onClick={() => bulkAction("showed")}>Mark Showed</Button>
+                <Button size="sm" variant="destructive" onClick={() => bulkAction("no_show")}>Mark No Show</Button>
+                <Button size="sm" variant="ghost" onClick={() => bulkAction("delete")}>Delete</Button>
+              </>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
           </div>
         </div>
@@ -1064,7 +1087,7 @@ export default function DemosPage() {
             </div>
             {/* Action buttons — bulk day ops + locks are admin/setter-ops only */}
             <div className="flex flex-wrap gap-2 items-center">
-              {viewMode === "day" && selectedPending > 0 && !selectedLock && !isCloser && (
+              {viewMode === "day" && selectedPending > 0 && !selectedLock && isAdmin && (
                 <>
                   <Button size="sm" onClick={() => bulkMarkDay(selectedDemos, "showed")}>
                     All Showed ({selectedPending})
