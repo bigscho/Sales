@@ -199,6 +199,14 @@ function getProspectEmail(attendees: GCalAttendee[] | undefined, calendarOwner: 
   return externalAttendees(attendees, calendarOwner)[0]?.email || null;
 }
 
+// Last 10 digits, or null when too short to be a real number. Phones arrive in
+// mixed formats ("+1 425-870-6396" vs "4258706396") across the two channels.
+function normalizePhoneDigits(p: string | null | undefined): string | null {
+  if (!p) return null;
+  const digits = String(p).replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : null;
+}
+
 // Prospect-side RSVP for the invite. When the prospect added a partner, any external
 // acceptance counts (the meeting is confirmed by someone on their side).
 function getInviteStatus(attendees: GCalAttendee[] | undefined, calendarOwner: string): string | null {
@@ -450,6 +458,30 @@ async function syncCalendar(
         continue;
       }
 
+      // Calendly sometimes RENAMES the mirror event ("Canceled: <prospect> and
+      // <closer>") instead of deleting it, leaving status "confirmed". Treat the
+      // prefix as a cancellation: close out a pending row if one exists, and never
+      // mint a new one from a canceled shell ("Canceled: Matthew Schofield"
+      // phantom booking, 2026-09-14).
+      if (/^cancell?ed:/i.test(event.summary || "")) {
+        const canceledShell = await prisma.booking.findUnique({
+          where: { calendarEventId: compositeId },
+          include: { demo: true },
+        });
+        if (
+          canceledShell?.demo &&
+          canceledShell.demo.status === "pending" &&
+          !canceledShell.supersededAt
+        ) {
+          await prisma.demo.update({
+            where: { id: canceledShell.demo.id },
+            data: { status: "cancelled", confirmedBy: "gcal_sync", confirmedAt: new Date() },
+          });
+          results.canceled++;
+        }
+        continue;
+      }
+
       const eventStart = getEventStart(event);
       if (!eventStart) continue;
 
@@ -566,25 +598,36 @@ async function syncCalendar(
       const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
       const prospectPhone = parsePhone(description);
 
-      // Dedup: a row in the ±4h window matching by email — or by name when emails
-      // can't disqualify it — is the SAME meeting arriving via a second channel.
-      // Superseded rows count too: a frozen no-show whose successor moved to a new
-      // date still owns its original meeting time, and re-ingesting the old event
-      // creates a phantom booking with backdated activity (26 phantoms from the
-      // cold-start scan when Matthew's calendar was added 2026-09-11). Rules:
+      // Dedup: a row in the ±4h window matching by email, phone — or by name when
+      // emails can't disqualify it — is the SAME meeting arriving via a second
+      // channel. Superseded rows count too: a frozen no-show whose successor moved
+      // to a new date still owns its original meeting time, and re-ingesting the
+      // old event creates a phantom booking with backdated activity (26 phantoms
+      // from the cold-start scan when Matthew's calendar was added 2026-09-11). Rules:
+      //  - Compare against ALL external attendee emails, not just the first: a
+      //    prospect who adds a guest puts the guest's email in the attendee list,
+      //    and Google's ordering can surface the guest first (Douglas Harper
+      //    2026-09-14 — duplicate row because only attendees[0] was checked).
       //  - NEVER name-match across CONFLICTING emails — two "John Smith"s with
       //    different emails are two people (same invariant as the Calendly webhook
-      //    matcher; looser matching caused real merges there).
+      //    matcher; looser matching caused real merges there) — UNLESS the phone
+      //    matches too: both channels capture the Calendly form phone, so same
+      //    name + same phone survives typo'd/alias/guest emails. Phone alone
+      //    never matches: office-mates share numbers (Rayburn/Luker, 2026-09-17).
       //  - NEVER attach this event's id to a live row whose demo is already
       //    terminal at a DIFFERENT time — that's a rebook, not the same meeting;
       //    fall through so the rebook path below can split it properly.
-      //  - Tiebreak deterministically: exact-email match beats name match, live
-      //    beats superseded, then oldest row.
+      //  - Tiebreak deterministically: email match beats phone match beats name
+      //    match, live beats superseded, then oldest row.
+      const attendeeEmails = externalAttendees(event.attendees, calendarEmail)
+        .map((a) => a.email!.toLowerCase());
       {
+        const eventPhone = normalizePhoneDigits(prospectPhone);
         const windowStart = new Date(eventStart.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
         const identityOr: object[] = [];
-        if (prospectEmail) identityOr.push({ prospectEmail: { equals: prospectEmail, mode: "insensitive" } });
+        if (attendeeEmails.length)
+          identityOr.push({ prospectEmail: { in: attendeeEmails, mode: "insensitive" } });
         if (prospectName && prospectName !== "Unknown")
           identityOr.push({ prospectName: { equals: prospectName, mode: "insensitive" } });
         const candidates = identityOr.length
@@ -595,15 +638,21 @@ async function syncCalendar(
             })
           : [];
         const emailMatches = (t: { prospectEmail: string | null }) =>
-          !!prospectEmail && t.prospectEmail?.toLowerCase() === prospectEmail.toLowerCase();
+          !!t.prospectEmail && attendeeEmails.includes(t.prospectEmail.toLowerCase());
+        const phoneMatches = (t: { prospectPhone: string | null }) =>
+          !!eventPhone && normalizePhoneDigits(t.prospectPhone) === eventPhone;
+        const nameMatches = (t: { prospectName: string }) =>
+          !!prospectName && prospectName !== "Unknown" &&
+          t.prospectName.toLowerCase() === prospectName.toLowerCase();
         const eligible = candidates.filter(
-          (t) => emailMatches(t) || !prospectEmail || !t.prospectEmail
+          (t) =>
+            emailMatches(t) ||
+            (nameMatches(t) &&
+              (attendeeEmails.length === 0 || !t.prospectEmail || phoneMatches(t)))
         );
-        eligible.sort(
-          (a, b) =>
-            (emailMatches(a) ? 0 : 2) + (a.supersededAt ? 1 : 0) -
-            ((emailMatches(b) ? 0 : 2) + (b.supersededAt ? 1 : 0))
-        );
+        const rank = (t: (typeof candidates)[number]) =>
+          (emailMatches(t) ? 0 : phoneMatches(t) ? 2 : 4) + (t.supersededAt ? 1 : 0);
+        eligible.sort((a, b) => rank(a) - rank(b));
         const twin = eligible[0] || null;
         if (twin) {
           // Frozen history already owns this meeting — never re-ingest it.
@@ -634,13 +683,14 @@ async function syncCalendar(
       // A brand-new GCal event for a prospect whose previous demo no-showed or was
       // marked rescheduled = a real rebook event. The old row is frozen where it sits
       // (the no-show stays in its week) and a successor is created for the new meeting.
-      // Only email-based matching — the previous first-name fallback collided across
-      // unrelated prospects (e.g. "Pat Dreiling" hijacking "Patti Syme").
-      if (prospectEmail) {
+      // Only email-based matching (any attendee email) — the previous first-name
+      // fallback collided across unrelated prospects ("Pat Dreiling" hijacking
+      // "Patti Syme").
+      if (attendeeEmails.length) {
         const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
         const pastNoShow = await prisma.booking.findFirst({
           where: {
-            prospectEmail: { equals: prospectEmail, mode: "insensitive" },
+            prospectEmail: { in: attendeeEmails, mode: "insensitive" },
             demoDate: { gte: sixtyDaysAgo, lt: eventStart },
             supersededAt: null,
             demo: { status: { in: ["no_show", "rescheduled"] } },
@@ -739,6 +789,80 @@ async function syncCalendar(
   return results;
 }
 
+// Scan recent + upcoming live bookings for same-person pairs booked within an
+// hour of each other and alert Slack once per pair. Catches every duplication
+// flavor — including Calendly-side double-books the gcal matchers never see.
+async function flagDuplicatePairs() {
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const rows = await prisma.booking.findMany({
+    where: { supersededAt: null, demoDate: { gte: since } },
+    select: {
+      id: true,
+      prospectName: true,
+      prospectEmail: true,
+      prospectPhone: true,
+      demoDate: true,
+      source: true,
+      demo: { select: { status: true } },
+    },
+    orderBy: { demoDate: "asc" },
+  });
+
+  const pairs: [typeof rows[number], typeof rows[number]][] = [];
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const a = rows[i];
+      const b = rows[j];
+      if (Math.abs(a.demoDate.getTime() - b.demoDate.getTime()) > 60 * 60 * 1000) continue;
+      const sameName =
+        a.prospectName.trim().toLowerCase() === b.prospectName.trim().toLowerCase() &&
+        a.prospectName.trim().length > 2;
+      const pa = normalizePhoneDigits(a.prospectPhone);
+      const pb = normalizePhoneDigits(b.prospectPhone);
+      const samePhone = !!pa && pa === pb;
+      if (sameName || samePhone) pairs.push([a, b]);
+    }
+  }
+  if (pairs.length === 0) return;
+
+  const fresh: string[] = [];
+  for (const [a, b] of pairs) {
+    const pairKey = [a.id, b.id].sort().join("+");
+    const already = await prisma.auditLog.findFirst({
+      where: { action: "duplicate_pair_flagged", entityId: pairKey },
+    });
+    if (already) continue;
+    await prisma.auditLog.create({
+      data: {
+        entityType: "booking",
+        entityId: pairKey,
+        action: "duplicate_pair_flagged",
+        newValue: JSON.stringify({
+          prospect: a.prospectName,
+          demoDate: a.demoDate,
+          rows: [
+            { id: a.id, source: a.source, email: a.prospectEmail, status: a.demo?.status },
+            { id: b.id, source: b.source, email: b.prospectEmail, status: b.demo?.status },
+          ],
+        }),
+        performedBy: "gcal_sync",
+      },
+    });
+    fresh.push(
+      `• *${a.prospectName}* — ${a.demoDate.toISOString().slice(0, 16).replace("T", " ")} UTC: ` +
+        `${a.source} (${a.prospectEmail || "no email"}, ${a.demo?.status}) vs ` +
+        `${b.source} (${b.prospectEmail || "no email"}, ${b.demo?.status})`
+    );
+  }
+  if (fresh.length === 0) return;
+
+  const { sendSlackMessage } = await import("@/lib/slack");
+  await sendSlackMessage(
+    `🚨 *Possible duplicate booking${fresh.length > 1 ? "s" : ""} detected* — same person, two live rows. ` +
+      `Review on /demos and delete/merge the extra row so it isn't double-counted:\n${fresh.join("\n")}`
+  );
+}
+
 // --- Route handlers ---
 
 export async function GET() {
@@ -786,6 +910,14 @@ export async function POST() {
         completedAt: new Date(),
       },
     });
+
+    // Duplicate tripwire: whatever the matchers miss should surface in minutes,
+    // not sit until payroll. Two LIVE rows for the same person (name or phone)
+    // within an hour of each other = a double-counted meeting; flag each pair to
+    // Slack exactly once (AuditLog dedup on the pair key).
+    try {
+      await flagDuplicatePairs();
+    } catch { /* tripwire failure never blocks the sync */ }
   } catch (e) {
     await prisma.syncLog.update({
       where: { id: syncLog.id },

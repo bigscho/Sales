@@ -216,7 +216,11 @@ export async function POST(request: NextRequest) {
       //     2026-08-13: first-name startsWith merged those two real prospects
       //     booked 30 minutes apart).
       //  2) If both sides have an email and they differ, they are different
-      //     people, period — never name-match across conflicting emails.
+      //     people — UNLESS the phone matches too. Both channels capture the
+      //     Calendly form phone, so same name + same phone survives typo'd,
+      //     alias, and guest emails (soberlink@onesothebysrea.com rebooked as
+      //     ...realty.com, 2026-08-26 — duplicate live rows). Phone alone never
+      //     matches: office-mates share numbers (Rayburn/Luker, 2026-09-17).
       if (inviteeName && demoDate) {
         const windowStart = new Date(demoDate.getTime() - 4 * 60 * 60 * 1000);
         const windowEnd = new Date(demoDate.getTime() + 4 * 60 * 60 * 1000);
@@ -239,10 +243,16 @@ export async function POST(request: NextRequest) {
             },
             include: { demo: true },
           });
+          const norm10 = (p: string | null | undefined) => {
+            const d = String(p || "").replace(/\D/g, "");
+            return d.length >= 10 ? d.slice(-10) : null;
+          };
+          const inviteePhone10 = norm10(phone);
           const byNameDate = windowCandidates.find(
             (b) =>
               sameNameStrict(b.prospectName) &&
-              !(b.prospectEmail && inviteeEmail && b.prospectEmail.toLowerCase() !== inviteeEmail.toLowerCase())
+              (!(b.prospectEmail && inviteeEmail && b.prospectEmail.toLowerCase() !== inviteeEmail.toLowerCase()) ||
+                (!!inviteePhone10 && norm10(b.prospectPhone) === inviteePhone10))
           );
           if (byNameDate) return byNameDate;
         }
