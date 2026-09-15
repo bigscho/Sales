@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
+import { resolveSetterAlias } from "@/lib/setter-aliases";
 
 // Calendly sends: invitee.created, invitee.canceled
 // GCal sync may have already created the booking with a different calendarEventId format.
@@ -327,7 +328,7 @@ export async function POST(request: NextRequest) {
         if (!isReschedule) {
           // Fill setter only if the row has none (never overwrite operator corrections
           // on a mere duplicate delivery).
-          const dupSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+          const dupSetterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
           if (!existing.setterId && dupSetterName) {
             const setterMatch = await prisma.teamMember.findFirst({
               where: { name: { contains: dupSetterName, mode: "insensitive" }, role: "setter" },
@@ -348,7 +349,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Most-recent setter gets credit for the rebook (falls back to previous setter)
-        const incomingSetterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+        const incomingSetterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
         let successorSetterId: string | null = existing.setterId;
         if (incomingSetterName) {
           // Closers double as setters: a closer's name in "Booked by" on a rebook
@@ -482,7 +483,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Resolve setter — use contains matching to handle whitespace/special chars in Q&A answers
-      const setterName = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+      const setterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
       let setterId: string | null = null;
       let leadSource = LEAD_SOURCE_FED;
       if (setterName) {

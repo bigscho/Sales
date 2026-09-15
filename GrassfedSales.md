@@ -327,7 +327,7 @@ Both have `Override` fields for manual correction via clickable badges in the UI
 
 - The webhook reads `Booked by:` from the Calendly event description (and falls back to a `Booked by` Q&A answer or `utm_source`/`utm_campaign` if present, but the description is the primary signal).
 - The gcal_sync (10-min cron) reads the same field from the GCal event description.
-- Whatever name the setter typed → looked up against `TeamMember` where `role='setter'` via case-insensitive `contains` match.
+- Whatever name the setter typed → first passed through `resolveSetterAlias` (`src/lib/setter-aliases.ts` — known shorthand like "SG" → "Solomon Gerges", whole-string case-insensitive match), then looked up against `TeamMember` where `role='setter'` via case-insensitive `contains` match. All four consumers apply the alias: Calendly webhook, gcal sync (`parseSetterName`), Calendly sync poll, and the setter-audit endpoint.
 - No match found → setter is created as a new `TeamMember` with `excludeFromLeaderboard: true` (so a typo or operator-bystander name doesn't pollute the leaderboard).
 
 **Consequences of this design:**

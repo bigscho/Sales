@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveSetterAlias } from "@/lib/setter-aliases";
 
 // Diagnostic + backfill endpoint for the rebooking-setter-attribution bug.
 //
@@ -64,7 +65,7 @@ async function scanForMismatches(since: Date, limit: number): Promise<MismatchRo
   for (const b of bookings) {
     if (!b.calendarEventId) continue;
     const uuid = b.calendarEventId.replace(/^calendly_/, "");
-    const bookedByName = await fetchCalendlyBookedBy(uuid, token);
+    const bookedByName = resolveSetterAlias(await fetchCalendlyBookedBy(uuid, token));
     if (!bookedByName) continue;
 
     const currentName = b.setter?.name || null;

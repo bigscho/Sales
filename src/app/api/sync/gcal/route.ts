@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
+import { resolveSetterAlias } from "@/lib/setter-aliases";
 
 // Google Calendar sync via service account
 // Reads Calendly-booked events from the active closers' calendars,
@@ -143,7 +144,7 @@ function isCalendlyEvent(event: GCalEvent): boolean {
 
 function parseSetterName(description: string): string | null {
   const match = description.match(/Booked by:\s*(.+)/i);
-  return match ? match[1].trim() : null;
+  return match ? resolveSetterAlias(match[1].trim()) : null;
 }
 
 // Pull the Calendly event-type label out of the description (first non-empty line after

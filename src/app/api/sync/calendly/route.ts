@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
+import { resolveSetterAlias } from "@/lib/setter-aliases";
 
 // Polls Calendly API for scheduled events and syncs:
 // 1. New events not yet in DB (backup for webhook misses)
@@ -176,7 +177,7 @@ export async function POST() {
 
       // Resolve setter from tracking UTM or Calendly description
       let setterId: string | null = null;
-      const setterName = invitee.tracking?.utm_source || invitee.tracking?.utm_campaign || null;
+      const setterName = resolveSetterAlias(invitee.tracking?.utm_source || invitee.tracking?.utm_campaign || null);
       if (setterName) {
         const setter = await prisma.teamMember.findFirst({
           where: { name: { equals: setterName, mode: "insensitive" }, role: "setter" },
