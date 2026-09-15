@@ -10,6 +10,10 @@
 // "sgt pepper" does not.
 const SETTER_ALIASES: Record<string, string> = {
   sg: "Solomon Gerges",
+  // Known self-typos of Solomon's last name (each once auto-created a junk
+  // excludeFromLeaderboard row that silently absorbed his bookings).
+  "solomon gergs": "Solomon Gerges",
+  "solomon gerget": "Solomon Gerges",
 };
 
 export function resolveSetterAlias(name: string | null): string | null {
