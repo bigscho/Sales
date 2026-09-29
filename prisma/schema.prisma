@@ -16,6 +16,7 @@ model TeamMember {
   pin                     String?  // 4-6 digit login PIN
   isAdmin                 Boolean  @default(false)
   slackUserId             String?  // Slack member ID for @mentions (e.g. U0APNBM43S7)
+  email                   String?  // work email — from-address for reconnect-sequence emails (closers)
   cumulativeShows         Int      @default(0)
   consecutive15PlusWeeks  Int      @default(0)
   excludeFromLeaderboard  Boolean  @default(false)
@@ -26,6 +27,7 @@ model TeamMember {
   updatedAt               DateTime @updatedAt
 
   bookings           Booking[]
+  reconnectSequences ReconnectSequence[]  @relation("ReconnectCloser")
   demosAsCLoser      Demo[]               @relation("CloserDemos")
   deals              Deal[]
   payrollItems       PayrollLineItem[]
@@ -97,12 +99,13 @@ model Booking {
   inviteAcceptedAt DateTime?
   createdAt        DateTime @default(now())
 
-  week              Week        @relation(fields: [weekId], references: [id])
-  setter            TeamMember? @relation(fields: [setterId], references: [id])
-  demo              Demo?
-  confirmationSends ConfirmationSend[]
-  rescheduledFrom   Booking?    @relation("RescheduleChain", fields: [rescheduledFromId], references: [id])
-  rescheduledTo     Booking?    @relation("RescheduleChain")
+  week               Week        @relation(fields: [weekId], references: [id])
+  setter             TeamMember? @relation(fields: [setterId], references: [id])
+  demo               Demo?
+  confirmationSends  ConfirmationSend[]
+  reconnectSequences ReconnectSequence[]
+  rescheduledFrom    Booking?    @relation("RescheduleChain", fields: [rescheduledFromId], references: [id])
+  rescheduledTo      Booking?    @relation("RescheduleChain")
 }
 
 model Demo {
@@ -633,8 +636,8 @@ model ConfirmationSend {
   bookingId         String
   prospectEmail     String?   // denormalized for cross-booking dedup
   prospectPhone     String?
-  touchpoint        String    // t1 | day_of
-  variant           String?   // standard | again (day-of only)
+  touchpoint        String    // t1 | day_of | origination | reconnect_recap_email | reconnect_t1_text | reconnect_t1_email
+  variant           String?   // standard | again (day-of) | phone_matched | time_matched (origination) | recap | no_recap (reconnect)
   addressSource     String?   // calendly | db_fallback | none (t1 only — readiness metric)
   body              String
   status            String    @default("queued") // queued | sent | failed | skipped
@@ -648,10 +651,44 @@ model ConfirmationSend {
   dryRun            Boolean   @default(true)
   sentAt            DateTime?
   createdAt         DateTime  @default(now())
+  // Reconnect sequence this send belongs to (null for t1/day_of/origination).
+  // Per-sequence dedup key is (reconnectId, touchpoint); bookingId holds the
+  // ORIGINAL booking so the append-only-log convention is preserved.
+  reconnectId       String?
 
-  booking Booking @relation(fields: [bookingId], references: [id])
+  booking   Booking            @relation(fields: [bookingId], references: [id])
+  reconnect ReconnectSequence? @relation(fields: [reconnectId], references: [id])
 
   @@index([prospectEmail, touchpoint, status])
   @@index([prospectPhone, touchpoint, status])
   @@index([bookingId])
+  @@index([reconnectId, touchpoint])
+}
+
+// === RECONNECT SEQUENCE (closer books a 2nd call via the "Grassfed Reconnect"
+// Calendly event type). Deliberately NOT a Booking row — a Booking would leak
+// into setter activity, the scoreboard, payroll, /demos, the Fireflies show
+// verifier, and the confirmations worklists. Touch state is computed live by
+// the /api/reconnect/process cron from this row + the ConfirmationSend log.
+model ReconnectSequence {
+  id                String    @id @default(cuid())
+  calendlyEventId   String    @unique // "calendly_<uuid>" — duplicate-webhook replay guard
+  prospectName      String
+  prospectEmail     String?
+  prospectPhone     String?   // Calendly Q&A phone ?? original booking's phone
+  prospectTimezone  String?   // invitee tz ?? original booking's tz
+  callAt            DateTime  // reconnect call time
+  bookedAt          DateTime  @default(now())
+  originalBookingId String?   // prospect's prior booking (most recent live row by email)
+  closerId          String?   // Calendly event-type owner; fallback = original demo's closer
+  status            String    @default("active") // active | cancelled | superseded | completed
+  opsAlertedAt      DateTime? // one-time no-group Slack alert fired
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  originalBooking Booking?           @relation(fields: [originalBookingId], references: [id])
+  closer          TeamMember?        @relation("ReconnectCloser", fields: [closerId], references: [id])
+  sends           ConfirmationSend[]
+
+  @@index([status, callAt])
 }

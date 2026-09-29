@@ -54,7 +54,7 @@ export interface OriginationOutcome {
   matchSource?: "phone" | "time";
 }
 
-function prospectLocalHour(timezone: string | null): number {
+export function prospectLocalHour(timezone: string | null): number {
   const tz = timezone && timezone.trim() ? timezone : "America/New_York";
   const opts: Intl.DateTimeFormatOptions = { hour: "numeric", hour12: false };
   try {

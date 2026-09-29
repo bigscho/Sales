@@ -75,6 +75,10 @@
     {
       "path": "/api/confirmations/dayof",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/reconnect/process",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
