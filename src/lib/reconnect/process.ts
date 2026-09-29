@@ -238,25 +238,27 @@ async function maybeSendT1Text(seq: Seq, result: ProcessResult): Promise<void> {
 }
 
 /**
- * Ping the closers in #closer-tpds whenever a reconnect touch REALLY goes out
- * (Colin, 2026-09-29: "ping Ming and me to let us know they're being sent").
- * Real sends only — dry-runs and skips stay quiet. Best-effort.
+ * EMAIL the closers whenever a reconnect touch REALLY goes out (Colin,
+ * 2026-09-29: notify by email, not #closer-tpds — "Email us"). Goes to every
+ * active closer's TeamMember.email. Real sends only — dry-runs and skips stay
+ * quiet. Best-effort; a failed ping never blocks the sequence.
  */
 async function notifyTouchSent(seq: Seq, label: string): Promise<void> {
   try {
-    const { sendSlackCloser } = await import("@/lib/slack");
     const closers = await prisma.teamMember.findMany({
-      where: { role: "closer", isActive: true },
-      select: { name: true, slackUserId: true },
+      where: { role: "closer", isActive: true, email: { not: null } },
+      select: { email: true },
     });
-    const mentions = closers
-      .map((c) => (c.slackUserId ? `<@${c.slackUserId}>` : firstNameOf(c.name)))
-      .join(" ");
-    await sendSlackCloser(
-      `📨 Reconnect ${label} sent to ${seq.prospectName} (${closerFirstName(seq)}'s sequence) ${mentions}`
-    );
+    const to = closers.map((c) => c.email!).filter(Boolean);
+    if (to.length === 0) return;
+    await sendEmail({
+      from: "Grassfed Reconnect <notifications@grsfd.ai>",
+      to,
+      subject: `Reconnect ${label} sent — ${seq.prospectName}`,
+      text: `${label} just went out to ${seq.prospectName}${seq.prospectEmail ? ` <${seq.prospectEmail}>` : ""} (${closerFirstName(seq)}'s sequence).`,
+    });
   } catch (err) {
-    console.error("reconnect touch-sent Slack ping failed:", err);
+    console.error("reconnect touch-sent email ping failed:", err);
   }
 }
 

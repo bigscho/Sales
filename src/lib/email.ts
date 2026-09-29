@@ -7,7 +7,7 @@ const RESEND_URL = "https://api.resend.com/emails";
 
 export interface SendEmailArgs {
   from: string; // "Colin <colin@grsfd.ai>" — must be on a Resend-verified domain
-  to: string;
+  to: string | string[];
   subject: string;
   text: string;
   replyTo?: string; // where replies land (e.g. the closer's real @grsfd.co inbox)
@@ -23,7 +23,13 @@ export async function sendEmail({ from, to, subject, text, replyTo }: SendEmailA
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from, to: [to], subject, text, ...(replyTo ? { reply_to: replyTo } : {}) }),
+    body: JSON.stringify({
+      from,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      text,
+      ...(replyTo ? { reply_to: replyTo } : {}),
+    }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
