@@ -285,19 +285,23 @@ async function sendReconnectEmail(
   }
 
   const closer = seq.closer || seq.originalBooking?.demo?.closer || null;
-  const fromEmail = closer?.email || process.env.RECONNECT_FROM_FALLBACK || "colin@grsfd.co";
+  const closerEmail = closer?.email || process.env.RECONNECT_FROM_FALLBACK || "colin@grsfd.co";
+  // grsfd.ai is the Resend-verified sending domain (grsfd.co is NOT — verified
+  // empirically 2026-09-29); replies still land in the closer's real @grsfd.co
+  // inbox via reply_to.
+  const fromEmail = closerEmail.replace(/@grsfd\.co$/i, "@grsfd.ai");
   const from = `${firstNameOf(closer?.name || "Colin")} <${fromEmail}>`;
   const live = reconnectLive();
 
   try {
     let resendId: string | null = null;
     if (live) {
-      const sent = await sendEmail({ from, to: seq.prospectEmail, subject, text: body });
+      const sent = await sendEmail({ from, to: seq.prospectEmail, subject, text: body, replyTo: closerEmail });
       resendId = sent.id;
     }
     // Dry-run rows carry the REAL rendered body (incl. the Claude recap) so it
     // can be QA'd straight from the DB before RECONNECT_LIVE is flipped.
-    await logEmailRow(seq, touchpoint, `Subject: ${subject}\nFrom: ${from}\n\n${body}`, {
+    await logEmailRow(seq, touchpoint, `Subject: ${subject}\nFrom: ${from}\nReply-To: ${closerEmail}\n\n${body}`, {
       status: "sent",
       dryRun: !live,
       variant,

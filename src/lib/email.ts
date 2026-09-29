@@ -6,14 +6,15 @@
 const RESEND_URL = "https://api.resend.com/emails";
 
 export interface SendEmailArgs {
-  from: string; // "Colin <colin@grsfd.co>"
+  from: string; // "Colin <colin@grsfd.ai>" — must be on a Resend-verified domain
   to: string;
   subject: string;
   text: string;
+  replyTo?: string; // where replies land (e.g. the closer's real @grsfd.co inbox)
 }
 
 /** Send a plain-text email via Resend. Throws on non-2xx (caller logs `failed`). */
-export async function sendEmail({ from, to, subject, text }: SendEmailArgs): Promise<{ id: string | null }> {
+export async function sendEmail({ from, to, subject, text, replyTo }: SendEmailArgs): Promise<{ id: string | null }> {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("RESEND_API_KEY not set");
   const res = await fetch(RESEND_URL, {
@@ -22,7 +23,7 @@ export async function sendEmail({ from, to, subject, text }: SendEmailArgs): Pro
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from, to: [to], subject, text }),
+    body: JSON.stringify({ from, to: [to], subject, text, ...(replyTo ? { reply_to: replyTo } : {}) }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
