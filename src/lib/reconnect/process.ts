@@ -316,13 +316,23 @@ async function sendReconnectEmail(
 }
 
 /**
- * "Has this touch already happened for this sequence" — sent (dry or real,
- * both count during rollout) or terminally skipped. Failed rows do NOT count;
- * they retry next tick up to MAX_FAILURES.
+ * "Has this touch already happened for this sequence." Terminal skips always
+ * count. A dry-run "sent" counts only while the system is STILL in dry-run
+ * mode (stops the 15-min loop re-running Claude/logging forever) — once
+ * RECONNECT_LIVE flips, dry-run rows stop counting and the touch fires for
+ * real: prospects booked before go-live never actually received anything.
+ * Failed rows never count; they retry next tick up to MAX_FAILURES.
  */
 async function done(reconnectId: string, touchpoint: Touchpoint): Promise<boolean> {
   const hit = await prisma.confirmationSend.findFirst({
-    where: { reconnectId, touchpoint, status: { in: ["sent", "skipped"] } },
+    where: {
+      reconnectId,
+      touchpoint,
+      OR: [
+        { status: "skipped" },
+        { status: "sent", ...(reconnectLive() ? { dryRun: false } : {}) },
+      ],
+    },
     select: { id: true },
   });
   return !!hit;
