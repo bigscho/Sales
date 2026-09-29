@@ -17,8 +17,9 @@ function systemPrompt(closerFirst: string, prospectFirst: string): string {
     `Rewrite the meeting summary the user provides into 2-4 plain, friendly sentences in ${closerFirst}'s first-person voice, ` +
     `recapping what was discussed and what the upcoming reconnect call will cover. Rules: use ONLY facts present in the summary — ` +
     `never invent numbers, names, or commitments; omit anything internal or awkward to repeat (pricing negotiation, objections, ` +
-    `hesitations, competitor mentions, team talk, action items on our side); no greeting, no sign-off, no subject line — ` +
-    `output the paragraph only.`
+    `hesitations, competitor mentions, team talk, action items on our side); never address the prospect by name — the email ` +
+    `template already greets them; keep it conversational and selective (the 2-3 things that mattered on the call), not an ` +
+    `exhaustive feature list; no greeting, no sign-off, no subject line — output the paragraph only.`
   );
 }
 
