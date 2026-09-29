@@ -1,9 +1,8 @@
-// Reconnect-sequence copy. The text bodies are Colin's locked wording
-// (2026-09-29); the email subjects + no-recap fallback are drafts flagged for
-// his edit during the dry-run review. Keep the locked lines exact.
-import { formatDemoDay } from "@/lib/confirmations/copy";
+// Reconnect-sequence copy. Text bodies + the "Great to chat." lead are Colin's
+// wording (2026-09-29); the email subjects are drafts flagged for his edit.
+// Keep the locked lines exact.
 
-export const RECAP_EMAIL_SUBJECT = "Recap + a couple links before we reconnect";
+export const RECAP_EMAIL_SUBJECT = "Before we reconnect";
 export const T1_EMAIL_SUBJECT = "Ahead of our call tomorrow";
 
 const TESTIMONIAL_LINE =
@@ -14,25 +13,19 @@ export function renderReconnectT1Text(): string {
   return "I know we're reconnecting tomorrow. I might be 1-2min late, but I'll give you a ring.";
 }
 
-export interface RecapEmailArgs {
+/**
+ * Touch #1 — deliberately GENERIC (Colin, 2026-09-29: no AI-written recap of
+ * the first call — "it's just going to make it weird"). A short "great to
+ * chat" plus the testimonials line, nothing else.
+ */
+export function renderRecapEmail({
+  firstName,
+  closerFirstName,
+}: {
   firstName: string;
   closerFirstName: string;
-  /** Claude-rewritten first-call recap, or null -> generic no-recap variant. */
-  recap: string | null;
-  callAt: Date;
-  timezone: string | null;
-}
-
-/**
- * Touch #1 — the recap email. Recap variant leads with the Claude-rewritten
- * first-call summary; the no-recap variant is the fallback when Fireflies has
- * nothing usable by send time. Both carry the testimonials line verbatim.
- */
-export function renderRecapEmail({ firstName, closerFirstName, recap, callAt, timezone }: RecapEmailArgs): string {
-  const lead = recap
-    ? recap.trim()
-    : `Great talking — looking forward to reconnecting ${formatDemoDay(callAt, timezone)}.`;
-  return `Hey ${firstName},\n\n${lead}\n\n${TESTIMONIAL_LINE}\n\n${closerFirstName}`;
+}): string {
+  return `Hey ${firstName},\n\nGreat to chat. ${TESTIMONIAL_LINE}\n\n${closerFirstName}`;
 }
 
 /** Touch #3 — the T-1 email. Body line is Colin's exact words. */

@@ -2,8 +2,9 @@
 // Touch state is computed LIVE from ReconnectSequence + the ConfirmationSend
 // log (repo idiom: nothing pre-scheduled, so a cancelled/superseded sequence
 // simply stops matching). Three touches per active sequence:
-//   1. reconnect_recap_email  — bookedAt + 90min (Fireflies summary -> Claude
-//      rewrite; retries until bookedAt + 4h, then generic no-recap variant)
+//   1. reconnect_recap_email  — bookedAt + 90min: GENERIC "great to chat" +
+//      testimonials line (Colin killed the AI-written Fireflies recap
+//      2026-09-29 — "it's just going to make it weird")
 //   2. reconnect_t1_text      — day before the call, 12pm-10pm prospect-local,
 //      into the prospect's EXISTING SendBlue group (no group -> skip + one-time
 //      ops alert; the closer texts manually)
@@ -34,16 +35,13 @@ import {
   renderReconnectT1Email,
   renderReconnectT1Text,
 } from "./copy";
-import { fetchRecapSummary } from "./fireflies";
-import { rewriteRecap } from "./recap";
 
 export function reconnectLive(): boolean {
   return process.env.RECONNECT_LIVE === "true";
 }
 
 const RECAP_DELAY_MS = 90 * 60 * 1000; // email #1 fires ~1.5h after booking
-const RECAP_DEADLINE_MS = 4 * 60 * 60 * 1000; // wait for Fireflies until +4h
-const RECAP_MIN_LEAD_MS = 30 * 60 * 1000; // don't recap <30min before the call
+const RECAP_MIN_LEAD_MS = 30 * 60 * 1000; // don't send <30min before the call
 const RECAP_DEDUP_DAYS = 30; // one recap email per prospect per 30d across sequences
 const T1_LOCAL_HOUR_MIN = 12; // T-1 touches fire noon-10pm prospect-local
 const LOCAL_HOUR_MAX = 22;
@@ -184,27 +182,11 @@ async function maybeSendRecapEmail(seq: Seq, now: Date, result: ProcessResult): 
     }
   }
 
-  const summary = await fetchRecapSummary(
-    seq.originalBooking?.demo?.firefliesTranscriptId || null,
-    seq.prospectEmail
-  );
-  const pastDeadline = now.getTime() >= seq.bookedAt.getTime() + RECAP_DEADLINE_MS;
-  if (!summary && !pastDeadline) {
-    result.waiting++;
-    return; // Fireflies may still be processing the first call — retry next tick
-  }
-
-  const prospectFirst = firstNameOf(seq.prospectName);
-  const closerFirst = closerFirstName(seq);
-  const recap = summary ? await rewriteRecap(summary, prospectFirst, closerFirst) : null;
   const body = renderRecapEmail({
-    firstName: prospectFirst,
-    closerFirstName: closerFirst,
-    recap,
-    callAt: seq.callAt,
-    timezone: seq.prospectTimezone,
+    firstName: firstNameOf(seq.prospectName),
+    closerFirstName: closerFirstName(seq),
   });
-  await sendReconnectEmail(seq, "reconnect_recap_email", RECAP_EMAIL_SUBJECT, body, recap ? "recap" : "no_recap", result);
+  await sendReconnectEmail(seq, "reconnect_recap_email", RECAP_EMAIL_SUBJECT, body, "generic", result);
 }
 
 // === Touch 2: T-1 text into the existing SendBlue group ===

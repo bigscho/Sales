@@ -160,7 +160,7 @@ Show-rate rep work surface at `/confirmations` (role: `show_rate_rep` + admin). 
 - SESSION_SECRET (random string for JWT signing)
 - RECONNECT_LIVE (unset/false = reconnect sequence full dry-run; "true" = real texts + Resend emails) — NOT YET SET
 - RESEND_API_KEY (reconnect emails; = grassfedlite Railway's SMTP_PASSWORD, send-restricted key; verified domain is grsfd.ai)
-- ANTHROPIC_API_KEY (reconnect recap rewrite via claude-opus-4-8; same key as grassfedlite Railway)
+- ANTHROPIC_API_KEY (UNUSED since the AI recap was cut 2026-09-29 — set in prod, harmless, safe to delete)
 - RECONNECT_FROM_FALLBACK (optional from-address when the closer has no TeamMember.email; defaults to colin@grsfd.co)
 
 ## Reconnect Sequence (Sep 2026)
@@ -168,7 +168,7 @@ Automated 3-touch nurture when a closer books a **second call** via a Calendly e
 
 - **NO Booking/Demo row is created.** The webhook branches BEFORE the demo filter and BEFORE `findExistingBooking` (which would otherwise absorb the reconnect as a reschedule of the prospect's first call and freeze it). A Booking row would contaminate setter activity, the scoreboard, payroll, `/demos`, the Fireflies show-verifier, and the confirmations T-1/day-of worklists. Instead the webhook creates a `ReconnectSequence` row (status active|cancelled|superseded|completed) linked to the prospect's most recent live Booking by email (fallback: phone) — phone/timezone fall back to that booking's values. The gcal sync excludes reconnects entirely (`isDemoEventType` + summary guard); Calendly webhook is the single source.
 - **Touches** (computed live by cron `/api/reconnect/process`, every 15 min; logic in `src/lib/reconnect/process.ts`):
-  1. `reconnect_recap_email` — `bookedAt + 90min`: first call's Fireflies summary (`Demo.firefliesTranscriptId`, fallback `transcripts(participant_email:)` ≤14d) rewritten by Claude (`claude-opus-4-8`, raw fetch, `src/lib/reconnect/recap.ts` — guards: refusal/empty/>900 chars/invented $ amounts → generic no-recap variant) + the testimonials line (www.grsfd.ai/#testimonials). Retries until `bookedAt + 4h` if the transcript isn't ready, then sends no-recap. Once per prospect per 30 days (real sends).
+  1. `reconnect_recap_email` — `bookedAt + 90min`: GENERIC "Great to chat." + the testimonials line (www.grsfd.ai/#testimonials). **Colin killed the AI-written Fireflies recap 2026-09-29** ("it's just going to make it weird") — the Claude/Fireflies modules were built, QA'd in dry-run, and removed in the same day (git history: `src/lib/reconnect/{recap,fireflies}.ts`, deleted commit ~09-29); don't re-add without asking. Once per prospect per 30 days (real sends).
   2. `reconnect_t1_text` — day before the call, 12pm–10pm prospect-local, into the prospect's EXISTING SendBlue group from the first booking (`lookupGroup`). No group → skipped permanently + one Slack #show-rate-tpds alert (closer texts manually). Copy: "I know we're reconnecting tomorrow. I might be 1-2min late, but I'll give you a ring."
   3. `reconnect_t1_email` — same window: "Hey {Name}, ahead of our call tomorrow, here are some final numbers if helpful: https://www.grsfd.ai/#results"
   - Booked <24h before the call → touches 2+3 skipped. NOT automated: the closer's own "Reconnect {Day/Time}. Thanks" text at booking (the 🔁 Slack post is their cue).
@@ -177,7 +177,7 @@ Automated 3-touch nurture when a closer books a **second call** via a Calendly e
 - **SAFETY**: no real send unless `RECONNECT_LIVE=true`. Dry-run still runs the FULL pipeline (Fireflies + Claude) and logs the real rendered email bodies to `ConfirmationSend` (dryRun=true) so copy can be QA'd from the DB before flipping live. Per-touch dedup: dry-run "sent" rows count as done ONLY while still in dry-run mode — flipping `RECONNECT_LIVE=true` makes touches that only dry-ran re-fire for real (still window-gated, so a T-1 whose day passed won't send stale) — prospects booked before go-live get their remaining touches. Texts additionally sit behind the global `SENDBLUE_LIVE` (via `sendConfirmation` `forceDryRun`, same pattern as origination).
 - **Key files**: `src/lib/reconnect/{process,copy,fireflies,recap}.ts`, `src/lib/email.ts`, `src/app/api/reconnect/process/route.ts`, reconnect branches in `src/app/api/webhooks/calendly/route.ts` (created + canceled), exclusion in `src/app/api/sync/gcal/route.ts`. Middleware: `/api/reconnect/` is cron-exempt.
 - **Canary**: same fragility class as Known Bug #2 — the Calendly event type name must contain "reconnect" or events silently fall through to the demo filter/dedup. Watch `reconnect_created` audit rows.
-- **Copy note**: text bodies + email body lines are Colin's locked wording; the two email SUBJECTS and the no-recap fallback line in `src/lib/reconnect/copy.ts` are drafts pending Colin's approval during dry-run review.
+- **Copy note**: text bodies, email body lines, and the "Great to chat." lead are Colin's locked wording; the two email SUBJECTS ("Before we reconnect" / "Ahead of our call tomorrow") in `src/lib/reconnect/copy.ts` are drafts pending Colin's approval.
 
 ## Outbound Console (In Progress)
 

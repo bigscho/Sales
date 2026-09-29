@@ -139,7 +139,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `SLACK_DATAVERIFICATION_WEBHOOK_URL` | #setter-daily-verify channel webhook |
 | `RECONNECT_LIVE` | Reconnect sequence kill-switch: unset = full dry-run (bodies logged, no sends); "true" = live |
 | `RESEND_API_KEY` | Resend HTTP API key for reconnect emails (grsfd.co verified sending domain) |
-| `ANTHROPIC_API_KEY` | Claude API key — rewrites the first-call Fireflies summary into the reconnect recap email |
+| `ANTHROPIC_API_KEY` | UNUSED (AI recap cut 2026-09-29; set in prod, safe to delete) |
 | `RECONNECT_FROM_FALLBACK` | Optional from-address when a closer has no `TeamMember.email` (default colin@grsfd.co) |
 
 ---
@@ -372,7 +372,7 @@ Dismissed events: When a demo is deleted, its `calendarEventId` is added to `Dis
 Automated nurture between a closer booking a **second call** (Calendly event type name containing "reconnect", one per closer — owner resolves closer + email from-address) and that call happening. **Deliberately NOT a Booking row** — the Calendly webhook branches before the demo filter and `findExistingBooking` and creates a `ReconnectSequence` instead (a Booking would leak into setter activity, scoreboard, payroll, /demos, Fireflies show-verification, and the confirmations worklists). GCal sync excludes reconnects.
 
 - Schema: `ReconnectSequence` (calendlyEventId unique, prospect fields with fallbacks from the original booking, callAt, originalBookingId, closerId, status active|cancelled|superseded|completed) + `ConfirmationSend.reconnectId` + `TeamMember.email`.
-- Cron `/api/reconnect/process` (every 15 min) computes due touches live: recap email at bookedAt+90min (Fireflies summary → Claude rewrite via `claude-opus-4-8`, no-recap fallback), T-1 text into the existing SendBlue group + T-1 email in the noon–10pm prospect-local window the day before (both skipped when booked <24h out).
+- Cron `/api/reconnect/process` (every 15 min) computes due touches live: generic "Great to chat." + testimonials email at bookedAt+90min (the AI-written Fireflies recap was built then cut on Colin's call 2026-09-29), T-1 text into the existing SendBlue group + T-1 email in the noon–10pm prospect-local window the day before (both skipped when booked <24h out).
 - Emails from the closer's `TeamMember.email` via Resend (`src/lib/email.ts`). Gate: `RECONNECT_LIVE` (dry-run logs real rendered bodies to `ConfirmationSend` for QA).
 - Full detail: CLAUDE.md → "Reconnect Sequence".
 
