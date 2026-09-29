@@ -230,9 +230,34 @@ async function maybeSendT1Text(seq: Seq, result: ProcessResult): Promise<void> {
     forceDryRun: !reconnectLive(),
     reconnectId: seq.id,
   });
-  if (outcome.status === "sent") result.sent++;
-  else if (outcome.status === "failed") result.failed++;
+  if (outcome.status === "sent") {
+    result.sent++;
+    if (!outcome.dryRun) await notifyTouchSent(seq, "T-1 text");
+  } else if (outcome.status === "failed") result.failed++;
   else result.skipped++;
+}
+
+/**
+ * Ping the closers in #closer-tpds whenever a reconnect touch REALLY goes out
+ * (Colin, 2026-09-29: "ping Ming and me to let us know they're being sent").
+ * Real sends only — dry-runs and skips stay quiet. Best-effort.
+ */
+async function notifyTouchSent(seq: Seq, label: string): Promise<void> {
+  try {
+    const { sendSlackCloser } = await import("@/lib/slack");
+    const closers = await prisma.teamMember.findMany({
+      where: { role: "closer", isActive: true },
+      select: { name: true, slackUserId: true },
+    });
+    const mentions = closers
+      .map((c) => (c.slackUserId ? `<@${c.slackUserId}>` : firstNameOf(c.name)))
+      .join(" ");
+    await sendSlackCloser(
+      `📨 Reconnect ${label} sent to ${seq.prospectName} (${closerFirstName(seq)}'s sequence) ${mentions}`
+    );
+  } catch (err) {
+    console.error("reconnect touch-sent Slack ping failed:", err);
+  }
 }
 
 // === Email send + logging ===
@@ -281,8 +306,8 @@ async function sendReconnectEmail(
       const sent = await sendEmail({ from, to: seq.prospectEmail, subject, text: body, replyTo: closerEmail });
       resendId = sent.id;
     }
-    // Dry-run rows carry the REAL rendered body (incl. the Claude recap) so it
-    // can be QA'd straight from the DB before RECONNECT_LIVE is flipped.
+    // Dry-run rows carry the REAL rendered body so it can be QA'd straight
+    // from the DB before RECONNECT_LIVE is flipped.
     await logEmailRow(seq, touchpoint, `Subject: ${subject}\nFrom: ${from}\nReply-To: ${closerEmail}\n\n${body}`, {
       status: "sent",
       dryRun: !live,
@@ -290,6 +315,10 @@ async function sendReconnectEmail(
       messageId: resendId,
     });
     result.sent++;
+    if (live) {
+      const label = touchpoint === "reconnect_recap_email" ? `"${subject}" email` : "T-1 email";
+      await notifyTouchSent(seq, label);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await logEmailRow(seq, touchpoint, body, { status: "failed", error: msg, dryRun: !live, variant });
