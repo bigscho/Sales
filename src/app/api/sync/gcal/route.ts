@@ -159,6 +159,10 @@ function parseEventTypeName(description: string): string | null {
 function isDemoEventType(eventTypeName: string | null): boolean {
   if (!eventTypeName) return true; // unknown — keep current permissive behavior
   const n = eventTypeName.toLowerCase();
+  // Reconnect (2nd call) events are handled entirely by the Calendly webhook →
+  // ReconnectSequence. They must never mint a Booking here — a Booking would
+  // leak into setter activity/scoreboard/payroll and the confirmations lists.
+  if (n.includes("reconnect")) return false;
   return (
     n.includes("farm") ||
     n.includes("just") ||
@@ -383,6 +387,12 @@ async function syncCalendar(
       // Shadow guard: this closer is only a guest on another closer's demo —
       // skip it or we duplicate the true host's booking under the wrong closer.
       if (isHostedByOtherCloser(event, calendarEmail, closerName)) continue;
+
+      // Reconnect (2nd call) events are Calendly-webhook-only (ReconnectSequence).
+      // Belt-and-suspenders on the summary: isDemoEventType is permissive when
+      // the description carries no "Event Name" line, and a Booking minted here
+      // would contaminate the scoreboard/payroll/confirmations surfaces.
+      if ((event.summary || "").toLowerCase().includes("reconnect")) continue;
 
       // Skip non-sales-demo event types (onboarding, launch calls, quick calls, etc.).
       // The calendly webhook filters these at line ~114 of webhooks/calendly/route.ts;

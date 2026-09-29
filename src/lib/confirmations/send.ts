@@ -21,7 +21,8 @@ export async function sendConfirmation(
   // forceDryRun: touchpoint-level kill-switch layered on SENDBLUE_LIVE — lets a
   // new touchpoint (origination) log dry-run rows in a prod env that's already
   // live for t1/day-of.
-  opts: { editedBody?: string; approvedBy?: string; autoSent?: boolean; forceDryRun?: boolean } = {}
+  // reconnectId: ties the log row to a ReconnectSequence (reconnect touchpoints only).
+  opts: { editedBody?: string; approvedBy?: string; autoSent?: boolean; forceDryRun?: boolean; reconnectId?: string } = {}
 ): Promise<SendOutcome> {
   const body = opts.editedBody?.trim() || row.body;
   const edited = !!opts.editedBody && opts.editedBody.trim() !== row.body;
@@ -75,7 +76,7 @@ async function logSend(
   touchpoint: Touchpoint,
   body: string,
   edited: boolean,
-  opts: { approvedBy?: string; autoSent?: boolean },
+  opts: { approvedBy?: string; autoSent?: boolean; reconnectId?: string },
   outcome: { status: string; dryRun: boolean; messageHandle?: string; error?: string }
 ) {
   await prisma.confirmationSend.create({
@@ -94,6 +95,7 @@ async function logSend(
       edited,
       autoSent: opts.autoSent ?? false,
       approvedBy: opts.approvedBy || null,
+      reconnectId: opts.reconnectId || null,
       dryRun: outcome.dryRun,
       sentAt: outcome.status === "sent" ? new Date() : null,
     },

@@ -137,6 +137,129 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // === RECONNECT SEQUENCE (closer books a 2nd call; event type name contains
+    // "reconnect"). Handled BEFORE the demo filter and BEFORE findExistingBooking
+    // — a reconnect for a prospect with a live booking would otherwise be
+    // absorbed as a reschedule of that booking (immutable-history split), and a
+    // Booking row here would leak into setter activity/scoreboard/payroll/demos.
+    // Creates a ReconnectSequence instead; the /api/reconnect/process cron sends
+    // the touches. Never falls through to booking creation. ===
+    if (event === "invitee.created" && eventTypeName?.toLowerCase().includes("reconnect")) {
+      return handleReconnectCreated();
+    }
+
+    async function handleReconnectCreated() {
+      // Replay guard — duplicate webhook delivery for the same Calendly event.
+      const replaySeq = await prisma.reconnectSequence.findUnique({ where: { calendlyEventId: calendlyId } });
+      if (replaySeq) {
+        return NextResponse.json({ received: true, action: "reconnect_replay_ignored", reconnectId: replaySeq.id });
+      }
+      if (!demoDate) {
+        // Calendly API fetch failed — no call time means nothing to schedule.
+        await prisma.auditLog.create({
+          data: {
+            entityType: "reconnect",
+            entityId: calendlyId,
+            action: "reconnect_missing_time",
+            newValue: JSON.stringify({ inviteeName, inviteeEmail }),
+            performedBy: "calendly_webhook",
+          },
+        });
+        return NextResponse.json({ received: true, action: "reconnect_missing_time" });
+      }
+
+      // Prior booking = the prospect's first call. Most recent LIVE row by email
+      // (NOT findExistingBooking — that matcher is same-week-scoped), fallback
+      // normalized-phone match. Phone alone is safe here because it only links
+      // context (group routing, closer fallback), never merges identities.
+      const norm10 = (p: string | null | undefined) => {
+        const d = String(p || "").replace(/\D/g, "");
+        return d.length >= 10 ? d.slice(-10) : null;
+      };
+      let originalBooking = null;
+      if (inviteeEmail) {
+        originalBooking = await prisma.booking.findFirst({
+          where: { prospectEmail: { equals: inviteeEmail, mode: "insensitive" }, supersededAt: null },
+          orderBy: { demoDate: "desc" },
+          include: { demo: { include: { closer: true } } },
+        });
+      }
+      const phone10 = norm10(phone);
+      if (!originalBooking && phone10) {
+        originalBooking = await prisma.booking.findFirst({
+          where: { prospectPhone: { contains: phone10 }, supersededAt: null },
+          orderBy: { demoDate: "desc" },
+          include: { demo: { include: { closer: true } } },
+        });
+      }
+
+      // Closer = the reconnect event type's OWNER (same shadowing rule as
+      // demos); fallback to the original demo's closer.
+      let reconnectCloserId: string | null = null;
+      if (closerName) {
+        const closer = await prisma.teamMember.findFirst({
+          where: { name: { contains: closerName, mode: "insensitive" }, role: "closer" },
+        });
+        reconnectCloserId = closer?.id || null;
+      }
+      if (!reconnectCloserId) reconnectCloserId = originalBooking?.demo?.closerId || null;
+
+      // Only the latest reconnect per prospect stays active.
+      if (inviteeEmail) {
+        await prisma.reconnectSequence.updateMany({
+          where: { status: "active", prospectEmail: { equals: inviteeEmail, mode: "insensitive" } },
+          data: { status: "superseded" },
+        });
+      }
+
+      const seq = await prisma.reconnectSequence.create({
+        data: {
+          calendlyEventId: calendlyId,
+          prospectName: inviteeName || originalBooking?.prospectName || "Unknown",
+          prospectEmail: inviteeEmail || originalBooking?.prospectEmail || null,
+          // Minimal reconnect form is fine: fall back to the FIRST booking's
+          // phone/tz so group matching + quiet hours still work.
+          prospectPhone: phone || originalBooking?.prospectPhone || null,
+          prospectTimezone: prospectTimezone || originalBooking?.prospectTimezone || null,
+          callAt: demoDate,
+          originalBookingId: originalBooking?.id || null,
+          closerId: reconnectCloserId,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          entityType: "reconnect",
+          entityId: seq.id,
+          action: "reconnect_created",
+          newValue: JSON.stringify({
+            name: seq.prospectName,
+            email: seq.prospectEmail,
+            callAt: demoDate,
+            originalBookingId: originalBooking?.id || null,
+            closerId: reconnectCloserId,
+          }),
+          performedBy: "calendly_webhook",
+        },
+      });
+
+      try {
+        const { sendSlackTeam, sendSlackShowRate } = await import("@/lib/slack");
+        const dateStr = demoDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        // Doubles as the closer's cue to send their manual "Reconnect {day/time}. Thanks" text.
+        await sendSlackTeam(`🔁 Reconnect booked: ${seq.prospectName} with ${closerName || "TBD"} on ${dateStr}`);
+        if (!originalBooking) {
+          await sendSlackShowRate(
+            `⚠️ Reconnect for ${seq.prospectName} (${seq.prospectEmail || "no email"}) has no prior booking on record — texts won't send and the send log is limited.`
+          );
+        }
+      } catch (err) {
+        console.error("reconnect Slack post failed:", err);
+      }
+
+      return NextResponse.json({ received: true, action: "reconnect_created", reconnectId: seq.id });
+    }
+
     // Filter: only process demo event types (skip onboarding, launch calls, quick calls, etc.)
     // Current demo event type names contain "farm", "just-listed", "just-closed", "just listed", "just closed", "demo", or "e-mailers"
     if (eventTypeName && event === "invitee.created") {
@@ -264,6 +387,34 @@ export async function POST(request: NextRequest) {
 
     // === HANDLE invitee.canceled ===
     if (event === "invitee.canceled") {
+      // Reconnect cancels are matched by exact calendlyEventId and handled here
+      // — returning early keeps the generic email-fallback matchers below from
+      // cancelling the prospect's ORIGINAL pending demo by mistake.
+      const reconnectSeq = await prisma.reconnectSequence.findUnique({ where: { calendlyEventId: calendlyId } });
+      if (reconnectSeq) {
+        if (reconnectSeq.status === "active") {
+          // A reschedule-cancel also supersedes immediately (safer than waiting
+          // for the paired created event): the new booking creates a fresh
+          // active sequence; if it never arrives, a moved meeting gets no sends.
+          await prisma.reconnectSequence.update({
+            where: { id: reconnectSeq.id },
+            data: { status: rescheduled ? "superseded" : "cancelled" },
+          });
+        }
+        await prisma.auditLog.create({
+          data: {
+            entityType: "reconnect",
+            entityId: reconnectSeq.id,
+            action: rescheduled ? "reconnect_reschedule_pending" : "reconnect_cancelled",
+            performedBy: "calendly_webhook",
+          },
+        });
+        return NextResponse.json({
+          received: true,
+          action: rescheduled ? "reconnect_reschedule_pending" : "reconnect_cancelled",
+        });
+      }
+
       // If this cancel is for an event whose row was already superseded by a
       // reschedule, it's history — do NOT let the email fallback matchers cancel
       // the live successor's pending demo.

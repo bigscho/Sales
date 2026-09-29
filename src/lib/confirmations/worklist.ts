@@ -51,7 +51,13 @@ export function etDayRange(offsetDays: number): { start: Date; end: Date } {
 
 // === ROW SHAPE ===
 
-export type Touchpoint = "t1" | "day_of" | "origination";
+export type Touchpoint =
+  | "t1"
+  | "day_of"
+  | "origination"
+  | "reconnect_recap_email"
+  | "reconnect_t1_text"
+  | "reconnect_t1_email";
 
 /** origination logs its match tier in the same variant column as day-of. */
 export type SendVariant = DayOfVariant | "phone_matched" | "time_matched";
@@ -129,7 +135,7 @@ async function lookupFallbackArea(email: string | null): Promise<string | null> 
 }
 
 /** Find the SendBlue group for a booking (by explicit match or phone). */
-async function lookupGroup(bookingId: string, phone: string | null): Promise<string | null> {
+export async function lookupGroup(bookingId: string, phone: string | null): Promise<string | null> {
   const norm = normalizePhone(phone);
   const group = await prisma.sendblueGroup.findFirst({
     where: {
