@@ -2,7 +2,8 @@
 // wording (2026-09-29); the email subjects are drafts flagged for his edit.
 // Keep the locked lines exact.
 
-export const RECAP_EMAIL_SUBJECT = "Before we reconnect";
+// "One more thing" = Colin's locked subject (2026-09-29).
+export const RECAP_EMAIL_SUBJECT = "One more thing";
 export const T1_EMAIL_SUBJECT = "Ahead of our call tomorrow";
 
 const TESTIMONIAL_LINE =
