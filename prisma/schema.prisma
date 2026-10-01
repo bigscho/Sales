@@ -683,6 +683,11 @@ model ReconnectSequence {
   closerId          String?   // Calendly event-type owner; fallback = original demo's closer
   status            String    @default("active") // active | cancelled | superseded | completed
   opsAlertedAt      DateTime? // one-time no-group Slack alert fired
+  // Per-touch dedup fallback for sequences with NO originalBooking: those can't
+  // write ConfirmationSend rows (required bookingId FK), so touch state is kept
+  // here instead. Shape: { [touchpoint]: { skipped?, sentLive?, sentDry?, failures?, at } }.
+  // Booking-backed sequences ignore this and dedup off ConfirmationSend as before.
+  touchLog          Json?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

@@ -17,6 +17,7 @@
 // CONFIRMATIONS_ORIGINATION_LIVE); emails skip the Resend call but the FULL
 // pipeline runs (Fireflies fetch + Claude rewrite) and the real rendered body
 // is logged to ConfirmationSend for QA before flipping live.
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { sendConfirmation } from "@/lib/confirmations/send";
 import {
@@ -98,7 +99,7 @@ export async function processReconnects(): Promise<ProcessResult> {
 
 async function processSequence(seq: Seq, now: Date, result: ProcessResult): Promise<void> {
   // === Touch 1: recap email (~1.5h after booking) ===
-  if (!(await done(seq.id, "reconnect_recap_email"))) {
+  if (!(await done(seq, "reconnect_recap_email"))) {
     await maybeSendRecapEmail(seq, now, result);
   }
 
@@ -107,7 +108,7 @@ async function processSequence(seq: Seq, now: Date, result: ProcessResult): Prom
   if (bookedWithin24h) {
     // Not enough runway for "tomorrow" copy — log once per touchpoint and stop.
     for (const tp of ["reconnect_t1_text", "reconnect_t1_email"] as const) {
-      if (!(await done(seq.id, tp))) {
+      if (!(await done(seq, tp))) {
         await logEmailRow(seq, tp, "", { status: "skipped", error: "booked_within_24h", dryRun: true });
         result.skipped++;
       }
@@ -122,10 +123,10 @@ async function processSequence(seq: Seq, now: Date, result: ProcessResult): Prom
     return; // outside the send window — retry next tick
   }
 
-  if (!(await done(seq.id, "reconnect_t1_text"))) {
+  if (!(await done(seq, "reconnect_t1_text"))) {
     await maybeSendT1Text(seq, result);
   }
-  if (!(await done(seq.id, "reconnect_t1_email"))) {
+  if (!(await done(seq, "reconnect_t1_email"))) {
     await sendReconnectEmail(
       seq,
       "reconnect_t1_email",
@@ -192,10 +193,13 @@ async function maybeSendRecapEmail(seq: Seq, now: Date, result: ProcessResult): 
 // === Touch 2: T-1 text into the existing SendBlue group ===
 
 async function maybeSendT1Text(seq: Seq, result: ProcessResult): Promise<void> {
-  // Without a prior booking there's no FK home for the send log — texts are
-  // off for this sequence (ops was alerted at creation); emails still go.
+  // Without a prior booking there's no SendBlue group to text into (group
+  // lookup is keyed on the original booking) — skip the text permanently for
+  // this sequence (ops was alerted at creation); emails still go. Mark it on
+  // the touchLog so it isn't re-evaluated every tick in the window.
   if (!seq.originalBookingId) {
-    console.error(`reconnect ${seq.id}: no originalBooking — T-1 text skipped (unlogged)`);
+    console.error(`reconnect ${seq.id}: no originalBooking — T-1 text skipped`);
+    await markTouch(seq, "reconnect_t1_text", { status: "skipped", dryRun: true });
     result.skipped++;
     return;
   }
@@ -278,9 +282,12 @@ async function sendReconnectEmail(
     return;
   }
   // Give up after repeated failures (Resend outage, bad address) — one ops ping.
-  const failures = await prisma.confirmationSend.count({
-    where: { reconnectId: seq.id, touchpoint, status: "failed" },
-  });
+  // No-booking sequences track failures on the sequence (no ConfirmationSend FK).
+  const failures = seq.originalBookingId
+    ? await prisma.confirmationSend.count({
+        where: { reconnectId: seq.id, touchpoint, status: "failed" },
+      })
+    : touchMarkOf(seq, touchpoint)?.failures || 0;
   if (failures >= MAX_FAILURES) {
     await logEmailRow(seq, touchpoint, body, { status: "skipped", error: "retry_cap_exceeded", dryRun: true, variant });
     result.skipped++;
@@ -335,11 +342,24 @@ async function sendReconnectEmail(
  * RECONNECT_LIVE flips, dry-run rows stop counting and the touch fires for
  * real: prospects booked before go-live never actually received anything.
  * Failed rows never count; they retry next tick up to MAX_FAILURES.
+ *
+ * Booking-backed sequences read this off the ConfirmationSend log. Sequences
+ * with NO originalBooking can't write that log (required bookingId FK), so they
+ * dedup off the sequence's own `touchLog` instead — without this the touch log
+ * is empty forever and the recap/T-1 email re-fires every cron tick (the Chris
+ * Spencer loop, 2026-10-01).
  */
-async function done(reconnectId: string, touchpoint: Touchpoint): Promise<boolean> {
+async function done(seq: Seq, touchpoint: Touchpoint): Promise<boolean> {
+  if (!seq.originalBookingId) {
+    const m = touchMarkOf(seq, touchpoint);
+    if (!m) return false;
+    if (m.skipped || m.sentLive) return true;
+    if (m.sentDry && !reconnectLive()) return true;
+    return false;
+  }
   const hit = await prisma.confirmationSend.findFirst({
     where: {
-      reconnectId,
+      reconnectId: seq.id,
       touchpoint,
       OR: [
         { status: "skipped" },
@@ -351,6 +371,53 @@ async function done(reconnectId: string, touchpoint: Touchpoint): Promise<boolea
   return !!hit;
 }
 
+// === touchLog: per-touch dedup state for sequences with no originalBooking ===
+
+interface TouchMark {
+  skipped?: boolean; // terminal skip (no_email / booked_within_24h / no_group / ...)
+  sentLive?: boolean; // a real send went out (dryRun=false)
+  sentDry?: boolean; // only dry-run sent so far
+  failures?: number; // send errors so far — retried up to MAX_FAILURES
+  at?: string;
+}
+type TouchLog = Record<string, TouchMark>;
+
+function touchLogOf(seq: Seq): TouchLog {
+  const raw = seq.touchLog;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as TouchLog) : {};
+}
+
+function touchMarkOf(seq: Seq, touchpoint: Touchpoint): TouchMark | undefined {
+  return touchLogOf(seq)[touchpoint];
+}
+
+/**
+ * Merge a touch outcome into the sequence's touchLog and persist it. Also
+ * mutates the in-memory seq so later checks in the same tick see it. Only used
+ * for no-originalBooking sequences (the booking-backed path writes
+ * ConfirmationSend rows, which is where their dedup lives).
+ */
+async function markTouch(
+  seq: Seq,
+  touchpoint: Touchpoint,
+  outcome: { status: string; dryRun: boolean }
+): Promise<void> {
+  const log = touchLogOf(seq);
+  const prev = log[touchpoint] || {};
+  const next: TouchMark = { ...prev, at: new Date().toISOString() };
+  if (outcome.status === "skipped") next.skipped = true;
+  else if (outcome.status === "sent") {
+    if (outcome.dryRun) next.sentDry = true;
+    else next.sentLive = true;
+  } else if (outcome.status === "failed") next.failures = (prev.failures || 0) + 1;
+  const updated: TouchLog = { ...log, [touchpoint]: next };
+  (seq as { touchLog: TouchLog }).touchLog = updated;
+  await prisma.reconnectSequence.update({
+    where: { id: seq.id },
+    data: { touchLog: updated as Prisma.InputJsonValue },
+  });
+}
+
 async function logEmailRow(
   seq: Seq,
   touchpoint: Touchpoint,
@@ -358,12 +425,15 @@ async function logEmailRow(
   outcome: { status: string; dryRun: boolean; error?: string; variant?: string | null; messageId?: string | null }
 ): Promise<void> {
   // ConfirmationSend.bookingId is a required FK — without a prior booking the
-  // append-only log can't hold the row; console + the sequence row are the
-  // only record (deliberate: never relax the FK).
+  // append-only log can't hold the row (deliberate: never relax the FK). Record
+  // the outcome on the sequence's touchLog instead so done()/the retry cap can
+  // see it; otherwise the touch re-fires every cron tick (the Chris Spencer
+  // loop, 2026-10-01).
   if (!seq.originalBookingId) {
     console.error(
-      `reconnect ${seq.id} ${touchpoint} ${outcome.status}${outcome.error ? ` (${outcome.error})` : ""} — no originalBooking, not logged`
+      `reconnect ${seq.id} ${touchpoint} ${outcome.status}${outcome.error ? ` (${outcome.error})` : ""} — no originalBooking, logged to touchLog`
     );
+    await markTouch(seq, touchpoint, { status: outcome.status, dryRun: outcome.dryRun });
     return;
   }
   await prisma.confirmationSend.create({

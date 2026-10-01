@@ -194,7 +194,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Closer = the reconnect event type's OWNER (same shadowing rule as
-      // demos); fallback to the original demo's closer.
+      // demos). Resolve it BEFORE the name fallback below so a same-name
+      // collision can be broken by the closer who booked the reconnect.
       let reconnectCloserId: string | null = null;
       if (closerName) {
         const closer = await prisma.teamMember.findFirst({
@@ -202,6 +203,28 @@ export async function POST(request: NextRequest) {
         });
         reconnectCloserId = closer?.id || null;
       }
+
+      // Name fallback: reconnects are often booked on a minimal form with a
+      // different email (personal vs work) and no phone, so email/phone miss the
+      // prospect's first-call booking — that null originalBooking is what made
+      // the Chris Spencer sequence unloggable and loop (2026-10-01). Match the
+      // most recent live booking by exact name; if several people share a name,
+      // only link when the reconnect's closer ran one of them (else leave null
+      // rather than risk grabbing a stranger's booking).
+      if (!originalBooking && inviteeName?.trim()) {
+        const named = await prisma.booking.findMany({
+          where: { prospectName: { equals: inviteeName.trim(), mode: "insensitive" }, supersededAt: null },
+          orderBy: { demoDate: "desc" },
+          include: { demo: { include: { closer: true } } },
+          take: 10,
+        });
+        if (named.length === 1) {
+          originalBooking = named[0];
+        } else if (named.length > 1 && reconnectCloserId) {
+          originalBooking = named.find((b) => b.demo?.closerId === reconnectCloserId) || null;
+        }
+      }
+
       if (!reconnectCloserId) reconnectCloserId = originalBooking?.demo?.closerId || null;
 
       // Only the latest reconnect per prospect stays active.
