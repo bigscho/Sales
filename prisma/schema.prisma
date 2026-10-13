@@ -23,6 +23,7 @@ model TeamMember {
   isActive                Boolean  @default(true)
   creditBalance           Int      @default(0) // cached text blast credit balance
   blastZones              String?  // JSON: [{"state":"TX","cities":["Austin"],"minProd":5,"maxProd":50}]
+  trellusUserId           String?  @unique // Trellus dialer resource_id — links SetterDialDay sync to this member
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -32,9 +33,34 @@ model TeamMember {
   deals              Deal[]
   payrollItems       PayrollLineItem[]
   dailyScores        SetterDailyScore[]
+  dialDays           SetterDialDay[]
   verifications      SetterVerification[]
   creditTransactions CreditTransaction[]
   textBlasts         TextBlast[]
+}
+
+// One row per setter per ET calendar day of Trellus dialer activity, written by
+// /api/sync/trellus. `date` uses the same ET day-key convention as
+// SetterDailyScore (date-only value naming the ET day). dialMinutes = coverage:
+// each 5-min slot containing >=1 dial counts for 5 minutes — "time spent
+// dialing", deliberately immune to parallel-dialing inflation (overlapping
+// lines in a slot still count once). conversations = sessions with
+// sales_metric.has_prospect or live_duration >= 30s. Rows are recomputed
+// whole-day on every sync pass (upsert), so an intraday row is always a
+// consistent day-so-far snapshot, never an increment.
+model SetterDialDay {
+  id            String   @id @default(cuid())
+  setterId      String
+  date          DateTime
+  dials         Int      @default(0)
+  conversations Int      @default(0)
+  dialMinutes   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  setter TeamMember @relation(fields: [setterId], references: [id])
+
+  @@unique([setterId, date])
 }
 
 model Week {

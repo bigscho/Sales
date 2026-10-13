@@ -5,6 +5,40 @@ import { getWeekRange, computeShowRate } from "@/lib/utils";
 import { loadDealMeta, isCommissionable, commissionExclusionReason } from "@/lib/payroll";
 import { newBookingActivityWhere } from "@/lib/booking-activity";
 
+// ET calendar day (YYYY-MM-DD) an instant falls on — used to translate the
+// board's datetime range into SetterDialDay's date keys (ET-day convention,
+// same as SetterDailyScore).
+function etDayOf(instant: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(instant);
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// Booking→demo lead time in days; null when bookedAt is missing (old rows) or
+// the pair is nonsensical (demo before booking — manual-entry artifacts).
+function leadTimeDays(bookedAt: Date | null, createdAt: Date, demoDate: Date): number | null {
+  const booked = bookedAt ?? createdAt;
+  const days = (demoDate.getTime() - booked.getTime()) / (24 * 60 * 60 * 1000);
+  return days >= 0 && days < 365 ? days : null;
+}
+
+const LEAD_TIME_BUCKETS = [
+  { label: "<24h", min: 0, max: 1 },
+  { label: "1–2d", min: 1, max: 3 },
+  { label: "3–6d", min: 3, max: 7 },
+  { label: "7d+", min: 7, max: Infinity },
+];
+
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
   const dimension = (request.nextUrl.searchParams.get("dimension") as TimeDimension) || "weekly";
@@ -216,15 +250,60 @@ export async function GET(request: NextRequest) {
       ...newBookingActivityWhere(dateFilter ?? undefined),
       source: { in: ["calendly_webhook", "manual", "gcal_sync"] },
     },
-    select: { setterId: true },
+    select: { setterId: true, bookedAt: true, createdAt: true, demoDate: true, inviteStatus: true },
   });
 
   const activityBySetterId: Record<string, number> = {};
+  // Per-setter extras off the SAME activity cohort: accepted-invite bookings
+  // (GCals/hr numerator — bookings created this period whose prospect accepted;
+  // deliberately a different cohort from the Shows-board InviteBar, which is
+  // demos-happening-this-period) and booking→demo lead times.
+  const acceptedActivityBySetterId: Record<string, number> = {};
+  const leadTimesBySetterId: Record<string, number[]> = {};
+  const teamLeadTimes: number[] = [];
   let activityTotal = 0;
+  let acceptedActivityTotal = 0;
   for (const b of activityBookings) {
     const sid = b.setterId || "unattributed";
     activityBySetterId[sid] = (activityBySetterId[sid] || 0) + 1;
     activityTotal++;
+    if (b.inviteStatus === "accepted") {
+      acceptedActivityBySetterId[sid] = (acceptedActivityBySetterId[sid] || 0) + 1;
+      acceptedActivityTotal++;
+    }
+    const lead = leadTimeDays(b.bookedAt, b.createdAt, b.demoDate);
+    if (lead !== null) {
+      (leadTimesBySetterId[sid] ||= []).push(lead);
+      teamLeadTimes.push(lead);
+    }
+  }
+
+  // === DIALER: Trellus dial-day rollups over the same period (ET day keys) ===
+  const dialWhere = dateRange
+    ? {
+        date: {
+          gte: new Date(etDayOf(dateRange.start)),
+          lte: new Date(etDayOf(new Date(dateRange.end.getTime() - 1))),
+        },
+      }
+    : {};
+  const dialAgg = await prisma.setterDialDay.groupBy({
+    by: ["setterId"],
+    where: dialWhere,
+    _sum: { dials: true, conversations: true, dialMinutes: true },
+  });
+  const dialBySetterId: Record<string, { dials: number; conversations: number; dialMinutes: number }> = {};
+  const dialTeam = { dials: 0, conversations: 0, dialMinutes: 0 };
+  for (const d of dialAgg) {
+    const row = {
+      dials: d._sum.dials || 0,
+      conversations: d._sum.conversations || 0,
+      dialMinutes: d._sum.dialMinutes || 0,
+    };
+    dialBySetterId[d.setterId] = row;
+    dialTeam.dials += row.dials;
+    dialTeam.conversations += row.conversations;
+    dialTeam.dialMinutes += row.dialMinutes;
   }
 
   // Immutable reference: rows physically created during this period. createdAt is
@@ -245,7 +324,11 @@ export async function GET(request: NextRequest) {
     where: {
       ...(dateFilter ? { booking: { demoDate: dateFilter } } : {}),
     },
-    include: { booking: { select: { setterId: true, inviteStatus: true } } },
+    include: {
+      booking: {
+        select: { setterId: true, inviteStatus: true, bookedAt: true, createdAt: true, demoDate: true },
+      },
+    },
   });
 
   const resultsBySetterId: Record<string, { shows: number; noShows: number; pending: number; cancelled: number }> = {};
@@ -283,6 +366,33 @@ export async function GET(request: NextRequest) {
     else if (demo.status === "cancelled") { resultsBySetterId[sid].cancelled++; resultsTotal.cancelled++; }
   }
 
+  // === TEAM LEAD TIME → SHOW RATE: decided demos in the period, bucketed by
+  // how far out they were booked. Same demoDate cohort + computeShowRate
+  // definition as everything else; demos with no usable lead time are skipped.
+  const leadTimeBuckets = LEAD_TIME_BUCKETS.map((b) => ({
+    label: b.label,
+    demos: 0,
+    shows: 0,
+    noShows: 0,
+    cancelled: 0,
+  }));
+  for (const demo of resultsDemos) {
+    if (demo.status !== "showed" && demo.status !== "no_show" && demo.status !== "cancelled") continue;
+    const lead = leadTimeDays(demo.booking.bookedAt, demo.booking.createdAt, demo.booking.demoDate);
+    if (lead === null) continue;
+    const idx = LEAD_TIME_BUCKETS.findIndex((b) => lead >= b.min && lead < b.max);
+    if (idx === -1) continue;
+    leadTimeBuckets[idx].demos++;
+    if (demo.status === "showed") leadTimeBuckets[idx].shows++;
+    else if (demo.status === "no_show") leadTimeBuckets[idx].noShows++;
+    else leadTimeBuckets[idx].cancelled++;
+  }
+  const leadTimeBucketRates = leadTimeBuckets.map((b) => ({
+    label: b.label,
+    demos: b.demos,
+    showRate: computeShowRate(b.shows, b.noShows, b.cancelled),
+  }));
+
   // === PENDING TOTAL: pending demos from current period forward (not historical) ===
   const pendingTotalBySetterId: Record<string, number> = {};
   let pendingTotalAll = 0;
@@ -310,7 +420,8 @@ export async function GET(request: NextRequest) {
   const activeCloserSetters = closers.filter((c) =>
     (activityBySetterId[c.id] || 0) > 0 ||
     resultsBySetterId[c.id] !== undefined ||
-    (pendingTotalBySetterId[c.id] || 0) > 0
+    (pendingTotalBySetterId[c.id] || 0) > 0 ||
+    (dialBySetterId[c.id]?.dials || 0) > 0
   );
 
   // === CLOSER BOARD: whole team sees closer activity — demos run, show rate
@@ -407,6 +518,21 @@ export async function GET(request: NextRequest) {
     const activity = activityBySetterId[s.id] || 0;
     const results = resultsBySetterId[s.id] || { shows: 0, noShows: 0, pending: 0, cancelled: 0 };
     const pendingTotal = pendingTotalBySetterId[s.id] || 0;
+    // Dialer stats: null when the setter has no synced Trellus rows in the
+    // period (unmapped seat or didn't dial) — the UI renders "—", never a fake
+    // rate. Rates divide by hours/bookings only when the denominator is real.
+    const dial = dialBySetterId[s.id];
+    const hours = dial ? dial.dialMinutes / 60 : 0;
+    const dialer = dial
+      ? {
+          hours,
+          dials: dial.dials,
+          conversations: dial.conversations,
+          bookingsPerHour: hours > 0 ? activity / hours : null,
+          gcalsPerHour: hours > 0 ? (acceptedActivityBySetterId[s.id] || 0) / hours : null,
+          convsPerBooking: activity > 0 ? dial.conversations / activity : null,
+        }
+      : null;
     return {
       id: s.id,
       name: s.name,
@@ -419,6 +545,8 @@ export async function GET(request: NextRequest) {
       },
       invites: invitesBySetterId[s.id] || { accepted: 0, declined: 0, captured: 0 },
       pendingTotal,
+      dialer,
+      leadTimeDays: median(leadTimesBySetterId[s.id] || []),
     };
   });
 
@@ -438,6 +566,18 @@ export async function GET(request: NextRequest) {
       results: { ...resultsTotal, showRate: teamShowRate },
       invites: invitesTotal,
       pendingTotal: pendingTotalAll,
+      dialer: {
+        hours: dialTeam.dialMinutes / 60,
+        dials: dialTeam.dials,
+        conversations: dialTeam.conversations,
+        bookingsPerHour: dialTeam.dialMinutes > 0 ? activityTotal / (dialTeam.dialMinutes / 60) : null,
+        gcalsPerHour: dialTeam.dialMinutes > 0 ? acceptedActivityTotal / (dialTeam.dialMinutes / 60) : null,
+        convsPerBooking: activityTotal > 0 ? dialTeam.conversations / activityTotal : null,
+      },
+      leadTime: {
+        medianDays: median(teamLeadTimes),
+        buckets: leadTimeBucketRates,
+      },
     },
     unattributed: {
       activity: { newBookings: unattributedActivity },

@@ -15,6 +15,17 @@ interface SetterScore {
   // GCal invite acceptance (prospect RSVP) — optional so older callers still render.
   invites?: { accepted: number; declined: number; captured: number };
   pendingTotal: number;
+  // Trellus dialer rollup for the period — null/absent when the setter has no
+  // synced dial time (unmapped seat or didn't dial), rendered as "—".
+  dialer?: {
+    hours: number;
+    dials: number;
+    conversations: number;
+    bookingsPerHour: number | null;
+    gcalsPerHour: number | null;
+    convsPerBooking: number | null;
+  } | null;
+  leadTimeDays?: number | null;
 }
 
 interface SetterLeaderboardsProps {
@@ -103,6 +114,41 @@ const TIER_COLORS: Record<number, string> = {
   4: "bg-amber-100 text-amber-700",
 };
 
+// Compact dialer/lead-time stat line under a setter's booking bar. Conventions:
+// hours = time spent dialing (5-min coverage, parallel-safe), bk/hr + gcal/hr
+// share that hours denominator, convs/bk is LOWER-is-better (~8 is the team
+// baseline), lead = median booking→demo gap. "—" = no mapped dial data.
+function fmtRate(v: number | null): string {
+  return v === null ? "—" : v.toFixed(1);
+}
+function DialerStatLine({ dialer, leadTimeDays }: Pick<SetterScore, "dialer" | "leadTimeDays">) {
+  const hasLead = leadTimeDays !== null && leadTimeDays !== undefined;
+  if (!dialer && !hasLead) return null;
+  return (
+    <p className="text-[10px] text-[var(--muted-foreground)] tabular-nums mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
+      {dialer ? (
+        <>
+          <span title="Time spent dialing">{dialer.hours.toFixed(1)}h dialed</span>
+          {" · "}
+          <span title="Bookings per dialing hour">{fmtRate(dialer.bookingsPerHour)} bk/hr</span>
+          {" · "}
+          <span title="GCal-accepted bookings per dialing hour">{fmtRate(dialer.gcalsPerHour)} gcal/hr</span>
+          {" · "}
+          <span title="Conversations per booking — lower is better">{fmtRate(dialer.convsPerBooking)} convs/bk</span>
+        </>
+      ) : (
+        <span>— dialer</span>
+      )}
+      {hasLead && (
+        <>
+          {" · "}
+          <span title="Median booking→demo lead time">lead {leadTimeDays!.toFixed(1)}d</span>
+        </>
+      )}
+    </p>
+  );
+}
+
 function StatBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0;
   return (
@@ -144,11 +190,12 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
                   {TIER_LABELS[setter.tier] || `Tier ${setter.tier}`}
                 </span>
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm font-semibold">{setter.activity.newBookings}</span>
                 </div>
                 <StatBar value={setter.activity.newBookings} max={maxActivity} color="bg-blue-500" />
+                <DialerStatLine dialer={setter.dialer} leadTimeDays={setter.leadTimeDays} />
               </div>
             </div>
           ))}

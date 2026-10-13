@@ -21,6 +21,14 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/sync/trellus",
+      "schedule": "30 13-23 * * *"
+    },
+    {
+      "path": "/api/sync/trellus",
+      "schedule": "5 1 * * *"
+    },
+    {
       "path": "/api/sync/fireflies",
       "schedule": "*/30 * * * *"
     },

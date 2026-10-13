@@ -96,6 +96,15 @@ interface SetterScore {
   results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
   invites?: { accepted: number; declined: number; captured: number };
   pendingTotal: number;
+  dialer?: {
+    hours: number;
+    dials: number;
+    conversations: number;
+    bookingsPerHour: number | null;
+    gcalsPerHour: number | null;
+    convsPerBooking: number | null;
+  } | null;
+  leadTimeDays?: number | null;
 }
 
 interface ScoreboardData {
@@ -106,6 +115,18 @@ interface ScoreboardData {
     activity: { newBookings: number; asBooked?: number };
     results: { shows: number; noShows: number; pending: number; cancelled: number; showRate: number };
     pendingTotal: number;
+    dialer?: {
+      hours: number;
+      dials: number;
+      conversations: number;
+      bookingsPerHour: number | null;
+      gcalsPerHour: number | null;
+      convsPerBooking: number | null;
+    };
+    leadTime?: {
+      medianDays: number | null;
+      buckets: { label: string; demos: number; showRate: number }[];
+    };
   };
   unattributed: {
     activity: { newBookings: number };
@@ -256,7 +277,7 @@ export default function ScoreboardPage() {
       {view === "setters" && (
       <>
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">New Bookings</p>
@@ -300,10 +321,41 @@ export default function ScoreboardPage() {
             <p className="text-xs text-[var(--muted-foreground)]">across all weeks</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-[var(--muted-foreground)] uppercase tracking-wide">Lead Time</p>
+            <p className="text-3xl font-bold tracking-tight text-purple-600 mt-1">
+              {teamTotals.leadTime?.medianDays != null ? `${teamTotals.leadTime.medianDays.toFixed(1)}d` : "—"}
+            </p>
+            <p className="text-xs text-[var(--muted-foreground)]">median booking → demo</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Two Leaderboards Side by Side */}
       <SetterLeaderboards scoreboard={scoreboard} unattributed={unattributed} dimLabel={dimLabel} />
+
+      {/* Lead time → show rate correlation, one line. Decided demos
+          (showed/no-show/cancelled) in the period, bucketed by how far out they
+          were booked; each bucket's rate is the official computeShowRate. */}
+      {teamTotals.leadTime && teamTotals.leadTime.buckets.some((b) => b.demos > 0) && (
+        <Card>
+          <CardContent className="pt-3 pb-3 px-4 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+              Lead time → show rate
+            </span>
+            {teamTotals.leadTime.buckets.map((b) => (
+              <span key={b.label} className="text-sm tabular-nums">
+                <span className="text-[var(--muted-foreground)]">{b.label}</span>{" "}
+                <span className={`font-bold ${b.demos > 0 ? showRateColor(b.showRate) : "text-[var(--muted-foreground)]"}`}>
+                  {b.demos > 0 ? formatPercent(b.showRate) : "—"}
+                </span>{" "}
+                <span className="text-[10px] text-[var(--muted-foreground)]">({b.demos})</span>
+              </span>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       </>
       )}
 
