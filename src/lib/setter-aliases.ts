@@ -14,6 +14,11 @@ const SETTER_ALIASES: Record<string, string> = {
   // excludeFromLeaderboard row that silently absorbed his bookings).
   "solomon gergs": "Solomon Gerges",
   "solomon gerget": "Solomon Gerges",
+  // Athan Pohlman — bare first name & initials. "Athan" also matches via the
+  // contains lookup; the alias makes it explicit. "AP"/"ap" would NOT (no "ap"
+  // substring in "athan pohlman"), so the alias is the only way those resolve.
+  athan: "Athan Pohlman",
+  ap: "Athan Pohlman",
 };
 
 export function resolveSetterAlias(name: string | null): string | null {
