@@ -19,6 +19,15 @@ const SETTER_ALIASES: Record<string, string> = {
   // substring in "athan pohlman"), so the alias is the only way those resolve.
   athan: "Athan Pohlman",
   ap: "Athan Pohlman",
+  // Chris Carr — name + initials. Without "chris", the contains lookup would
+  // match the active setter "Christian" (and "Chriszel"), so the alias is
+  // required to disambiguate, not just explicit. "cc" has no substring in
+  // "chris carr", so it only resolves via the alias. Keys are whole-string,
+  // lowercased — "CC"/"Chris C" fold to "cc"/"chris c".
+  chris: "Chris Carr",
+  "chris c": "Chris Carr",
+  "chris carr": "Chris Carr",
+  cc: "Chris Carr",
 };
 
 export function resolveSetterAlias(name: string | null): string | null {
