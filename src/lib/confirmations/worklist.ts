@@ -15,6 +15,13 @@ import {
   type AddressSource,
   type DayOfVariant,
 } from "./copy";
+import {
+  classifyInboundGroup,
+  confirmationGroupWhere,
+  internalGroupConfigFromEnv,
+  internalGroupWrite,
+  pinnedInternalGroupIds,
+} from "./internal-group";
 
 // === PHONE NORMALIZATION ===
 
@@ -137,15 +144,13 @@ async function lookupFallbackArea(email: string | null): Promise<string | null> 
 /** Find the SendBlue group for a booking (by explicit match or phone). */
 export async function lookupGroup(bookingId: string, phone: string | null): Promise<string | null> {
   const norm = normalizePhone(phone);
+  const groupIds = pinnedInternalGroupIds(internalGroupConfigFromEnv().groups);
+  // internal: false (and any pinned group id) keeps every coaching chat —
+  // setters, closers, and any later entry — out of T-1, day-of, and reconnect.
+  // Prospect rows are internal=false, so the phone / booking match below is
+  // unchanged for them.
   const group = await prisma.sendblueGroup.findFirst({
-    where: {
-      OR: [
-        { bookingId },
-        ...(norm
-          ? [{ prospectPhone: { contains: norm } }, { participants: { contains: norm } }]
-          : []),
-      ],
-    },
+    where: confirmationGroupWhere(bookingId, norm, groupIds),
     orderBy: { lastInboundAt: "desc" },
   });
   return group?.groupId || null;
@@ -162,16 +167,23 @@ export async function syncGroupsFromApi(): Promise<void> {
     const { listMessages, SENDBLUE_LINE } = await import("@/lib/sendblue");
     const msgs = await listMessages(500);
     const lineNorm = normalizePhone(SENDBLUE_LINE);
+    const cfg = internalGroupConfigFromEnv();
+    if (cfg.error) console.error(cfg.error);
 
     // group_id -> set of participant numbers seen (excluding our line)
-    const groups = new Map<string, { numbers: Set<string>; lastInbound: string | null }>();
+    const groups = new Map<string, { numbers: Set<string>; lastInbound: string | null; sawParticipants: boolean }>();
     for (const m of msgs) {
       if (!m.group_id) continue;
-      const entry = groups.get(m.group_id) || { numbers: new Set<string>(), lastInbound: null };
+      const entry = groups.get(m.group_id) || {
+        numbers: new Set<string>(),
+        lastInbound: null,
+        sawParticipants: false,
+      };
       // Capture the WHOLE group roster, not just the sender. SendBlue's message
       // object carries a `participants` array of every member; from_number is
       // only whoever sent this one message (usually the setter or our line), so
       // matching a booking by the prospect's phone fails if we store just that.
+      if (Array.isArray(m.participants) && m.participants.length > 0) entry.sawParticipants = true;
       const candidates = [
         ...(Array.isArray(m.participants) ? m.participants : []),
         m.from_number,
@@ -190,6 +202,25 @@ export async function syncGroupsFromApi(): Promise<void> {
     for (const [groupId, entry] of groups) {
       const numbers = Array.from(entry.numbers);
       const existing = await prisma.sendblueGroup.findUnique({ where: { groupId } });
+      // Phone classification only when a real participants array was seen.
+      // from_number history alone is the setter, which is also true of prospect groups.
+      const match = classifyInboundGroup({
+        groupId,
+        participants: numbers,
+        participantsExplicit: entry.sawParticipants,
+        lineNumber: SENDBLUE_LINE,
+        groups: cfg.groups,
+        alreadyInternal: existing?.internal === true,
+        alreadyName: existing?.internalName,
+      });
+      const internal = match.internal;
+      if (internal && !existing?.internal) {
+        console.log(
+          `SendBlue group ${groupId} classified as internal group "${match.name ?? "unnamed"}" during sync; excluded from worklists`
+        );
+      }
+      // internalGroupWrite() is {} for prospect groups, so their columns are unchanged.
+      const internalFields = internalGroupWrite(match);
       if (existing) {
         const merged = Array.from(
           new Set([
@@ -202,6 +233,7 @@ export async function syncGroupsFromApi(): Promise<void> {
           data: {
             participants: JSON.stringify(merged),
             ...(entry.lastInbound ? { lastInboundAt: new Date(entry.lastInbound) } : {}),
+            ...internalFields,
           },
         });
       } else {
@@ -209,8 +241,11 @@ export async function syncGroupsFromApi(): Promise<void> {
           data: {
             groupId,
             participants: JSON.stringify(numbers),
-            prospectPhone: numbers[0] || null,
+            // Coaching chat must not keep a setter number in prospectPhone.
+            // Prospect creates still store numbers[0], same as before.
+            prospectPhone: internal ? null : numbers[0] || null,
             lastInboundAt: entry.lastInbound ? new Date(entry.lastInbound) : null,
+            ...(internal ? { internal: true, bookingId: null, internalName: match.name } : {}),
           },
         });
       }

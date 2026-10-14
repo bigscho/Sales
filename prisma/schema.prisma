@@ -635,23 +635,52 @@ model MrrEvent {
 // === SHOW-RATE CONFIRMATIONS (SendBlue) ===
 // Deliberately thin: worklist state (case type, address variable, frozen count,
 // skip reasons) is computed live from Booking/Demo — the only things persisted
-// are what can't be recomputed: the group_id mapping and the send log.
+// are what can't be recomputed: the group_id mapping, the send log, and
+// (internal coaching groups only) inbound message text for the coaching bot.
 
 // Maps a SendBlue iMessage group (captured via inbound webhook) to a prospect
 // phone / booking. The AI Agent line can only reply into groups it's in, so
-// this mapping is the send routing table.
+// this mapping is the send routing table. `internal` groups are coaching
+// chats (setters, closers, …): still stored so group_id can be read, never matched.
 model SendblueGroup {
   id            String    @id @default(cuid())
   groupId       String    @unique
   participants  String?   // JSON array of E.164 numbers seen in the group
   prospectPhone String?   // the participant matched to a booking's prospectPhone
-  bookingId     String?   // matched booking (null until matched)
+  bookingId     String?   // matched booking (null until matched). Never set when internal.
+  internal      Boolean   @default(false) // coaching chat — never matched, never texted
+  internalName  String?   // which SENDBLUE_INTERNAL_GROUPS entry matched (setters, closers, …)
   lastInboundAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  inboundMessages SendblueInternalMessage[]
+
   @@index([prospectPhone])
   @@index([bookingId])
+}
+
+// Inbound iMessages from every configured internal group (setters, closers, …).
+// A coaching bot reads this with a read-only DB role and replies in the chat.
+// Prospect group message text is never written here — those bodies stay in SendBlue.
+// `internalName` is the list entry (`setters`, `closers`) so the bot can tell
+// the chats apart; `groupId` is the SendBlue thread.
+model SendblueInternalMessage {
+  id            String   @id @default(cuid())
+  groupId       String
+  senderNumber  String
+  text          String?  @db.Text
+  mediaUrl      String?
+  sentAt        DateTime
+  internalName  String?
+  // SendBlue message_handle. Webhook retries must not insert a second copy.
+  messageHandle String?  @unique
+  createdAt     DateTime @default(now())
+
+  group SendblueGroup @relation(fields: [groupId], references: [groupId], onDelete: Cascade)
+
+  @@index([groupId, sentAt])
+  @@index([internalName, sentAt])
 }
 
 // Append-only log of every send attempt. Drives the cross-booking "ever texted
