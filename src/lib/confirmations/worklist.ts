@@ -20,8 +20,12 @@ import {
   confirmationGroupWhere,
   internalGroupConfigFromEnv,
   internalGroupWrite,
+  mergeParticipants,
+  normalizeStoredParticipants,
   participantsToStore,
   pinnedInternalGroupIds,
+  storedParticipantsLookNested,
+  DOUBLE_ENCODED_JSON_PREFIX,
 } from "./internal-group";
 
 // === PHONE NORMALIZATION ===
@@ -158,14 +162,65 @@ export async function lookupGroup(bookingId: string, phone: string | null): Prom
 }
 
 /**
+ * One-time repair for rows whose participants JSON is a nest of the same
+ * roster appended on every sync. Idempotent: a flat row is not selected, and
+ * a second pass writes nothing. Batched so one worklist load cannot have to
+ * rewrite every bloated row. Returns how many rows were rewritten.
+ */
+export async function flattenNestedParticipantRows(
+  lineNumber?: string | null,
+  limit = 40
+): Promise<number> {
+  const rows = await prisma.sendblueGroup.findMany({
+    where: {
+      OR: [
+        { participants: { contains: ",[" } },
+        { participants: { startsWith: "[[" } },
+        { participants: { startsWith: '"[' } },
+        { participants: { startsWith: DOUBLE_ENCODED_JSON_PREFIX } },
+        { participants: { contains: ",{" } },
+      ],
+    },
+    select: { id: true, groupId: true, participants: true },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
+  let updated = 0;
+  for (const row of rows) {
+    if (!storedParticipantsLookNested(row.participants)) continue;
+    const next = normalizeStoredParticipants(row.participants, lineNumber);
+    if (!next || next === row.participants) continue;
+    if (storedParticipantsLookNested(next)) {
+      console.error(`SendBlue group ${row.groupId} participants stayed nested after flatten; left unchanged`);
+      continue;
+    }
+    await prisma.sendblueGroup.update({
+      where: { id: row.id },
+      data: { participants: next },
+    });
+    updated++;
+  }
+  return updated;
+}
+
+/**
  * Discover groups by polling SendBlue's message history (no webhook needed).
  * Runs before each worklist build; the inbound webhook, if configured, just
  * makes the same data arrive sooner. Never throws — a SendBlue hiccup
- * shouldn't take down the worklist.
+ * shouldn't take down the worklist. Also flattens a batch of already-nested
+ * participant rows so older groups self-heal without a new message.
  */
 export async function syncGroupsFromApi(): Promise<void> {
   try {
     const { listMessages, SENDBLUE_LINE } = await import("@/lib/sendblue");
+    try {
+      const flattened = await flattenNestedParticipantRows(SENDBLUE_LINE);
+      if (flattened > 0) {
+        console.log(`Flattened participants on ${flattened} SendBlue group(s)`);
+      }
+    } catch (err) {
+      console.error("SendBlue participant flatten failed (sync continues):", err);
+    }
     const msgs = await listMessages(500);
     const cfg = internalGroupConfigFromEnv();
     if (cfg.error) console.error(cfg.error);
@@ -224,12 +279,8 @@ export async function syncGroupsFromApi(): Promise<void> {
       }
       // internalGroupWrite() is {} for prospect groups, so their columns are unchanged.
       const internalFields = internalGroupWrite(match);
+      const merged = mergeParticipants(existing?.participants, entry.raw, SENDBLUE_LINE);
       if (existing) {
-        const prior = existing.participants ? (JSON.parse(existing.participants) as unknown) : [];
-        const merged = participantsToStore(
-          [...(Array.isArray(prior) ? prior : []), ...entry.raw],
-          SENDBLUE_LINE
-        );
         await prisma.sendblueGroup.update({
           where: { groupId },
           data: {

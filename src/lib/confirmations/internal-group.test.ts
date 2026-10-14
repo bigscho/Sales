@@ -7,13 +7,17 @@ import {
   draftInternalInbound,
   internalGroupConfigFromEnv,
   internalGroupWrite,
+  flattenParticipantValues,
+  mergeParticipants,
   normalizeHandle,
+  normalizeStoredParticipants,
   originationInternalBlock,
   parseInternalGroups,
   participantsToStore,
   pinnedInternalGroupIds,
   rosterMatchesGroup,
   shouldRecordInbound,
+  storedParticipantsLookNested,
   withSenderEmail,
   type InternalGroupConfig,
 } from "./internal-group";
@@ -394,6 +398,66 @@ test("stored participants keep phone text, canonicalize emails, and drop the lin
       LINE
     ),
     ["+1 (404) 983-5597", "solomonnassa@icloud.com"]
+  );
+});
+
+test("nested participant copies collapse to one flat deduped list and stay there", () => {
+  const roster = ["+15551112222", "+15553334444"];
+  // What the old Set merge stored: the array object is a new reference on
+  // every parse, so each sync appended another copy of the same roster.
+  let bloated = JSON.stringify(roster);
+  const seenArray = roster;
+  for (let i = 0; i < 40; i++) {
+    const parsed = JSON.parse(bloated) as unknown[];
+    bloated = JSON.stringify([...parsed, seenArray]);
+  }
+  assert.equal(bloated.length > 1000, true);
+  assert.equal(storedParticipantsLookNested(bloated), true);
+
+  const once = normalizeStoredParticipants(bloated, LINE);
+  const twice = normalizeStoredParticipants(once, LINE);
+  assert.equal(once, twice);
+  assert.deepEqual(JSON.parse(once!), roster);
+  assert.equal(storedParticipantsLookNested(once), false);
+
+  let again = once!;
+  for (let i = 0; i < 30; i++) {
+    again = JSON.stringify(
+      mergeParticipants(again, [roster, "+15551112222", { handle: "+15553334444" }, LINE], LINE)
+    );
+  }
+  assert.equal(again, once);
+
+  const wrapped = JSON.stringify(JSON.stringify([LINE, ["+15551112222", ["+15553334444"]]]));
+  assert.equal(storedParticipantsLookNested(wrapped), true);
+  assert.deepEqual(JSON.parse(normalizeStoredParticipants(wrapped, LINE)!), roster);
+
+  assert.deepEqual(flattenParticipantValues(["+15551112222", ["+15553334444", ["+15551112222"]]]), [
+    "+15551112222",
+    "+15553334444",
+    "+15551112222",
+  ]);
+
+  const flat = JSON.stringify(["+15551112222", "solomonnassa@icloud.com"]);
+  assert.equal(storedParticipantsLookNested(flat), false);
+  assert.equal(normalizeStoredParticipants(flat, LINE), flat);
+  assert.equal(normalizeStoredParticipants(null, LINE), null);
+
+  const doubledFlat = JSON.stringify(JSON.stringify(["+15551112222", "+15553334444"]));
+  assert.equal(storedParticipantsLookNested(doubledFlat), true);
+  assert.deepEqual(JSON.parse(normalizeStoredParticipants(doubledFlat, LINE)!), roster);
+
+  const groups = parseInternalGroups(REAL_GROUPS).groups;
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_nested",
+      participants: JSON.stringify(["+15559990000", ["+14049835597", "+15559990000"]]),
+      groups,
+      teamMemberEmails: [],
+      lineNumber: LINE,
+    }),
+    "internal_handle"
   );
 });
 

@@ -645,7 +645,7 @@ model MrrEvent {
 model SendblueGroup {
   id            String    @id @default(cuid())
   groupId       String    @unique
-  participants  String?   // JSON array of E.164 numbers and iMessage emails seen in the group
+  participants  String?   // flat JSON array of E.164 numbers and iMessage emails seen in the group
   prospectPhone String?   // the participant matched to a booking's prospectPhone
   bookingId     String?   // matched booking (null until matched). Never set when internal.
   internal      Boolean   @default(false) // coaching chat — never matched, never texted

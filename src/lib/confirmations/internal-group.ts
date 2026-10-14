@@ -337,16 +337,82 @@ export function withSenderEmail(participants: unknown[], sender: unknown): unkno
 }
 
 /**
+ * Walk a stored or inbound participant value down to identifier leaves.
+ * SendblueGroup.participants was merged with `new Set([...parsed, ...incoming])`.
+ * Set dedupes strings, not arrays: `normalizePhone` stringifies an array into
+ * digits, so the array object itself was stored, and every later sync appended
+ * another copy. Leaves are phones, emails, and participant objects. JSON
+ * strings of arrays are parsed. Wide sibling copies and a few layers of
+ * wrapping both collapse here.
+ */
+export function flattenParticipantValues(value: unknown): unknown[] {
+  const out: unknown[] = [];
+  const stack: unknown[] = [value];
+  let steps = 0;
+  while (stack.length > 0 && steps < 200_000) {
+    steps++;
+    const current = stack.pop();
+    if (current == null) continue;
+    if (typeof current === "string") {
+      const trimmed = current.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith("[") || trimmed.startsWith('"')) {
+        try {
+          const parsed = JSON.parse(trimmed) as unknown;
+          if (Array.isArray(parsed) || typeof parsed === "string") {
+            stack.push(parsed);
+            continue;
+          }
+        } catch {
+          // Not a wrapped roster. Keep the string as an identifier.
+        }
+      }
+      out.push(trimmed);
+      continue;
+    }
+    if (typeof current === "number") {
+      if (Number.isFinite(current)) out.push(current);
+      continue;
+    }
+    if (Array.isArray(current)) {
+      for (let i = current.length - 1; i >= 0; i--) stack.push(current[i]);
+      continue;
+    }
+    if (typeof current === "object") out.push(current);
+  }
+  return out;
+}
+
+/**
+ * First three characters of a JSON string whose contents are another JSON
+ * value: quote, backslash, quote. Flat arrays start with `[` and do not match.
+ */
+export const DOUBLE_ENCODED_JSON_PREFIX = '"\\"';
+
+/** True when a stored JSON blob still has nested arrays, objects, or a second encoding. */
+export function storedParticipantsLookNested(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  return (
+    raw.includes(",[") ||
+    raw.startsWith("[[") ||
+    raw.startsWith('"[') ||
+    raw.startsWith(DOUBLE_ENCODED_JSON_PREFIX) ||
+    raw.includes(",{")
+  );
+}
+
+/**
  * Values persisted on `SendblueGroup.participants`.
- * Phones stay in their original string form (booking lookup is a last-10
- * `contains` on that JSON). Emails are stored canonical. The line is omitted.
- * Short digit strings are kept, matching the pre-email phone filter.
+ * Always a flat list of strings: phones in the first-seen text form (booking
+ * lookup is a last-10 `contains` on that JSON), emails canonical. Nested
+ * copies collapse. The line is omitted. Short digit strings are kept,
+ * matching the pre-email phone filter.
  */
 export function participantsToStore(values: unknown[], lineNumber?: string | null): string[] {
   const lineNorm = last10(lineNumber);
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const value of values) {
+  for (const value of flattenParticipantValues(values)) {
     const id = participantIdentifier(value);
     if (!id) continue;
     const email = extractEmail(id);
@@ -366,20 +432,42 @@ export function participantsToStore(values: unknown[], lineNumber?: string | nul
   return out;
 }
 
-function coerceParticipantList(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string") return [];
-  const trimmed = value.trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("[")) {
+/**
+ * Union a stored participants JSON blob with newly seen identifiers.
+ * The result is flat and deduped. Repeating the call with the same incoming
+ * roster does not grow the list.
+ */
+export function mergeParticipants(
+  existingRaw: string | null | undefined,
+  incoming: unknown,
+  lineNumber?: string | null
+): string[] {
+  let existing: unknown = [];
+  if (existingRaw && existingRaw.trim()) {
     try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (Array.isArray(parsed)) return parsed;
+      existing = JSON.parse(existingRaw) as unknown;
     } catch {
-      return [trimmed];
+      existing = existingRaw;
     }
   }
-  return [trimmed];
+  return participantsToStore([existing, incoming], lineNumber);
+}
+
+/**
+ * Canonical JSON for a SendblueGroup.participants cell. Idempotent: a second
+ * pass returns the same string. Null stays null.
+ */
+export function normalizeStoredParticipants(
+  raw: string | null | undefined,
+  lineNumber?: string | null
+): string | null {
+  if (raw == null) return null;
+  if (!raw.trim()) return raw;
+  return JSON.stringify(mergeParticipants(raw, [], lineNumber));
+}
+
+function coerceParticipantList(value: unknown): unknown[] {
+  return flattenParticipantValues(value);
 }
 
 function configuredHandleSet(groups: InternalGroupConfig[], lineNumber?: string | null): Set<string> {
