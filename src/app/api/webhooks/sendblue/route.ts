@@ -8,6 +8,7 @@ import {
   draftInternalInbound,
   internalGroupConfigFromEnv,
   internalGroupWrite,
+  mergeParticipants,
   participantsToStore,
   shouldRecordInbound,
   withSenderEmail,
@@ -73,8 +74,9 @@ export async function POST(request: NextRequest) {
     );
 
     const existing = await prisma.sendblueGroup.findUnique({ where: { groupId } });
-    const storedParticipants = participantsToStore(
-      [...storedParticipantList(existing?.participants), ...participants],
+    const storedParticipants = mergeParticipants(
+      existing?.participants,
+      participants,
       SENDBLUE_LINE
     );
     const cfg = internalGroupConfigFromEnv();
@@ -207,10 +209,4 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({ status: "ok", webhook: "sendblue" });
-}
-
-function storedParticipantList(raw: string | null | undefined): unknown[] {
-  if (!raw) return [];
-  const parsed = JSON.parse(raw) as unknown;
-  return Array.isArray(parsed) ? parsed : [];
 }
