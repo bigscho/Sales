@@ -8,7 +8,9 @@ import {
   draftInternalInbound,
   internalGroupConfigFromEnv,
   internalGroupWrite,
+  participantsToStore,
   shouldRecordInbound,
+  withSenderEmail,
 } from "@/lib/confirmations/internal-group";
 import { saveInternalInboundMessage } from "@/lib/confirmations/internal-messages";
 
@@ -30,7 +32,14 @@ import { saveInternalInboundMessage } from "@/lib/confirmations/internal-message
 //
 // Prospect replies themselves are read by the rep in the SendBlue app (no
 // content parsing); we only stamp lastInboundAt. Inbound text is persisted
-// only for the internal setters group.
+// only for an exact internal-group match.
+//
+// iMessage-by-email members show up as the Apple ID email in `participants`
+// and, when they are the sender, in `from_number` / `number`. Those emails are
+// part of the roster (and are stored) so a setters chat that includes one can
+// still match. A phone from_number is not merged in — that field alone is not
+// a roster. Groups that merely contain an internal handle are not flagged
+// here; origination refuses them on its own.
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,19 +54,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, action: "no_group_ignored" });
     }
 
-    // Collect candidate participant numbers from the payload (shape varies —
-    // log-friendly, never trust a single field). An explicit participants
-    // array is the full roster; from_number alone is not.
+    // Collect the roster from the payload (shape varies — log-friendly, never
+    // trust a single field). An explicit participants array is the full roster;
+    // from_number alone is not. An Apple ID email on from_number is folded in
+    // when the array omitted it. Stored rows keep phones as sent and emails
+    // canonical, so a later origination read can see the email handle.
     const participantsExplicit = Array.isArray(body.participants);
-    const participants: Array<string | number> = participantsExplicit
-      ? body.participants
-      : [fromNumber].filter(Boolean);
-    const lineNorm = normalizePhone(SENDBLUE_LINE);
-    const candidateNumbers = participants.filter(
-      (n) => normalizePhone(n) && normalizePhone(n) !== lineNorm
+    const listed: unknown[] = participantsExplicit
+      ? (body.participants as unknown[])
+      : fromNumber
+        ? [fromNumber]
+        : [];
+    const participants = participantsExplicit ? withSenderEmail(listed, fromNumber) : listed;
+    // Booking match stays phone-only, and only against this payload — an email
+    // handle must not be looked up as a prospect number.
+    const candidateNumbers = participantsToStore(participants, SENDBLUE_LINE).filter(
+      (n) => !n.includes("@")
     );
 
     const existing = await prisma.sendblueGroup.findUnique({ where: { groupId } });
+    const storedParticipants = participantsToStore(
+      [...storedParticipantList(existing?.participants), ...participants],
+      SENDBLUE_LINE
+    );
     const cfg = internalGroupConfigFromEnv();
     if (cfg.error) console.error(cfg.error);
     const match = classifyInboundGroup({
@@ -121,21 +140,14 @@ export async function POST(request: NextRequest) {
             ? { bookingId: matchedBookingId, prospectPhone: matchedPhone }
             : {}),
           ...internalFields,
-          participants: JSON.stringify(
-            Array.from(
-              new Set([
-                ...(existing.participants ? JSON.parse(existing.participants) : []),
-                ...candidateNumbers,
-              ])
-            )
-          ),
+          participants: JSON.stringify(storedParticipants),
         },
       });
     } else {
       await prisma.sendblueGroup.create({
         data: {
           groupId,
-          participants: JSON.stringify(candidateNumbers),
+          participants: JSON.stringify(storedParticipants),
           prospectPhone: internal ? null : matchedPhone || fallbackPhone,
           bookingId: internal ? null : matchedBookingId,
           lastInboundAt: isOutbound ? null : new Date(),
@@ -195,4 +207,10 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({ status: "ok", webhook: "sendblue" });
+}
+
+function storedParticipantList(raw: string | null | undefined): unknown[] {
+  if (!raw) return [];
+  const parsed = JSON.parse(raw) as unknown;
+  return Array.isArray(parsed) ? parsed : [];
 }

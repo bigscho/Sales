@@ -7,10 +7,14 @@ import {
   draftInternalInbound,
   internalGroupConfigFromEnv,
   internalGroupWrite,
+  normalizeHandle,
+  originationInternalBlock,
   parseInternalGroups,
+  participantsToStore,
   pinnedInternalGroupIds,
   rosterMatchesGroup,
   shouldRecordInbound,
+  withSenderEmail,
   type InternalGroupConfig,
 } from "./internal-group";
 
@@ -223,4 +227,267 @@ test("only inbound internal messages are stored, for whichever group matched", (
     }
   );
   assert.equal(draftInternalInbound({ content: "no sender" }, "grp", now), null);
+});
+
+const REAL_GROUPS =
+  "setters:+14049835597,+17742758987,+17742758299,solomonnassa@icloud.com,+15083203106,+447848983256;closers:+17742758299,+17742758987";
+
+test("the live env string keeps the iMessage email on setters and the closers pair separate", () => {
+  const parsed = parseInternalGroups(REAL_GROUPS);
+  assert.equal(parsed.error, null);
+  assert.deepEqual(parsed.groups, [
+    {
+      name: "setters",
+      phones: [
+        "+14049835597",
+        "+17742758987",
+        "+17742758299",
+        "solomonnassa@icloud.com",
+        "+15083203106",
+        "+447848983256",
+      ],
+      groupIds: [],
+    },
+    { name: "closers", phones: ["+17742758299", "+17742758987"], groupIds: [] },
+  ]);
+
+  const messy = parseInternalGroups(
+    "setters:+14049835597,+17742758987,+17742758299, SolomonNassa@iCloud.com ,+15083203106,+447848983256"
+  );
+  assert.equal(messy.groups[0].phones[3], "solomonnassa@icloud.com");
+
+  const json = parseInternalGroups(
+    JSON.stringify([
+      {
+        name: "setters",
+        phones: ["+14049835597"],
+        handles: ["mailto:SolomonNassa@iCloud.com"],
+      },
+    ])
+  );
+  assert.deepEqual(json.groups[0].phones, ["+14049835597", "solomonnassa@icloud.com"]);
+});
+
+test("exact setters match includes the email; phones alone are not that group", () => {
+  const groups = parseInternalGroups(REAL_GROUPS).groups;
+  const setters = [
+    "+1 (404) 983-5597",
+    "+17742758987",
+    "17742758299",
+    "mailto:SolomonNassa@iCloud.com",
+    "+15083203106",
+    "+44 7848 983256",
+    LINE,
+  ];
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_new",
+      participants: setters,
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: true, name: "setters" }
+  );
+  assert.equal(normalizeHandle("+447848983256"), "7848983256");
+  assert.equal(normalizeHandle("  SolomonNassa@iCloud.com "), "solomonnassa@icloud.com");
+  assert.equal(normalizeHandle("Solomon Nassa <SolomonNassa@iCloud.com>"), "solomonnassa@icloud.com");
+  assert.equal(normalizeHandle(LINE, LINE), null);
+
+  const phonesOnly = setters.filter((p) => !String(p).includes("@") && !String(p).includes("mailto"));
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_new",
+      participants: phonesOnly,
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: false, name: null }
+  );
+
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_new",
+      participants: [
+        { handle: "+14049835597" },
+        "+17742758987",
+        "+17742758299",
+        { handle: "solomonnassa@icloud.com", phone: null },
+        "+15083203106",
+        "+447848983256",
+        LINE,
+      ],
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: true, name: "setters" }
+  );
+
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_closers_live",
+      participants: ["+1 774-275-8299", "+17742758987", LINE],
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: true, name: "closers" }
+  );
+});
+
+test("a sender email missing from participants still completes the setters roster", () => {
+  const groups = parseInternalGroups(REAL_GROUPS).groups;
+  const listed = [
+    "+14049835597",
+    "+17742758987",
+    "+17742758299",
+    "+15083203106",
+    "+447848983256",
+    LINE,
+  ];
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_new",
+      participants: listed,
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: false, name: null }
+  );
+  const merged = withSenderEmail(listed, "SolomonNassa@iCloud.com");
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_new",
+      participants: merged,
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: true, name: "setters" }
+  );
+  assert.equal(withSenderEmail(merged, "solomonnassa@icloud.com"), merged);
+  assert.deepEqual(withSenderEmail(listed, "+14049835597"), listed);
+});
+
+test("one email is not a roster; a phone plus an email can be", () => {
+  assert.equal(
+    rosterMatchesGroup(["solomonnassa@icloud.com", LINE], ["SolomonNassa@iCloud.com"], LINE),
+    false
+  );
+  assert.equal(
+    rosterMatchesGroup(
+      [SETTER_A, "mailto:SolomonNassa@iCloud.com", LINE],
+      [SETTER_A, "solomonnassa@icloud.com"],
+      LINE
+    ),
+    true
+  );
+});
+
+test("stored participants keep phone text, canonicalize emails, and drop the line", () => {
+  assert.deepEqual(
+    participantsToStore(
+      ["+1 (404) 983-5597", "  SolomonNassa@iCloud.com ", LINE, "+14049835597", { handle: "solomonnassa@icloud.com" }],
+      LINE
+    ),
+    ["+1 (404) 983-5597", "solomonnassa@icloud.com"]
+  );
+});
+
+test("origination is refused for any internal handle, without marking a partial roster internal", () => {
+  const groups = parseInternalGroups(REAL_GROUPS).groups;
+  const prospectWithSetter = ["+14049835597", PROSPECT, LINE];
+  assert.deepEqual(
+    classifyInboundGroup({
+      groupId: "grp_prospect",
+      participants: prospectWithSetter,
+      participantsExplicit: true,
+      lineNumber: LINE,
+      groups,
+    }),
+    { internal: false, name: null }
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_prospect",
+      participants: JSON.stringify(prospectWithSetter),
+      groups,
+      teamMemberEmails: ["colin@grsfd.co"],
+      lineNumber: LINE,
+    }),
+    "internal_handle"
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_email",
+      participants: ["Solomon Nassa <SolomonNassa@iCloud.com>", PROSPECT],
+      groups,
+      teamMemberEmails: [],
+      lineNumber: LINE,
+    }),
+    "internal_handle"
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_work_email",
+      participants: [PROSPECT, "Colin@GRSFD.co"],
+      groups: [],
+      teamMemberEmails: [" colin@grsfd.co "],
+      lineNumber: LINE,
+    }),
+    "internal_handle"
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: true,
+      groupId: "grp_setters",
+      participants: prospectWithSetter,
+      groups,
+      teamMemberEmails: [],
+      lineNumber: LINE,
+    }),
+    "internal_group"
+  );
+  const pinned = groups.map((g) =>
+    g.name === "closers" ? { ...g, groupIds: ["grp_closers"] } : g
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_closers",
+      participants: [PROSPECT],
+      groups: pinned,
+      teamMemberEmails: [],
+      lineNumber: LINE,
+    }),
+    "internal_group"
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_prospect",
+      participants: [PROSPECT, LINE],
+      groups,
+      teamMemberEmails: [],
+      lineNumber: LINE,
+    }),
+    null
+  );
+  assert.equal(
+    originationInternalBlock({
+      internal: false,
+      groupId: "grp_prospect",
+      participants: [PROSPECT, LINE],
+      groups: [{ name: "setters", phones: [LINE, SETTER_A, SETTER_B], groupIds: [] }],
+      teamMemberEmails: [null, ""],
+      lineNumber: LINE,
+    }),
+    null
+  );
 });
