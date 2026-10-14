@@ -26,7 +26,8 @@
 import { prisma } from "@/lib/db";
 import { sendConfirmation } from "./send";
 import { everSent, type WorklistRow } from "./worklist";
-import { internalGroupConfigFromEnv, pinnedInternalGroupIds } from "./internal-group";
+import { internalGroupConfigFromEnv, originationInternalBlock } from "./internal-group";
+import { SENDBLUE_LINE } from "@/lib/sendblue";
 import {
   renderOrigination,
   formatDemoDay,
@@ -112,17 +113,24 @@ async function timeMatchCandidate(groupCreatedAt: Date) {
 export async function maybeSendOriginationReply(groupId: string): Promise<OriginationOutcome> {
   const group = await prisma.sendblueGroup.findUnique({ where: { groupId } });
   if (!group) return { action: "skipped", reason: "group_unknown" };
-  // Coaching chats (setters, closers, any other configured internal group)
-  // are excluded before either match tier. Time match would otherwise greet
-  // an unmatched group created in the same half-hour as a booking. Checked
+  // Coaching chats (exact roster, pinned id, or the sticky flag) are excluded
+  // before either match tier. Time match would otherwise greet an unmatched
+  // group created in the same half-hour as a booking. A wider safety net
+  // refuses the greeting when any participant is an internal-list handle or a
+  // TeamMember email, even if the roster is not an exact coaching chat — that
+  // does not clear the booking or pull the group off a worklist. Checked
   // ahead of the freshness window so a late message is still refused.
   const configured = internalGroupConfigFromEnv();
-  if (
-    group.internal ||
-    pinnedInternalGroupIds(configured.groups).includes(group.groupId)
-  ) {
-    return { action: "skipped", reason: "internal_group" };
-  }
+  const members = await prisma.teamMember.findMany({ select: { email: true } });
+  const block = originationInternalBlock({
+    internal: group.internal,
+    groupId: group.groupId,
+    participants: group.participants,
+    groups: configured.groups,
+    teamMemberEmails: members.map((m) => m.email),
+    lineNumber: SENDBLUE_LINE,
+  });
+  if (block) return { action: "skipped", reason: block };
   if (Date.now() - group.createdAt.getTime() > FRESH_WINDOW_MS) {
     return { action: "skipped", reason: "stale_group" };
   }

@@ -146,10 +146,17 @@ export async function evaluateService(
 
 export interface SendblueMessage {
   group_id?: string | null;
+  /** E.164, or the Apple ID email when this iMessage was sent from an email handle. */
   from_number?: string | null;
+  /** Same identifier as from_number on an email-origin iMessage. */
   number?: string | null;
   to_number?: string | null;
-  participants?: string[] | null; // full group roster — the reliable member list
+  /**
+   * Full group roster — the reliable member list. Plain strings: E.164 phones
+   * and iMessage Apple Account emails. Email-only members are not in
+   * `participant_numbers`; read this array (or a groups-API object's `handle`).
+   */
+  participants?: string[] | null;
   is_outbound?: boolean;
   content?: string | null;
   date_sent?: string | null;

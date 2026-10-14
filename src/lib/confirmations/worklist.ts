@@ -20,6 +20,7 @@ import {
   confirmationGroupWhere,
   internalGroupConfigFromEnv,
   internalGroupWrite,
+  participantsToStore,
   pinnedInternalGroupIds,
 } from "./internal-group";
 
@@ -166,23 +167,25 @@ export async function syncGroupsFromApi(): Promise<void> {
   try {
     const { listMessages, SENDBLUE_LINE } = await import("@/lib/sendblue");
     const msgs = await listMessages(500);
-    const lineNorm = normalizePhone(SENDBLUE_LINE);
     const cfg = internalGroupConfigFromEnv();
     if (cfg.error) console.error(cfg.error);
 
-    // group_id -> set of participant numbers seen (excluding our line)
-    const groups = new Map<string, { numbers: Set<string>; lastInbound: string | null; sawParticipants: boolean }>();
+    // group_id -> identifiers seen (phones and iMessage emails; the line is
+    // stripped when the set is stored).
+    const groups = new Map<string, { raw: unknown[]; lastInbound: string | null; sawParticipants: boolean }>();
     for (const m of msgs) {
       if (!m.group_id) continue;
       const entry = groups.get(m.group_id) || {
-        numbers: new Set<string>(),
+        raw: [] as unknown[],
         lastInbound: null,
         sawParticipants: false,
       };
       // Capture the WHOLE group roster, not just the sender. SendBlue's message
-      // object carries a `participants` array of every member; from_number is
-      // only whoever sent this one message (usually the setter or our line), so
-      // matching a booking by the prospect's phone fails if we store just that.
+      // object carries a `participants` array of every member (E.164 or Apple
+      // ID email); from_number is only whoever sent this one message (usually
+      // the setter or our line), so matching a booking by the prospect's phone
+      // fails if you store just that. An email sender's from_number is that
+      // email and is kept the same way.
       if (Array.isArray(m.participants) && m.participants.length > 0) entry.sawParticipants = true;
       const candidates = [
         ...(Array.isArray(m.participants) ? m.participants : []),
@@ -191,7 +194,7 @@ export async function syncGroupsFromApi(): Promise<void> {
         m.to_number,
       ];
       for (const c of candidates) {
-        if (c && normalizePhone(c) !== lineNorm) entry.numbers.add(c);
+        if (c) entry.raw.push(c);
       }
       if (!m.is_outbound && m.date_sent && (!entry.lastInbound || m.date_sent > entry.lastInbound)) {
         entry.lastInbound = m.date_sent;
@@ -200,7 +203,7 @@ export async function syncGroupsFromApi(): Promise<void> {
     }
 
     for (const [groupId, entry] of groups) {
-      const numbers = Array.from(entry.numbers);
+      const numbers = participantsToStore(entry.raw, SENDBLUE_LINE);
       const existing = await prisma.sendblueGroup.findUnique({ where: { groupId } });
       // Phone classification only when a real participants array was seen.
       // from_number history alone is the setter, which is also true of prospect groups.
@@ -222,11 +225,10 @@ export async function syncGroupsFromApi(): Promise<void> {
       // internalGroupWrite() is {} for prospect groups, so their columns are unchanged.
       const internalFields = internalGroupWrite(match);
       if (existing) {
-        const merged = Array.from(
-          new Set([
-            ...(existing.participants ? (JSON.parse(existing.participants) as string[]) : []),
-            ...numbers,
-          ])
+        const prior = existing.participants ? (JSON.parse(existing.participants) as unknown) : [];
+        const merged = participantsToStore(
+          [...(Array.isArray(prior) ? prior : []), ...entry.raw],
+          SENDBLUE_LINE
         );
         await prisma.sendblueGroup.update({
           where: { groupId },
