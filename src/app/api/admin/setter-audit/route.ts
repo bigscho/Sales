@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { attributeBookedBy, type AttributionMember } from "@/lib/setter-attribution";
 
 // Diagnostic + backfill endpoint for the rebooking-setter-attribution bug.
 //
@@ -51,6 +51,11 @@ async function scanForMismatches(since: Date, limit: number): Promise<MismatchRo
   const token = process.env.CALENDLY_API_TOKEN;
   if (!token) return [];
 
+  const members: AttributionMember[] = await prisma.teamMember.findMany({
+    where: { isActive: true, role: { in: ["setter", "closer"] } },
+    select: { id: true, name: true, role: true, isActive: true, excludeFromLeaderboard: true },
+  });
+
   const bookings = await prisma.booking.findMany({
     where: {
       calendarEventId: { startsWith: "calendly_" },
@@ -65,16 +70,16 @@ async function scanForMismatches(since: Date, limit: number): Promise<MismatchRo
   for (const b of bookings) {
     if (!b.calendarEventId) continue;
     const uuid = b.calendarEventId.replace(/^calendly_/, "");
-    const bookedByName = resolveSetterAlias(await fetchCalendlyBookedBy(uuid, token));
-    if (!bookedByName) continue;
+    const bookedByRaw = await fetchCalendlyBookedBy(uuid, token);
+    if (!bookedByRaw) continue;
+    const attributed = attributeBookedBy(bookedByRaw, members);
+    const bookedByName = bookedByRaw.trim();
 
     const currentName = b.setter?.name || null;
     const sameByName = currentName && currentName.toLowerCase().includes(bookedByName.toLowerCase());
-    if (sameByName) continue;
+    if (sameByName || (attributed.memberId && attributed.memberId === b.setterId)) continue;
 
-    const candidate = await prisma.teamMember.findFirst({
-      where: { name: { contains: bookedByName, mode: "insensitive" }, role: "setter" },
-    });
+    const candidate = attributed.memberId ? { id: attributed.memberId } : null;
 
     mismatches.push({
       bookingId: b.id,
@@ -97,12 +102,12 @@ async function applyFixes(rows: MismatchRow[]): Promise<{ fixed: number; skipped
   let skipped = 0;
 
   for (const row of rows) {
-    let setterId = row.candidateSetterId;
+    const setterId = row.candidateSetterId;
+    // No existing setter matches this text. Leave the booking as it is — do not
+    // invent a TeamMember from the Calendly string.
     if (!setterId) {
-      const newMember = await prisma.teamMember.create({
-        data: { name: row.calendlySetterName, role: "setter", excludeFromLeaderboard: true },
-      });
-      setterId = newMember.id;
+      skipped++;
+      continue;
     }
     if (setterId === row.currentSetterId) {
       skipped++;
@@ -110,7 +115,7 @@ async function applyFixes(rows: MismatchRow[]): Promise<{ fixed: number; skipped
     }
     await prisma.booking.update({
       where: { id: row.bookingId },
-      data: { setterId },
+      data: { setterId, unmatchedBookedBy: null },
     });
     await prisma.auditLog.create({
       data: {

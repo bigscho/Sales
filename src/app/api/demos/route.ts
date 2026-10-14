@@ -85,7 +85,11 @@ export async function PATCH(request: NextRequest) {
     const oldSetterId = existingDemo.booking.setterId;
     await prisma.booking.update({
       where: { id: existingDemo.booking.id },
-      data: { setterId: setterId || null },
+      data: {
+        setterId: setterId || null,
+        // Assigning a setter clears the "needs review" flag. Clearing the setter does not invent one.
+        ...(setterId ? { unmatchedBookedBy: null } : {}),
+      },
     });
 
     await prisma.auditLog.create({

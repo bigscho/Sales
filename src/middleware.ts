@@ -86,6 +86,16 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // /api/team stays readable for dropdowns. Mutations are admin-only; the
+    // route handler checks again so a role outside ROLE_ROUTES cannot write.
+    if (
+      pathname.startsWith("/api/team") &&
+      request.method !== "GET" &&
+      request.method !== "HEAD"
+    ) {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    }
+
     // Redirect "/" to role-specific default page
     if (pathname === "/" && ROLE_DEFAULT[role]) {
       return NextResponse.redirect(new URL(ROLE_DEFAULT[role], request.url));
@@ -95,7 +105,7 @@ export async function middleware(request: NextRequest) {
     const allowedRoutes = ROLE_ROUTES[role];
     if (allowedRoutes) {
       const hasAccess = allowedRoutes.some(r => pathname === r || pathname.startsWith(r + "/") || pathname.startsWith(r + "?"));
-      // Also allow /api/team (read-only for dropdowns) and /api/weeks
+      // Also allow GET /api/team (dropdowns; mutations are rejected above) and /api/weeks
       const alwaysAllowed = ["/api/team", "/api/weeks"];
       const isAlwaysAllowed = alwaysAllowed.some(r => pathname.startsWith(r));
 

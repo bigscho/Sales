@@ -116,6 +116,10 @@ model Booking {
   // pending-reschedule successor (same meeting moved to a new time, inherited bookedAt) so
   // a time change is never double-counted. Frozen at creation; never restated.
   isBookingEvent    Boolean  @default(true)
+  // Set when Calendly "Booked by" / UTM text matched no active setter or closer.
+  // setterId stays null — the webhook does not invent a TeamMember. Cleared when an
+  // admin assigns a setter. Null means "no unmatched text", not "reviewed".
+  unmatchedBookedBy String?
   // Prospect's GCal invite RSVP, observed by the 10-min gcal sync (attendee responseStatus).
   // inviteAcceptedAt = first sync pass that saw "accepted" — approximate to ±10 min going
   // forward; for rows backfilled from past events it's just the backfill time, so use
