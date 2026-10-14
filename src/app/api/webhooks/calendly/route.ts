@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
-import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
-import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
+import { attributeBookedBy } from "@/lib/setter-attribution";
+
+// Match "Booked by" / UTM text to an existing active setter or closer.
+// A miss leaves the booking unattributed and records the raw text — it does
+// not create a TeamMember from free text.
+async function attributeIncoming(raw: string | null) {
+  const members = await prisma.teamMember.findMany({
+    where: { isActive: true, role: { in: ["setter", "closer"] } },
+    select: { id: true, name: true, role: true, isActive: true, excludeFromLeaderboard: true },
+  });
+  return attributeBookedBy(raw, members);
+}
+
+async function flagUnattributed(bookingId: string, unmatchedBookedBy: string) {
+  await prisma.auditLog.create({
+    data: {
+      entityType: "booking",
+      entityId: bookingId,
+      action: "setter_unattributed",
+      newValue: JSON.stringify({ unmatchedBookedBy }),
+      performedBy: "calendly_webhook",
+    },
+  });
+}
 
 // Calendly sends: invitee.created, invitee.canceled
 // GCal sync may have already created the booking with a different calendarEventId format.
@@ -502,15 +525,17 @@ export async function POST(request: NextRequest) {
         if (!isReschedule) {
           // Fill setter only if the row has none (never overwrite operator corrections
           // on a mere duplicate delivery).
-          const dupSetterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
-          if (!existing.setterId && dupSetterName) {
-            const setterMatch = await prisma.teamMember.findFirst({
-              where: { name: { contains: dupSetterName, mode: "insensitive" }, role: "setter" },
-            });
-            if (setterMatch) enrich.setterId = setterMatch.id;
+          const dupSetterRaw = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
+          if (!existing.setterId && dupSetterRaw) {
+            const attributed = await attributeIncoming(dupSetterRaw);
+            if (attributed.memberId) enrich.setterId = attributed.memberId;
+            else if (attributed.unmatchedBookedBy) enrich.unmatchedBookedBy = attributed.unmatchedBookedBy;
           }
           if (Object.keys(enrich).length > 0) {
             await prisma.booking.update({ where: { id: existing.id }, data: enrich });
+          }
+          if (typeof enrich.unmatchedBookedBy === "string") {
+            await flagUnattributed(existing.id, enrich.unmatchedBookedBy);
           }
           return NextResponse.json({ received: true, action: "duplicate_enriched", bookingId: existing.id });
         }
@@ -522,27 +547,18 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ received: true, action: "replay_ignored", bookingId: replay.id });
         }
 
-        // Most-recent setter gets credit for the rebook (falls back to previous setter)
-        const incomingSetterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
+        // Most-recent setter gets credit for the rebook (falls back to previous setter
+        // only when Booked by is blank). Unrecognized free text stays unattributed.
+        const incomingSetterRaw = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
         let successorSetterId: string | null = existing.setterId;
-        if (incomingSetterName) {
-          // Closers double as setters: a closer's name in "Booked by" on a rebook
-          // takes the setter credit like any setter. Never create a junk setter row.
-          const closerBookedBy = await matchCloserByName(incomingSetterName);
-          if (closerBookedBy) {
-            successorSetterId = closerBookedBy.id;
+        let successorUnmatched: string | null = null;
+        if (incomingSetterRaw) {
+          const attributed = await attributeIncoming(incomingSetterRaw);
+          if (attributed.memberId) {
+            successorSetterId = attributed.memberId;
           } else {
-            const setterMatch = await prisma.teamMember.findFirst({
-              where: { name: { contains: incomingSetterName, mode: "insensitive" }, role: "setter" },
-            });
-            if (setterMatch) {
-              successorSetterId = setterMatch.id;
-            } else {
-              const newMember = await prisma.teamMember.create({
-                data: { name: incomingSetterName, role: "setter", excludeFromLeaderboard: true },
-              });
-              successorSetterId = newMember.id;
-            }
+            successorSetterId = null;
+            successorUnmatched = attributed.unmatchedBookedBy;
           }
         }
 
@@ -598,6 +614,7 @@ export async function POST(request: NextRequest) {
             listingAddress: listingAddress || existing.listingAddress,
             prospectTimezone: prospectTimezone || existing.prospectTimezone,
             setterId: successorSetterId,
+            unmatchedBookedBy: successorUnmatched,
             bookedAt: successorBookedAt,
             isBookingEvent: successorIsBookingEvent,
             demoDate: demoDate!,
@@ -623,15 +640,16 @@ export async function POST(request: NextRequest) {
             entityId: existing.id,
             action: "calendly_rescheduled_split",
             oldValue: JSON.stringify({ demoDate: existing.demoDate, demoStatus: existing.demo?.status, setterId: existing.setterId }),
-            newValue: JSON.stringify({ successorId: successor.id, demoDate, setterId: successorSetterId }),
+            newValue: JSON.stringify({ successorId: successor.id, demoDate, setterId: successorSetterId, unmatchedBookedBy: successorUnmatched }),
             performedBy: "calendly_webhook",
           },
         });
+        if (successorUnmatched) await flagUnattributed(successor.id, successorUnmatched);
 
         try {
           const { sendSlackTeam } = await import("@/lib/slack");
           const dateStr = demoDate!.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-          await sendSlackTeam(`🔁 Rescheduled: ${successor.prospectName} moved to ${dateStr}${incomingSetterName ? ` (reset by ${incomingSetterName})` : ""}`);
+          await sendSlackTeam(`🔁 Rescheduled: ${successor.prospectName} moved to ${dateStr}${incomingSetterRaw ? ` (reset by ${incomingSetterRaw})` : ""}`);
         } catch (err) { console.error("reschedule Slack post failed:", err); }
 
         return NextResponse.json({ received: true, action: "rescheduled_split", bookingId: successor.id });
@@ -656,40 +674,23 @@ export async function POST(request: NextRequest) {
         closerId = closer?.id || null;
       }
 
-      // Resolve setter — use contains matching to handle whitespace/special chars in Q&A answers
-      const setterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
+      // Resolve setter against existing active setters and closers. "Booked by"
+      // naming the host closer is self-sourced (contract §4.6). Closers double as
+      // setters, so a closer match takes setter credit — setter PAY stays role-gated.
+      // Unrecognized free text does not create a TeamMember.
+      const setterRaw = setterFromDescription || tracking.utm_source || tracking.utm_campaign || null;
       let setterId: string | null = null;
+      let unmatchedBookedBy: string | null = null;
       let leadSource = LEAD_SOURCE_FED;
-      if (setterName) {
-        // "Booked by" naming a closer = the closer booked it themselves. On their
-        // own calendar that's a self-sourced deal (contract §4.6). Closers double
-        // as setters, so either way they take the setter credit (scoreboard
-        // activity) — commission still keys off leadSource, and setter PAY is
-        // role-gated, so this never pays them per-show. No junk setter rows.
-        const closerBookedBy = await matchCloserByName(setterName);
-        if (closerBookedBy) {
-          setterId = closerBookedBy.id;
-          if (closerId && closerBookedBy.id === closerId) {
-            leadSource = LEAD_SOURCE_SELF;
-          }
-        } else {
-          const setter = await prisma.teamMember.findFirst({
-            where: { name: { contains: setterName, mode: "insensitive" }, role: "setter" },
-          });
-          setterId = setter?.id || null;
-
-          // Setter alias of the host closer (Ming = Matthew) → full-cycle self-sourced
-          if (isSelfSourcedViaIdentity(setterId, closerId)) {
-            leadSource = LEAD_SOURCE_SELF;
-          }
-
-          // Auto-create non-setter bookers (CEO, guests) as excluded from leaderboard
-          if (!setterId) {
-            const newMember = await prisma.teamMember.create({
-              data: { name: setterName, role: "setter", excludeFromLeaderboard: true },
-            });
-            setterId = newMember.id;
-          }
+      if (setterRaw) {
+        const attributed = await attributeIncoming(setterRaw);
+        setterId = attributed.memberId;
+        unmatchedBookedBy = attributed.unmatchedBookedBy;
+        if (attributed.matchedRole === "closer" && closerId && attributed.memberId === closerId) {
+          leadSource = LEAD_SOURCE_SELF;
+        }
+        if (attributed.matchedRole === "setter" && isSelfSourcedViaIdentity(setterId, closerId)) {
+          leadSource = LEAD_SOURCE_SELF;
         }
       }
 
@@ -702,6 +703,7 @@ export async function POST(request: NextRequest) {
           listingAddress,
           prospectTimezone,
           setterId,
+          unmatchedBookedBy,
           bookedAt: new Date(),
           demoDate: effectiveDate,
           calendarEventId: calendlyId,
@@ -723,10 +725,11 @@ export async function POST(request: NextRequest) {
           entityType: "booking",
           entityId: booking.id,
           action: "calendly_webhook_created",
-          newValue: JSON.stringify({ name: inviteeName, email: inviteeEmail, date: effectiveDate, leadSource }),
+          newValue: JSON.stringify({ name: inviteeName, email: inviteeEmail, date: effectiveDate, leadSource, unmatchedBookedBy }),
           performedBy: "calendly_webhook",
         },
       });
+      if (unmatchedBookedBy) await flagUnattributed(booking.id, unmatchedBookedBy);
 
       // Blast attribution — check if prospect was SMS-blasted in last 14 days
       try {
@@ -781,7 +784,7 @@ export async function POST(request: NextRequest) {
       try {
         const { sendSlackTeam } = await import("@/lib/slack");
         const dateStr = effectiveDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-        const setterLabel = setterName ? ` (booked by ${setterName})` : "";
+        const setterLabel = setterRaw ? ` (booked by ${setterRaw})` : "";
         await sendSlackTeam(`🗓 New demo booked: ${inviteeName} with ${closerName || "TBD"} on ${dateStr}${setterLabel}`);
       } catch (err) { console.error("team Slack post failed:", err); }
 

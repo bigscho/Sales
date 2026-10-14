@@ -13,11 +13,35 @@ interface TeamMember {
   pin: string | null;
   isAdmin: boolean;
   slackUserId: string | null;
+  email: string | null;
+  trellusUserId: string | null;
   excludeFromLeaderboard: boolean;
   cumulativeShows: number;
   consecutive15PlusWeeks: number;
   isActive: boolean;
 }
+
+interface UnmappedSeat {
+  trellusUserId: string;
+  dials: number;
+  name: string | null;
+  email: string | null;
+  suggestion: { memberId: string; memberName: string; reason: "email" | "name" | "alias" } | null;
+}
+
+interface UnattributedBooking {
+  id: string;
+  prospectName: string;
+  demoDate: string;
+  unmatchedBookedBy: string | null;
+  demo: { id: string } | null;
+}
+
+const SUGGESTION_LABEL: Record<NonNullable<UnmappedSeat["suggestion"]>["reason"], string> = {
+  email: "email match",
+  name: "name match",
+  alias: "known alias",
+};
 
 const roleOptions = [
   { value: "setter", label: "Setter" },
@@ -36,11 +60,22 @@ export default function TeamPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [unmapped, setUnmapped] = useState<UnmappedSeat[]>([]);
+  const [rosterAvailable, setRosterAvailable] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [unattributed, setUnattributed] = useState<UnattributedBooking[]>([]);
+  const [mapChoice, setMapChoice] = useState<Record<string, string>>({});
+  const [assignChoice, setAssignChoice] = useState<Record<string, string>>({});
 
   const loadData = useCallback(() => {
     setLoading(true);
     fetch("/api/team").then((r) => r.json()).then((data) => {
       setMembers(data.members || []);
+      setUnmapped(data.trellus?.unmapped || []);
+      setRosterAvailable(!!data.trellus?.rosterAvailable);
+      setSyncedAt(data.trellus?.syncedAt || null);
+      setUnattributed(data.unattributedBookings || []);
       setLoading(false);
     });
   }, []);
@@ -50,7 +85,7 @@ export default function TeamPage() {
   const addMember = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await fetch("/api/team", {
+    const res = await fetch("/api/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -58,19 +93,48 @@ export default function TeamPage() {
         role: form.get("role"),
         tier: Number(form.get("tier")) || 1,
         slackUserId: form.get("slackUserId") || null,
+        trellusUserId: form.get("trellusUserId") || null,
         excludeFromLeaderboard: form.get("excludeFromLeaderboard") === "on",
       }),
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setNotice(body.error || "Could not add member");
+      return;
+    }
+    setNotice(null);
     setShowAddForm(false);
     loadData();
   };
 
   const updateMember = async (id: string, data: Record<string, unknown>) => {
-    await fetch("/api/team", {
+    const res = await fetch("/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...data }),
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setNotice(body.error || "Update failed");
+    } else {
+      setNotice(null);
+    }
+    loadData();
+  };
+
+  const assignBooking = async (demoId: string, setterId: string) => {
+    if (!setterId) return;
+    const res = await fetch("/api/demos", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demoId, setterId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setNotice(body.error || "Could not assign setter");
+    } else {
+      setNotice(null);
+    }
     loadData();
   };
 
@@ -103,6 +167,7 @@ export default function TeamPage() {
                 <option value="4">Tier 4 - Lead SDR</option>
               </select>
               <input name="slackUserId" placeholder="Slack ID (U0...)" className="border rounded-lg px-3 py-2 text-sm w-36" />
+              <input name="trellusUserId" placeholder="Trellus ID" className="border rounded-lg px-3 py-2 text-sm w-36" />
               <label className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] whitespace-nowrap">
                 <input type="checkbox" name="excludeFromLeaderboard" className="rounded" />
                 Exclude from leaderboard
@@ -113,6 +178,10 @@ export default function TeamPage() {
         </Card>
       )}
 
+      {notice && (
+        <p className="text-sm text-red-600">{notice}</p>
+      )}
+
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -121,6 +190,138 @@ export default function TeamPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          {unmapped.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Unmapped Trellus seats</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="text-[var(--muted-foreground)]">
+                  These dialer accounts showed up in the latest sync
+                  {syncedAt ? ` (${new Date(syncedAt).toLocaleString()})` : ""} and are not linked to a setter.
+                  {rosterAvailable
+                    ? " Names come from the Trellus roster."
+                    : " Trellus roster names were unavailable, so only the ids are shown."}
+                  {" "}A suggestion is an exact name, email, or known alias — nothing is linked until you map it.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[var(--muted-foreground)]">
+                        <th className="py-2 pr-3 font-medium">Trellus</th>
+                        <th className="py-2 pr-3 font-medium">ID</th>
+                        <th className="py-2 pr-3 font-medium text-right">Dials</th>
+                        <th className="py-2 font-medium">Map to setter</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unmapped.map((seat) => {
+                        const selected = mapChoice[seat.trellusUserId] || seat.suggestion?.memberId || "";
+                        return (
+                          <tr key={seat.trellusUserId} className="border-t">
+                            <td className="py-2 pr-3">
+                              <div className="font-medium">{seat.name || "Unknown seat"}</div>
+                              {seat.email && <div className="text-xs text-[var(--muted-foreground)]">{seat.email}</div>}
+                              {seat.suggestion && (
+                                <div className="text-xs text-[var(--muted-foreground)]">
+                                  Suggested: {seat.suggestion.memberName} ({SUGGESTION_LABEL[seat.suggestion.reason]})
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 font-mono text-xs">{seat.trellusUserId}</td>
+                            <td className="py-2 pr-3 text-right">{seat.dials}</td>
+                            <td className="py-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  value={selected}
+                                  onChange={(e) => setMapChoice((prev) => ({ ...prev, [seat.trellusUserId]: e.target.value }))}
+                                  className="border rounded px-2 py-1 text-xs"
+                                >
+                                  <option value="">Select setter</option>
+                                  {setters.map((m) => (
+                                    <option key={m.id} value={m.id}>{m.name}{m.trellusUserId ? " (already linked)" : ""}</option>
+                                  ))}
+                                </select>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!selected}
+                                  onClick={() => updateMember(selected, { trellusUserId: seat.trellusUserId })}
+                                >
+                                  Map
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {unattributed.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Bookings needing a setter</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="text-[var(--muted-foreground)]">
+                  Calendly sent a Booked-by value that did not match an active setter. The booking was left unattributed instead of creating a new team member.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[var(--muted-foreground)]">
+                        <th className="py-2 pr-3 font-medium">Prospect</th>
+                        <th className="py-2 pr-3 font-medium">Demo</th>
+                        <th className="py-2 pr-3 font-medium">Booked by</th>
+                        <th className="py-2 font-medium">Assign</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unattributed.map((b) => (
+                        <tr key={b.id} className="border-t">
+                          <td className="py-2 pr-3 font-medium">{b.prospectName}</td>
+                          <td className="py-2 pr-3">{new Date(b.demoDate).toLocaleString()}</td>
+                          <td className="py-2 pr-3 max-w-xs truncate" title={b.unmatchedBookedBy || ""}>{b.unmatchedBookedBy}</td>
+                          <td className="py-2">
+                            {b.demo ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  value={assignChoice[b.id] || ""}
+                                  onChange={(e) => setAssignChoice((prev) => ({ ...prev, [b.id]: e.target.value }))}
+                                  className="border rounded px-2 py-1 text-xs"
+                                >
+                                  <option value="">Select setter</option>
+                                  {members.filter((m) => m.isActive && (m.role === "setter" || m.role === "closer")).map((m) => (
+                                    <option key={m.id} value={m.id}>{m.name}</option>
+                                  ))}
+                                </select>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!assignChoice[b.id]}
+                                  onClick={() => assignBooking(b.demo!.id, assignChoice[b.id])}
+                                >
+                                  Assign
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-[var(--muted-foreground)]">No demo row</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Setters */}
           <div>
             <h3 className="text-lg font-semibold mb-3">Setters ({setters.length})</h3>
@@ -131,6 +332,7 @@ export default function TeamPage() {
                     <th className="text-left p-3 font-medium">Name</th>
                     <th className="text-left p-3 font-medium">Tier</th>
                     <th className="text-left p-3 font-medium">Slack ID</th>
+                    <th className="text-left p-3 font-medium">Trellus ID</th>
                     <th className="text-left p-3 font-medium">PIN</th>
                     <th className="text-center p-3 font-medium">Leaderboard</th>
                     <th className="text-right p-3 font-medium">Cumulative Shows</th>
@@ -165,6 +367,20 @@ export default function TeamPage() {
                           }}
                           onChange={(e) => {
                             setMembers(prev => prev.map(p => p.id === m.id ? { ...p, slackUserId: e.target.value } : p));
+                          }}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          value={m.trellusUserId || ""}
+                          placeholder="resource id"
+                          className="border rounded px-2 py-1 text-xs w-28 font-mono"
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== m.trellusUserId) updateMember(m.id, { trellusUserId: val });
+                          }}
+                          onChange={(e) => {
+                            setMembers(prev => prev.map(p => p.id === m.id ? { ...p, trellusUserId: e.target.value } : p));
                           }}
                         />
                       </td>
@@ -209,7 +425,7 @@ export default function TeamPage() {
                     </tr>
                   ))}
                   {setters.length === 0 && (
-                    <tr><td colSpan={9} className="p-4 text-center text-[var(--muted-foreground)]">No setters added yet</td></tr>
+                    <tr><td colSpan={10} className="p-4 text-center text-[var(--muted-foreground)]">No setters added yet</td></tr>
                   )}
                 </tbody>
               </table>
