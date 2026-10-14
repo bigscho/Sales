@@ -26,6 +26,7 @@
 import { prisma } from "@/lib/db";
 import { sendConfirmation } from "./send";
 import { everSent, type WorklistRow } from "./worklist";
+import { internalGroupConfigFromEnv, pinnedInternalGroupIds } from "./internal-group";
 import {
   renderOrigination,
   formatDemoDay,
@@ -111,13 +112,24 @@ async function timeMatchCandidate(groupCreatedAt: Date) {
 export async function maybeSendOriginationReply(groupId: string): Promise<OriginationOutcome> {
   const group = await prisma.sendblueGroup.findUnique({ where: { groupId } });
   if (!group) return { action: "skipped", reason: "group_unknown" };
+  // Coaching chats (setters, closers, any other configured internal group)
+  // are excluded before either match tier. Time match would otherwise greet
+  // an unmatched group created in the same half-hour as a booking. Checked
+  // ahead of the freshness window so a late message is still refused.
+  const configured = internalGroupConfigFromEnv();
+  if (
+    group.internal ||
+    pinnedInternalGroupIds(configured.groups).includes(group.groupId)
+  ) {
+    return { action: "skipped", reason: "internal_group" };
+  }
   if (Date.now() - group.createdAt.getTime() > FRESH_WINDOW_MS) {
     return { action: "skipped", reason: "stale_group" };
   }
 
   // Tier 1: phone match (set by the webhook/poll sync). Tier 2: time match.
-  // No match at all = silence — this is what keeps the ops group and any
-  // non-prospect group safe. (Group-before-booking race self-resolves: the
+  // No match at all = silence — this is what keeps an ordinary ops or
+  // non-prospect group quiet. (Group-before-booking race self-resolves: the
   // next inbound message re-fires the webhook and both tiers re-run.)
   let matchSource: "phone" | "time";
   let booking;

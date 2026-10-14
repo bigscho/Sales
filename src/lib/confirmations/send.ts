@@ -4,9 +4,21 @@
 import { prisma } from "@/lib/db";
 import { sendGroupMessage, isLive } from "@/lib/sendblue";
 import type { WorklistRow, Touchpoint } from "./worklist";
+import { internalGroupConfigFromEnv, pinnedInternalGroupIds } from "./internal-group";
 
 /** Day-of testimonial video attachment. */
 const TESTIMONIAL_URL = process.env.TESTIMONIAL_VIDEO_URL;
+
+/** Pinned id or SendblueGroup.internal — any configured coaching chat. */
+async function targetIsInternalGroup(groupId: string): Promise<boolean> {
+  const ids = pinnedInternalGroupIds(internalGroupConfigFromEnv().groups);
+  if (ids.includes(groupId)) return true;
+  const row = await prisma.sendblueGroup.findUnique({
+    where: { groupId },
+    select: { internal: true },
+  });
+  return row?.internal === true;
+}
 
 export interface SendOutcome {
   bookingId: string;
@@ -39,6 +51,18 @@ export async function sendConfirmation(
   }
 
   try {
+    // Last gate. Worklist lookup already skips internal rows; this refuses the
+    // send if a pinned group id or a flagged row still landed in row.groupId
+    // (manual send, reconnect, or a lookup bug). Prospect groups are not flagged.
+    if (await targetIsInternalGroup(row.groupId)) {
+      await logSend(row, touchpoint, body, edited, opts, {
+        status: "skipped",
+        dryRun,
+        error: "internal_group",
+      });
+      return { bookingId: row.bookingId, status: "skipped", dryRun, error: "internal_group" };
+    }
+
     // Day-of goes as TWO messages: video first, text second — so the text (not
     // "1 Attachment") is what shows in the prospect's inbox preview.
     // SendBlue delivers the tiny text instantly but processes media async, so
