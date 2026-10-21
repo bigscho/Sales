@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { parseCalendlyQuestions } from "@/lib/calendly-answers";
 
 // Polls Calendly API for scheduled events and syncs:
 // 1. New events not yet in DB (backup for webhook misses)
@@ -38,6 +39,37 @@ async function calendlyFetch(path: string, token: string) {
   return res.json();
 }
 
+// Grassfed Demo only. Fills the two new columns when both are still empty so
+// a row that already stored one answer is not re-fetched on every sync.
+// A prospect who left both questions blank stays null and is retried next run.
+async function fillGrassfedDemoAttribution(
+  existing: { id: string; howHeard: string | null; referredBy: string | null },
+  event: CalendlyEvent,
+  token: string,
+): Promise<boolean> {
+  if (!/^grassfed demo$/i.test(event.name || "")) return false;
+  // One stored answer means this row was already read. Don't re-fetch it
+  // (and don't overwrite a blank second answer) on later syncs.
+  if (existing.howHeard != null || existing.referredBy != null) return false;
+
+  const eventUuid = event.uri.split("/scheduled_events/")[1];
+  const inviteesData = await calendlyFetch(
+    `/scheduled_events/${eventUuid}/invitees?count=1`,
+    token,
+  );
+  const invitee: CalendlyInvitee | null = inviteesData?.collection?.[0] || null;
+  if (!invitee) return false;
+
+  const parsed = parseCalendlyQuestions(invitee.questions_and_answers);
+  const data: { howHeard?: string; referredBy?: string } = {};
+  if (!existing.howHeard && parsed.howHeard) data.howHeard = parsed.howHeard;
+  if (!existing.referredBy && parsed.referredBy) data.referredBy = parsed.referredBy;
+  if (Object.keys(data).length === 0) return false;
+
+  await prisma.booking.update({ where: { id: existing.id }, data });
+  return true;
+}
+
 // GET handler for Vercel cron
 export async function GET() {
   return POST();
@@ -49,7 +81,7 @@ export async function POST() {
     return NextResponse.json({ error: "CALENDLY_API_TOKEN not set" }, { status: 500 });
   }
 
-  const results = { new: 0, updated: 0, canceled: 0, errors: [] as string[] };
+  const results = { new: 0, updated: 0, canceled: 0, attributionFilled: 0, errors: [] as string[] };
 
   // Get org URI
   const meData = await calendlyFetch("/users/me", token);
@@ -116,6 +148,18 @@ export async function POST() {
       });
 
       if (existing) {
+        // Backfill Grassfed Demo attribution only. Other event types (setter
+        // round-robin, original demo, GHL-prefilled links) are not fetched again.
+        // Writes howHeard / referredBy only when both are still null. Does not
+        // touch setter, phone, address, utm, or the time-move logic below.
+        try {
+          if (await fillGrassfedDemoAttribution(existing, event, token)) {
+            results.attributionFilled++;
+          }
+        } catch (e) {
+          results.errors.push(`attribution ${existing.id}: ${String(e).slice(0, 80)}`);
+        }
+
         // Immutable-history guard: frozen rows and terminal outcomes never move weeks.
         // (Real reschedule splitting is handled by the webhook + gcal sync; this poll
         // route is a passive backup and must not drag showed/no_show demos around.)
@@ -194,12 +238,10 @@ export async function POST() {
         closerId = closer?.id || null;
       }
 
-      // Get phone from Q&A
-      let phone: string | null = null;
-      const phoneQ = invitee.questions_and_answers?.find(
-        (q) => q.question.toLowerCase().includes("phone")
-      );
-      if (phoneQ) phone = phoneQ.answer;
+      // Phone + site-demo attribution. Setter resolution above stays utm-only;
+      // this does not read "Booked by" or change the utm_source fallback.
+      const parsedQa = parseCalendlyQuestions(invitee.questions_and_answers);
+      const phone = parsedQa.phone;
 
       // Find or create week
       const { start, end } = getWeekRange(eventStart);
@@ -216,6 +258,8 @@ export async function POST() {
           prospectName: invitee.name || event.name || "Unknown",
           prospectEmail: invitee.email || null,
           prospectPhone: phone,
+          howHeard: parsedQa.howHeard,
+          referredBy: parsedQa.referredBy,
           setterId,
           demoDate: eventStart,
           calendarEventId: compositeId,
@@ -247,6 +291,16 @@ export async function POST() {
         where: { calendarEventId: compositeId },
         include: { demo: true },
       });
+
+      if (existing) {
+        try {
+          if (await fillGrassfedDemoAttribution(existing, event, token)) {
+            results.attributionFilled++;
+          }
+        } catch (e) {
+          results.errors.push(`attribution ${existing.id}: ${String(e).slice(0, 80)}`);
+        }
+      }
 
       if (existing && existing.demo && existing.demo.status === "pending") {
         await prisma.demo.update({

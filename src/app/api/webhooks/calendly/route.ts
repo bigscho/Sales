@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { carryForwardAnswer, formatAttributionNote, parseCalendlyQuestions } from "@/lib/calendly-answers";
 
 // Calendly sends: invitee.created, invitee.canceled
 // GCal sync may have already created the booking with a different calendarEventId format.
@@ -54,6 +55,8 @@ export async function POST(request: NextRequest) {
     let setterFromDescription: string | null = null;
     let eventTypeName: string | null = null;
     let listingAddress: string | null = null; // "Listing address / zip codes" custom Q&A
+    let howHeard: string | null = null; // "How did you hear about us?"
+    let referredBy: string | null = null; // "If someone sent you, who?"
     let prospectTimezone: string | null = null; // IANA tz from invitee
 
     const calendlyToken = process.env.CALENDLY_API_TOKEN;
@@ -102,27 +105,21 @@ export async function POST(request: NextRequest) {
           if (inviteeRes.ok) {
             const inviteeData = await inviteeRes.json();
             const qna = inviteeData.resource?.questions_and_answers || [];
-            const phoneAnswer = qna.find((q: { question: string }) =>
-              q.question.toLowerCase().includes("phone")
-            );
-            if (phoneAnswer) phone = phoneAnswer.answer;
-
-            // "Listing address / zip codes" — drives the show-rate T-1 confirmation text
-            const listingQ = qna.find((q: { question: string }) => {
-              const ql = q.question.toLowerCase();
-              return ql.includes("listing") || ql.includes("address") || ql.includes("zip");
-            });
-            if (listingQ?.answer?.trim()) listingAddress = listingQ.answer.trim();
+            // Keyword match, not position. Attribution questions are excluded
+            // from phone / address / "Booked by" so they cannot become a setter.
+            const parsedQa = parseCalendlyQuestions(qna);
+            if (parsedQa.phone !== null) phone = parsedQa.phone;
+            listingAddress = parsedQa.listingAddress;
+            howHeard = parsedQa.howHeard;
+            referredBy = parsedQa.referredBy;
 
             // Invitee timezone — used for prospect-local send timing
             prospectTimezone = inviteeData.resource?.timezone || null;
 
-            // Also check Q&A for "Booked by" as a custom question
+            // Also check Q&A for "Booked by" as a custom question.
+            // Blank answer stays null so the utm_source fallback below still runs.
             if (!setterFromDescription) {
-              const bookedByQ = qna.find((q: { question: string }) =>
-                q.question.toLowerCase().includes("booked")
-              );
-              if (bookedByQ) setterFromDescription = bookedByQ.answer?.trim() || null;
+              setterFromDescription = parsedQa.bookedBy;
             }
 
             // Check tracking/UTM for setter name as last resort
@@ -495,6 +492,8 @@ export async function POST(request: NextRequest) {
         if (inviteeEmail && !existing.prospectEmail) enrich.prospectEmail = inviteeEmail;
         if (phone && !existing.prospectPhone) enrich.prospectPhone = phone;
         if (listingAddress && !existing.listingAddress) enrich.listingAddress = listingAddress;
+        if (howHeard && !existing.howHeard) enrich.howHeard = howHeard;
+        if (referredBy && !existing.referredBy) enrich.referredBy = referredBy;
         if (prospectTimezone && !existing.prospectTimezone) enrich.prospectTimezone = prospectTimezone;
 
         const isReschedule = !!demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
@@ -596,6 +595,8 @@ export async function POST(request: NextRequest) {
             prospectEmail: inviteeEmail || existing.prospectEmail,
             prospectPhone: phone || existing.prospectPhone,
             listingAddress: listingAddress || existing.listingAddress,
+            howHeard: carryForwardAnswer(howHeard, existing.howHeard),
+            referredBy: carryForwardAnswer(referredBy, existing.referredBy),
             prospectTimezone: prospectTimezone || existing.prospectTimezone,
             setterId: successorSetterId,
             bookedAt: successorBookedAt,
@@ -700,6 +701,8 @@ export async function POST(request: NextRequest) {
           prospectEmail: inviteeEmail || null,
           prospectPhone: phone,
           listingAddress,
+          howHeard,
+          referredBy,
           prospectTimezone,
           setterId,
           bookedAt: new Date(),
@@ -782,7 +785,8 @@ export async function POST(request: NextRequest) {
         const { sendSlackTeam } = await import("@/lib/slack");
         const dateStr = effectiveDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
         const setterLabel = setterName ? ` (booked by ${setterName})` : "";
-        await sendSlackTeam(`🗓 New demo booked: ${inviteeName} with ${closerName || "TBD"} on ${dateStr}${setterLabel}`);
+        const attributionNote = formatAttributionNote(howHeard, referredBy);
+        await sendSlackTeam(`🗓 New demo booked: ${inviteeName} with ${closerName || "TBD"} on ${dateStr}${setterLabel}${attributionNote}`);
       } catch (err) { console.error("team Slack post failed:", err); }
 
       return NextResponse.json({

@@ -98,6 +98,11 @@ model Booking {
   calendarEventId  String?  @unique
   airtableRecordId String?
   listingAddress   String?  // Calendly "Listing address / zip codes" free-text (setter-entered); blank -> DB area fallback
+  // Site demo (calendly.com/colin-grsfd/grassfed-demo) attribution. Optional.
+  // Null on every existing row. A reschedule keeps the prior answer when the
+  // new invitee leaves the question blank. Never used for setter/phone/address.
+  howHeard         String?  // "How did you hear about us?" (AI search, Web search, Instagram, Referral, Other)
+  referredBy       String?  // "If someone sent you, who?"
   prospectTimezone String?  // IANA tz from Calendly invitee, for prospect-local send timing
   source           String   @default("auto") // auto | manual
   blastSourced     Boolean  @default(false) // true if prospect was SMS-blasted within 14 days
