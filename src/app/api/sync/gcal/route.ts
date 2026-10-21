@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { carryForwardAnswer, parseAttributionFromText } from "@/lib/calendly-answers";
 
 // Google Calendar sync via service account
 // Reads Calendly-booked events from the active closers' calendars,
@@ -245,6 +246,8 @@ type OldBookingForSplit = {
   prospectName: string;
   prospectEmail: string | null;
   prospectPhone: string | null;
+  howHeard: string | null;
+  referredBy: string | null;
   setterId: string | null;
   calendarEventId: string | null;
   leadSource: string;
@@ -262,6 +265,8 @@ async function supersedeAndCreate(opts: {
   newCalendarEventId: string | null;
   bookedAt: Date;
   setterId: string | null;
+  howHeard?: string | null;
+  referredBy?: string | null;
   transferEventId?: boolean; // same GCal event dragged: successor takes over the event id
 }): Promise<string> {
   const { start, end } = getWeekRange(opts.newDemoDate);
@@ -295,6 +300,9 @@ async function supersedeAndCreate(opts: {
       prospectName: opts.old.prospectName,
       prospectEmail: opts.old.prospectEmail,
       prospectPhone: opts.old.prospectPhone,
+      // Blank on the new invite keeps the original answer.
+      howHeard: carryForwardAnswer(opts.howHeard, opts.old.howHeard),
+      referredBy: carryForwardAnswer(opts.referredBy, opts.old.referredBy),
       setterId: opts.setterId,
       bookedAt: opts.bookedAt,
       // supersedeAndCreate is only reached for a re-engagement after a TERMINAL outcome
@@ -508,6 +516,17 @@ async function syncCalendar(
 
         // NOTE: do NOT re-attribute setter here. This branch fires on every cron poll for
         // already-known events; re-parsing the description would revert operator backfills.
+        // Site-demo attribution is fill-only: write howHeard / referredBy when the
+        // description has them and the row is still blank. Never overwrite.
+        const attribution = parseAttributionFromText(event.description);
+        const attributionFill: { howHeard?: string; referredBy?: string } = {};
+        if (attribution.howHeard && !existing.howHeard) attributionFill.howHeard = attribution.howHeard;
+        if (attribution.referredBy && !existing.referredBy) attributionFill.referredBy = attribution.referredBy;
+        if (Object.keys(attributionFill).length > 0) {
+          await prisma.booking.update({ where: { id: existing.id }, data: attributionFill });
+          if (attributionFill.howHeard) existing.howHeard = attributionFill.howHeard;
+          if (attributionFill.referredBy) existing.referredBy = attributionFill.referredBy;
+        }
 
         // Track the prospect's invite RSVP (accepted/declined/tentative/needsAction).
         const inviteStatus = getInviteStatus(event.attendees, calendarEmail);
@@ -542,12 +561,15 @@ async function syncCalendar(
             // a stale past-time diff is replayed history (cold-start scan of a newly
             // added calendar split 4 already-showed demos on 2026-09-11) — skip it.
             if (eventStart.getTime() <= Date.now() && !isFreshEdit(event)) continue;
+            const draggedAttribution = parseAttributionFromText(event.description);
             await supersedeAndCreate({
               old: existing,
               newDemoDate: eventStart,
               newCalendarEventId: null,
               bookedAt: getEventBookedAt({ ...event, created: event.updated || event.created }),
               setterId: existing.setterId,
+              howHeard: draggedAttribution.howHeard,
+              referredBy: draggedAttribution.referredBy,
               transferEventId: true,
             });
             results.updated++;
@@ -608,6 +630,7 @@ async function syncCalendar(
       const prospectName = parseProspectName(summary);
       const prospectEmail = getProspectEmail(event.attendees, calendarEmail);
       const prospectPhone = parsePhone(description);
+      const createdAttribution = parseAttributionFromText(description);
 
       // Dedup: a row in the ±4h window matching by email, phone — or by name when
       // emails can't disqualify it — is the SAME meeting arriving via a second
@@ -672,11 +695,14 @@ async function syncCalendar(
           const twinTerminal =
             !!twin.demo && ["showed", "no_show", "cancelled"].includes(twin.demo.status);
           if (!(twinTerminal && !sameTime)) {
+            const twinData: { calendarEventId?: string; howHeard?: string; referredBy?: string } = {};
             if (twin.calendarEventId !== compositeId && !twin.calendarEventId?.startsWith(event.id)) {
-              await prisma.booking.update({
-                where: { id: twin.id },
-                data: { calendarEventId: compositeId },
-              });
+              twinData.calendarEventId = compositeId;
+            }
+            if (createdAttribution.howHeard && !twin.howHeard) twinData.howHeard = createdAttribution.howHeard;
+            if (createdAttribution.referredBy && !twin.referredBy) twinData.referredBy = createdAttribution.referredBy;
+            if (Object.keys(twinData).length > 0) {
+              await prisma.booking.update({ where: { id: twin.id }, data: twinData });
             }
             continue;
           }
@@ -711,6 +737,7 @@ async function syncCalendar(
         });
 
         if (pastNoShow) {
+          const rebookAttribution = parseAttributionFromText(description);
           await supersedeAndCreate({
             old: pastNoShow,
             newDemoDate: eventStart,
@@ -720,6 +747,8 @@ async function syncCalendar(
             bookedAt: getEventBookedAt(event),
             // most-recent setter gets credit for the rebook
             setterId: await resolveRebookSetter(description, pastNoShow.setterId),
+            howHeard: rebookAttribution.howHeard,
+            referredBy: rebookAttribution.referredBy,
           });
           results.updated++;
           continue;
@@ -768,6 +797,8 @@ async function syncCalendar(
           prospectName,
           prospectEmail,
           prospectPhone,
+          howHeard: createdAttribution.howHeard,
+          referredBy: createdAttribution.referredBy,
           inviteStatus: newInviteStatus,
           inviteStatusAt: newInviteStatus ? new Date() : null,
           inviteAcceptedAt: newInviteStatus === "accepted" ? new Date() : null,

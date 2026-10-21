@@ -8,7 +8,7 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --test src/lib/confirmations/internal-group.test.ts src/lib/trellus-roster.test.ts",
+    "test": "tsx --test src/lib/calendly-answers.test.ts src/lib/confirmations/internal-group.test.ts src/lib/trellus-roster.test.ts",
     "flatten-participants": "tsx scripts/flatten-sendblue-participants.ts"
   },
   "dependencies": {
