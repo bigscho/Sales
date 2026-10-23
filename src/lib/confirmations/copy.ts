@@ -10,6 +10,8 @@
 //
 // All copy here is Colin's locked wording (2026-08-04). Keep it exact.
 
+import { resolveProspectTz } from "./send-window";
+
 export type CaseType = "single" | "multiple" | "zip" | "area";
 export type AddressSource = "calendly" | "db_fallback" | "none";
 
@@ -222,10 +224,15 @@ export function firstNameOf(prospectName: string): string {
 
 /**
  * Format a demo time in the prospect's local timezone, e.g. "10:00 AM PST".
- * Falls back to ET (the app's default) when no prospect timezone is known.
+ * A US/+1 number with a missing, invalid, or non-American zone falls back to
+ * ET so a text never says "12:00 AM GMT+1". A trusted zone renders as-is.
  */
-export function formatDemoTime(demoDate: Date, timezone?: string | null): string {
-  const tz = timezone && timezone.trim() ? timezone : "America/New_York";
+export function formatDemoTime(
+  demoDate: Date,
+  timezone?: string | null,
+  phone?: string | null
+): string {
+  const { tz } = resolveProspectTz(timezone, phone);
   try {
     return new Intl.DateTimeFormat("en-US", {
       hour: "numeric",

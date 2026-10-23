@@ -472,7 +472,7 @@ function buildRow(seq: Seq, body: string, groupId: string): WorklistRow {
     prospectPhone: seq.prospectPhone,
     prospectEmail: seq.prospectEmail,
     demoDate: seq.callAt.toISOString(),
-    demoTimeLabel: formatDemoTime(seq.callAt, seq.prospectTimezone),
+    demoTimeLabel: formatDemoTime(seq.callAt, seq.prospectTimezone, seq.prospectPhone),
     closerName: seq.closer?.name || seq.originalBooking?.demo?.closer?.name || null,
     setterName: seq.originalBooking?.setter?.name || null,
     caseType: "area",

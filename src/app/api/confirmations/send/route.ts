@@ -49,5 +49,6 @@ export async function POST(request: NextRequest) {
   }
 
   const sent = results.filter((r) => r.status === "sent").length;
-  return NextResponse.json({ results, sent, total: items.length });
+  const deferred = results.filter((r) => r.status === "deferred").length;
+  return NextResponse.json({ results, sent, deferred, total: items.length });
 }
