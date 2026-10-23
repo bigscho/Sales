@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/db";
 import { sendGroupMessage, isLive } from "@/lib/sendblue";
 import type { WorklistRow, Touchpoint } from "./worklist";
+import { checkSendWindow } from "./send-window";
 import { internalGroupConfigFromEnv, pinnedInternalGroupIds } from "./internal-group";
 
 /** Day-of testimonial video attachment. */
@@ -22,9 +23,10 @@ async function targetIsInternalGroup(groupId: string): Promise<boolean> {
 
 export interface SendOutcome {
   bookingId: string;
-  status: "sent" | "failed" | "skipped";
+  status: "sent" | "failed" | "skipped" | "deferred";
   dryRun: boolean;
   error?: string;
+  retryAt?: string; // deferred: next in-window hour (ISO)
 }
 
 export async function sendConfirmation(
@@ -48,6 +50,23 @@ export async function sendConfirmation(
       error: "no_group",
     });
     return { bookingId: row.bookingId, status: "skipped", dryRun, error: "no_group" };
+  }
+
+  // QUIET HOURS: t1 + day_of only (origination/reconnect carry their own
+  // prospect-local gates). Applies to the cron AND the rep's Send button —
+  // the rep's clock is irrelevant. Nothing is logged, so the row stays
+  // sendable and the hourly day-of cron retries once the window opens.
+  if (touchpoint === "t1" || touchpoint === "day_of") {
+    const w = checkSendWindow(row.prospectTimezone, row.prospectPhone);
+    if (!w.ok) {
+      return {
+        bookingId: row.bookingId,
+        status: "deferred",
+        dryRun,
+        error: `quiet_hours:${w.tz}:${w.localHour}h${w.trusted ? "" : ":tz_untrusted"}`,
+        retryAt: w.retryAt.toISOString(),
+      };
+    }
   }
 
   try {

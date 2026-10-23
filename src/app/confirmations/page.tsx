@@ -101,7 +101,9 @@ export default function ConfirmationsPage() {
         body: JSON.stringify({ touchpoint: view === "dayof" ? "day_of" : "t1", items }),
       });
       const data = await res.json();
-      flash(`${data.sent} of ${data.total} sent${live ? "" : " (dry run)"}`);
+      const deferred = Number(data.deferred || 0);
+      const held = deferred > 0 ? `, ${deferred} held for quiet hours (8 AM-8 PM local)` : "";
+      flash(`${data.sent} of ${data.total} sent${held}${live ? "" : " (dry run)"}`);
       await load(view);
     } finally {
       setSending(new Set());

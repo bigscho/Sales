@@ -197,7 +197,7 @@ export async function maybeSendOriginationReply(groupId: string): Promise<Origin
     prospectPhone: booking.prospectPhone,
     prospectEmail: booking.prospectEmail,
     demoDate: booking.demoDate.toISOString(),
-    demoTimeLabel: formatDemoTime(booking.demoDate, booking.prospectTimezone),
+    demoTimeLabel: formatDemoTime(booking.demoDate, booking.prospectTimezone, booking.prospectPhone),
     closerName: booking.demo?.closer?.name || null,
     setterName: booking.setter?.name || null,
     caseType: "area",

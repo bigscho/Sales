@@ -31,10 +31,12 @@ export async function POST() {
 
   let autoSent = 0;
   let autoFailed = 0;
+  let autoDeferred = 0;
   if (autoEnabled) {
     for (const row of autoSafe) {
       const res = await sendConfirmation(row, "t1", { autoSent: true });
       if (res.status === "sent") autoSent++;
+      else if (res.status === "deferred") autoDeferred++;
       else autoFailed++;
     }
   }
@@ -44,7 +46,7 @@ export async function POST() {
   const lines = [
     `T-1 confirmations ready — ${rows.length} demos tomorrow.`,
     autoEnabled
-      ? `Auto-sent ${autoSent} single-address texts${autoFailed ? ` (${autoFailed} failed)` : ""}. ${needsRep.length} need your QA.`
+      ? `Auto-sent ${autoSent} single-address texts${autoFailed ? ` (${autoFailed} failed)` : ""}${autoDeferred ? ` (${autoDeferred} deferred, quiet hours)` : ""}. ${needsRep.length} need your QA.`
       : `${sendableRows.length} texts to QA + send.`,
     noGroup.length ? `${noGroup.length} missing a group chat (call-only until created): ${noGroup.map((r) => r.prospectName).join(", ")}.` : null,
     skipped.length ? `${skipped.length} skipped (already contacted / rescheduled / cancelled).` : null,
@@ -59,6 +61,7 @@ export async function POST() {
     autoEnabled,
     autoSent,
     autoFailed,
+    autoDeferred,
     needsRep: needsRep.length,
     noGroup: noGroup.length,
     skipped: skipped.length,

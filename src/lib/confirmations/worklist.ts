@@ -82,6 +82,7 @@ export interface WorklistRow {
   prospectEmail: string | null;
   demoDate: string; // ISO
   demoTimeLabel: string; // prospect-local, e.g. "10:00 AM PDT"
+  prospectTimezone?: string | null; // IANA, drives the send-window guard
   closerName: string | null;
   setterName: string | null;
   // Prospect's GCal invite RSVP (invitee-only, captured by the gcal sync).
@@ -380,7 +381,8 @@ async function buildT1Row(b: BookingWithRels): Promise<WorklistRow> {
     prospectPhone: b.prospectPhone,
     prospectEmail: b.prospectEmail,
     demoDate: b.demoDate.toISOString(),
-    demoTimeLabel: formatDemoTime(b.demoDate, b.prospectTimezone),
+    demoTimeLabel: formatDemoTime(b.demoDate, b.prospectTimezone, b.prospectPhone),
+    prospectTimezone: b.prospectTimezone ?? null,
     closerName: b.demo?.closer?.name || null,
     setterName: b.setter?.name || null,
     caseType: cls.caseType,
@@ -406,9 +408,11 @@ export async function buildDayOfWorklist(): Promise<WorklistRow[]> {
   const { start, end } = etDayRange(0); // today ET
   const bookings = await fetchBookingsInRange(start, end);
   const rows: WorklistRow[] = [];
+  const now = new Date(); // cron is hourly: never text about a demo that already started
   for (const b of bookings) {
     const demoStatus = b.demo?.status || "pending";
     if (demoStatus !== "pending") continue; // cancelled/showed/etc drop off
+    if (b.demoDate.getTime() <= now.getTime()) continue; // demo time already passed
     rows.push(await buildDayOfRow(b));
   }
   return rows;
@@ -419,7 +423,7 @@ async function buildDayOfRow(b: BookingWithRels): Promise<WorklistRow> {
   // actually RECEIVED a day-of before gets the "again" copy.
   const gotOneBefore = await everSent("day_of", b.prospectEmail, b.prospectPhone);
   const variant: DayOfVariant = gotOneBefore ? "again" : "standard";
-  const demoTimeLabel = formatDemoTime(b.demoDate, b.prospectTimezone);
+  const demoTimeLabel = formatDemoTime(b.demoDate, b.prospectTimezone, b.prospectPhone);
   const body = renderDayOf({ variant, demoTimeLabel, firstName: firstNameOf(b.prospectName) });
 
   const groupId = await lookupGroup(b.id, b.prospectPhone);
@@ -438,6 +442,7 @@ async function buildDayOfRow(b: BookingWithRels): Promise<WorklistRow> {
     prospectEmail: b.prospectEmail,
     demoDate: b.demoDate.toISOString(),
     demoTimeLabel,
+    prospectTimezone: b.prospectTimezone ?? null,
     closerName: b.demo?.closer?.name || null,
     setterName: b.setter?.name || null,
     caseType: "area",
