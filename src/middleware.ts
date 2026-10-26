@@ -10,7 +10,6 @@ const PUBLIC_ROUTES = ["/login", "/api/auth"];
 const SYSTEM_ROUTES = [
   "/api/webhooks/",
   "/api/sync/",
-  "/api/slack/",
   "/api/debug",
   "/api/setup",
   "/api/seed",

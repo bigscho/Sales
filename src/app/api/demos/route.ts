@@ -99,27 +99,16 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    // Fire setter game notifications for reassignment
+    // Refresh the new setter's daily score. Weekday-only, same gate as before.
     if (setterId && setterId !== oldSetterId) {
       try {
-        const { getSetterTodayBookings, getTeamTotalToday, formatSetterMention, isWeekday } = await import("@/lib/setter-game");
-        const { sendSlackSetter } = await import("@/lib/slack");
-
-        const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
-        if (setter) {
-          const mention = formatSetterMention(setter);
-          const prospectName = existingDemo.booking.prospectName;
-
-          if (isWeekday()) {
-            const { count } = await getSetterTodayBookings(setterId);
-            const { total, setterTotal } = await getTeamTotalToday();
-            const setterNote = total > setterTotal ? ` (${setterTotal} by setters)` : "";
-            await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention} (now at ${count} today)\n\n*TOTAL booked today: ${total}${setterNote}*`);
-          } else {
-            await sendSlackSetter(`📝 Booking credited: ${prospectName} → ${mention}`);
-          }
+        const { getSetterTodayBookings, isWeekday } = await import("@/lib/setter-game");
+        if (isWeekday()) {
+          await getSetterTodayBookings(setterId);
         }
-      } catch { /* setter notification failed */ }
+      } catch (err) {
+        console.error("setter score update failed:", err);
+      }
     }
   }
 
@@ -212,35 +201,6 @@ export async function PATCH(request: NextRequest) {
         },
       });
     }
-  }
-
-  // Show rate notification — fires when a demo is newly marked as showed
-  if (status === "showed" && oldDemo?.status !== "showed") {
-    try {
-      const { sendShowNotification } = await import("@/lib/setter-game");
-      await sendShowNotification(
-        demo.booking.prospectName,
-        demo.booking.setter?.id || null,
-        demo.closer?.name || null,
-        "admin",
-      );
-    } catch { /* show rate notification failed */ }
-  }
-
-  // Show rate CORRECTION — fires when a demo is changed AWAY from showed
-  if (oldDemo?.status === "showed" && status && status !== "showed") {
-    try {
-      const { getWeeklyShowStats, formatMention } = await import("@/lib/setter-game");
-      const { sendSlackShowRate } = await import("@/lib/slack");
-      const { totalShows } = await getWeeklyShowStats();
-
-      let setterMention = "";
-      if (demo.booking.setter) {
-        setterMention = ` (${formatMention(demo.booking.setter)}'s booking)`;
-      }
-
-      await sendSlackShowRate(`⚠️ Correction: ${demo.booking.prospectName} moved from showed → ${status}${setterMention}\n\n*Updated shows for the week: ${totalShows}*`);
-    } catch { /* correction failed */ }
   }
 
   return NextResponse.json({ demo });
@@ -414,33 +374,16 @@ export async function DELETE(request: NextRequest) {
     },
   });
 
-  // Setter channel correction — booking was deleted
+  // Refresh the setter's daily score after the booking is gone. Weekday-only, same gate as before.
   if (demo.booking.setterId) {
     try {
-      const { getSetterTodayBookings, getTeamTotalToday, formatMention, isWeekday } = await import("@/lib/setter-game");
-      const { sendSlackSetter } = await import("@/lib/slack");
-
+      const { getSetterTodayBookings, isWeekday } = await import("@/lib/setter-game");
       if (isWeekday()) {
-        const setter = await prisma.teamMember.findUnique({ where: { id: demo.booking.setterId } });
-        if (setter) {
-          const { count } = await getSetterTodayBookings(demo.booking.setterId);
-          const mention = formatMention(setter);
-          const { total, setterTotal } = await getTeamTotalToday();
-          const setterNote = total > setterTotal ? ` (${setterTotal} by setters)` : "";
-          await sendSlackSetter(`⚠️ Booking removed for ${demo.booking.prospectName}\n${mention} is now at ${count} today\n\n*TOTAL booked today: ${total}${setterNote}*`);
-        }
+        await getSetterTodayBookings(demo.booking.setterId);
       }
-    } catch { /* setter correction failed */ }
-  }
-
-  // Show rate correction — if deleted demo was showed
-  if (demo.status === "showed") {
-    try {
-      const { getWeeklyShowStats } = await import("@/lib/setter-game");
-      const { sendSlackShowRate } = await import("@/lib/slack");
-      const { totalShows } = await getWeeklyShowStats();
-      await sendSlackShowRate(`⚠️ Correction: ${demo.booking.prospectName} demo removed (was showed)\n\n*Updated shows for the week: ${totalShows}*`);
-    } catch { /* correction failed */ }
+    } catch (err) {
+      console.error("setter score update failed:", err);
+    }
   }
 
   return NextResponse.json({ success: true });

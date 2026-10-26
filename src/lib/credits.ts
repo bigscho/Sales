@@ -1,7 +1,5 @@
 import { prisma } from "./db";
 import { newBookingActivityWhere } from "./booking-activity";
-import { sendSlackSetter } from "./slack";
-import { formatMention } from "./setter-game";
 import { computeShowRate } from "./utils";
 
 // === CONFIGURABLE FORMULA CONSTANTS ===
@@ -189,24 +187,6 @@ export async function awardWeeklyCredits(weekId: string): Promise<{
     });
 
     awards.push({ setterId: setter.id, setterName: setter.name, total: calc.total, breakdown });
-  }
-
-  // Slack notification
-  if (awards.length > 0) {
-    const lines = await Promise.all(awards.map(async (a) => {
-      const setter = await prisma.teamMember.findUnique({ where: { id: a.setterId } });
-      const mention = setter ? formatMention(setter) : a.setterName;
-      return `${mention} — *${a.total.toLocaleString()} credits* (${a.breakdown})`;
-    }));
-
-    // Get updated balances
-    const balances = await Promise.all(awards.map(async (a) => {
-      const m = await prisma.teamMember.findUnique({ where: { id: a.setterId } });
-      return `${a.setterName} ${m?.creditBalance?.toLocaleString() || 0}`;
-    }));
-
-    const message = `📲 *Weekly text blast credits are in!*\n\n${lines.join("\n")}\n\n_Balances: ${balances.join(" | ")}_`;
-    await sendSlackSetter(message);
   }
 
   return { awards };

@@ -1,6 +1,4 @@
 import { prisma } from "./db";
-import { sendSlackSetter } from "./slack";
-import { formatMention } from "./setter-game";
 import { refundCredits } from "./credits";
 
 // === GHL API CONFIG ===
@@ -379,14 +377,5 @@ export async function processBlast(blastId: string): Promise<void> {
   // Refund if complete failure
   if (allDone && totalPushed === 0) {
     await refundCredits(blast.setterId, blast.creditsSpent, blastId);
-  }
-
-  // Slack notification
-  if (pushed > 0) {
-    const mention = formatMention(blast.setter);
-    const balance = await prisma.teamMember.findUnique({ where: { id: blast.setterId }, select: { creditBalance: true } });
-    const zoneLabel = [blast.filterState, blast.filterCity].filter(Boolean).join(", ") || "all regions";
-    const message = `📲 ${mention} just sent a text blast!\n*${pushed} agents* in ${zoneLabel} contacted via GHL.\nRemaining balance: *${balance?.creditBalance?.toLocaleString() || 0} credits*`;
-    await sendSlackSetter(message);
   }
 }

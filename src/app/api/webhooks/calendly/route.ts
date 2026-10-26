@@ -266,20 +266,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      try {
-        const { sendSlackTeam, sendSlackShowRate } = await import("@/lib/slack");
-        const dateStr = demoDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-        // Doubles as the closer's cue to send their manual "Reconnect {day/time}. Thanks" text.
-        await sendSlackTeam(`🔁 Reconnect booked: ${seq.prospectName} with ${closerName || "TBD"} on ${dateStr}`);
-        if (!originalBooking) {
-          await sendSlackShowRate(
-            `⚠️ Reconnect for ${seq.prospectName} (${seq.prospectEmail || "no email"}) has no prior booking on record — texts won't send and the send log is limited.`
-          );
-        }
-      } catch (err) {
-        console.error("reconnect Slack post failed:", err);
-      }
-
       return NextResponse.json({ received: true, action: "reconnect_created", reconnectId: seq.id });
     }
 
@@ -628,12 +614,6 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        try {
-          const { sendSlackTeam } = await import("@/lib/slack");
-          const dateStr = demoDate!.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-          await sendSlackTeam(`🔁 Rescheduled: ${successor.prospectName} moved to ${dateStr}${incomingSetterName ? ` (reset by ${incomingSetterName})` : ""}`);
-        } catch (err) { console.error("reschedule Slack post failed:", err); }
-
         return NextResponse.json({ received: true, action: "rescheduled_split", bookingId: successor.id });
       }
 
@@ -745,45 +725,18 @@ export async function POST(request: NextRequest) {
         console.error("Blast attribution check failed:", err);
       }
 
-      // Setter pigeon game — real-time booking notification
+      // Setter pigeon game — refresh today's score and award a tier-crossing credit.
+      // Weekday-only, matching the previous gate around this block.
       if (setterId) {
         try {
-          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday, formatSetterMention, getTeamTotalToday } = await import("@/lib/setter-game");
-          const { sendSlackSetter } = await import("@/lib/slack");
+          const { getSetterTodayBookings, checkAndFireTierCrossing, isWeekday } = await import("@/lib/setter-game");
 
           if (isWeekday()) {
-            const setter = await prisma.teamMember.findUnique({ where: { id: setterId } });
-            if (setter) {
-              const { count } = await getSetterTodayBookings(setterId);
-              const mention = formatSetterMention(setter);
-
-              // Number emoji for the count (1-10, then just the number)
-              const numEmojis = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
-              const countEmoji = count <= 10 ? numEmojis[count] : `*${count}*`;
-
-              // Check if this booking crossed a tier threshold (fires GIF message)
-              const tierCrossed = await checkAndFireTierCrossing(setterId, count);
-
-              // If no tier was crossed, send a simple count update
-              if (!tierCrossed) {
-                await sendSlackSetter(`${countEmoji}\n${mention} is at ${count} today`);
-              }
-
-              // Always send team total (all bookings, including excluded/CEO)
-              const { total, setterTotal } = await getTeamTotalToday();
-              const setterNote = total > setterTotal ? ` (${setterTotal} by setters)` : "";
-              await sendSlackSetter(`*TOTAL booked today so far: ${total}${setterNote}*`);
-            }
+            const { count } = await getSetterTodayBookings(setterId);
+            await checkAndFireTierCrossing(setterId, count);
           }
-        } catch (err) { console.error("setter game / setter Slack post failed:", err); }
+        } catch (err) { console.error("setter score update failed:", err); }
       }
-
-      try {
-        const { sendSlackTeam } = await import("@/lib/slack");
-        const dateStr = effectiveDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-        const setterLabel = setterName ? ` (booked by ${setterName})` : "";
-        await sendSlackTeam(`🗓 New demo booked: ${inviteeName} with ${closerName || "TBD"} on ${dateStr}${setterLabel}`);
-      } catch (err) { console.error("team Slack post failed:", err); }
 
       return NextResponse.json({
         received: true,

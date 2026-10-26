@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendSlackCEO } from "@/lib/slack";
 
-// Daily financial audit — runs at 7 AM ET (11 UTC)
-// Posts full financial snapshot + action items to CEO Slack DM
+// On-demand financial audit. Compares Stripe vs the database and returns the
+// snapshot as JSON. It does not persist anything and it does not notify anyone.
+// The CEO dashboard reads payments and MRR from the database on its own.
 export async function GET() {
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json({ error: "STRIPE_SECRET_KEY not set" }, { status: 400 });
@@ -282,7 +282,7 @@ export async function GET() {
     issues.push(`⚠️ ${wrongStatus.length} payment(s) with unknown new/returning status — run enrich`);
   }
 
-  // === Build Slack message ===
+  // === Build summary ===
   const totalRecoverable = recoverableMonthly + terminalMrr;
   const lines: string[] = [];
   lines.push(`📋 *Daily Financial Audit — ${now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}*`);
@@ -315,10 +315,6 @@ export async function GET() {
   }
 
   const message = lines.join("\n");
-
-  try {
-    await sendSlackCEO(message);
-  } catch { /* Slack not configured */ }
 
   return NextResponse.json({
     snapshot: {
