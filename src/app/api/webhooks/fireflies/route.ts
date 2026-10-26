@@ -230,14 +230,6 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Notify show rate channel only for real shows
-        if (isRealShow && !wasAlreadyConfirmed) {
-          try {
-            const { sendShowNotification } = await import("@/lib/setter-game");
-            await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, null, "fireflies_webhook");
-          } catch { /* show rate notification failed */ }
-        }
-
         matched = true;
         break; // One transcript = one demo
       }

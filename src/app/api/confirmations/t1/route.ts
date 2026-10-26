@@ -11,8 +11,9 @@ const BASE_URL = process.env.VERCEL_URL
   : "http://localhost:3000";
 
 // T-1 afternoon cron. Two modes:
-//  - Gate ON (default): sends nothing — posts the worklist summary to
-//    #show-rate-tpds so the rep opens /confirmations, QAs, and sends.
+//  - Gate ON (default): sends nothing to prospects — texts the worklist
+//    summary to the rep (CONFIRMATIONS_REP_PHONE) so they open
+//    /confirmations, QA, and send. If that phone is unset, the nudge is dropped.
 //  - Gate OFF (CONFIRMATIONS_AUTO_SEND=true, earned via the readiness metrics):
 //    auto-sends the STAGED-SAFE subset only — single address, straight from
 //    Calendly, unambiguous parse. Fallback/zip/multi rows stay gated for the
@@ -41,7 +42,7 @@ export async function POST() {
     }
   }
 
-  // Nudge the show-rate rep from the SendBlue line (Slack fallback)
+  // Nudge the show-rate rep from the SendBlue line
   const readiness = await readinessMetrics(14);
   const lines = [
     `T-1 confirmations ready — ${rows.length} demos tomorrow.`,

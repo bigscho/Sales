@@ -89,7 +89,7 @@ If using Enterprise Claude (without MCP tools), it needs:
 - Without these, it can write code fixes but cannot verify if they work for specific records
 
 ## What's Working
-- **Calendly webhook** → instant demo creation + Slack alert
+- **Calendly webhook** → instant demo creation. Weekday bookings still refresh the setter daily score and award a pigeon-tier credit. No Slack post.
 - **GCal sync** every 10 min → reschedule detection + backup
 - **Fireflies sync** every 30 min + webhook → auto show verification
 - **Stripe webhook** → instant payment with MRR/one-time + new/returning classification
@@ -99,28 +99,23 @@ If using Enterprise Claude (without MCP tools), it needs:
 - **Closer board drill-down** (Aug 13): every closer row on /scoreboard expands to show the raw demos + closed-won deals behind its numbers, with the formula math spelled out (show-rate denominator, pending excluded, rescheduled rows listed-but-not-counted, closes-by-close-date vs demos-by-demo-date mismatch flagged per deal). Served by `/api/scoreboard?closerId=X` — same route, same dateFilter as the board, so detail can NEVER drift from the aggregate.
 - **Closer board Cash Collected column** (Aug 13, Colin's explicit exception to the no-cash-on-scoreboard rule): per-closer upfront cash that LANDED in the period on closed-won deals, minus refunds landed in the period — cash-collected basis via payroll's `isCommissionable`/`loadDealMeta` (exported from payroll.ts) so the column always reconciles with commission. Drill-down lists every payment: counted (green), excluded grayed with verbatim reason from `commissionExclusionReason()` (reorder / later-charge>24h / misc / deal-not-closed-won), refunds as red negatives; total row = board cell by construction. Unattributed cash (closed-won deals with no closer) surfaces as a warning under the table. Admin gets an inline per-row reassign dropdown → existing audited /api/deals PATCH (moves the whole deal: its cash AND its close). This column is the ONLY cash on team-visible views — demos-page/day-lock/deals scoping for closers is unchanged.
 - **Demos page**: day/week view, bulk select, side-by-side financials, no-flash refresh
-- **Cross-channel duplicate defense (Sep 14, 2026 — do not regress)**: the same meeting arrives via BOTH the Calendly webhook and the 10-min GCal sync with no shared key, so identity matching is the only dedup. Rules now: (1) the gcal twin/rebook matchers compare against ALL external attendee emails, never just `attendees[0]` (a guest's email can be listed first — Douglas Harper 09-14 dup); (2) same name + same normalized phone overrides the different-emails-=-different-people veto in BOTH matchers (typo'd/alias/guest emails — both channels capture the Calendly form phone); (3) phone alone NEVER matches — office-mates share numbers (Rayburn/Luker); (4) `flagDuplicatePairs()` tripwire in the gcal sync alerts Slack once per pair (AuditLog `duplicate_pair_flagged`) whenever two live rows for the same person sit within an hour; (5) "Canceled:"-renamed mirror events (Calendly renames instead of deleting, status stays confirmed) cancel a pending row and never mint one. 9 historical dup pairs repaired 09-14 (audit `duplicate_booking_repair`): 6 deleted w/ DismissedEvent blocks, 3 cancel-then-rebook pairs converted to reschedule chains. ~23 stale pending same-name pairs remain in the March 2026 `source='auto'` import era — left alone deliberately.
+- **Cross-channel duplicate defense (Sep 14, 2026 — do not regress)**: the same meeting arrives via BOTH the Calendly webhook and the 10-min GCal sync with no shared key, so identity matching is the only dedup. Rules now: (1) the gcal twin/rebook matchers compare against ALL external attendee emails, never just `attendees[0]` (a guest's email can be listed first — Douglas Harper 09-14 dup); (2) same name + same normalized phone overrides the different-emails-=-different-people veto in BOTH matchers (typo'd/alias/guest emails — both channels capture the Calendly form phone); (3) phone alone NEVER matches — office-mates share numbers (Rayburn/Luker); (4) `flagDuplicatePairs()` tripwire in the gcal sync records each pair once (AuditLog `duplicate_pair_flagged`) whenever two live rows for the same person sit within an hour — review them on /demos; there is no Slack alert; (5) "Canceled:"-renamed mirror events (Calendly renames instead of deleting, status stays confirmed) cancel a pending row and never mint one. 9 historical dup pairs repaired 09-14 (audit `duplicate_booking_repair`): 6 deleted w/ DismissedEvent blocks, 3 cancel-then-rebook pairs converted to reschedule chains. ~23 stale pending same-name pairs remain in the March 2026 `source='auto'` import era — left alone deliberately.
 - **Demo status write rules (Sep 14, 2026 — do not regress)**: `/api/demos` PATCH status = admin/closer only; `showed`/`no_show` are REJECTED before the meeting time (15-min grace; cancelled/rescheduled may be recorded early). POST `bulk_confirm` = admin-only, status whitelisted, skips not-yet-run demos + locked days, audit-logs per-demo `status_update` rows, and stamps `confirmedBy` with the session name. The `/demos` All Showed / bulk-bar buttons render for admins only. Cause: the endpoint previously had NO auth/lock/date checks and NO audit — on 2026-09-14 unaudited bulk_confirm sweeps marked all 30 of Tuesday's pending demos (plus Monday's not-yet-run ones) as `showed`, putting phantom shows on the scoreboard.
 - **Day locking** system
 - **Dismissed events** (deleted demos stay deleted)
-- **Slack #sales-team**: real-time alerts (bookings, shows, payments) + daily recap (6pm ET)
-- **Slack #setter-tpds**: pigeon gamification (9AM/12PM/6PM + real-time tier crossings)
-- **Slack #setter-daily-verify**: daily verification (10:05 PM ET weekdays) — per-setter WTD stats + review link + CEO summary
-- **Slack #show-rate-tpds**: show notifications tagging setter + closer + weekly totals + Friday report
-- **Slack #closer-tpds**: close/payment notifications tagging closer + revenue totals
+- **No Slack posts.** Incoming-webhook env vars are unused. Setter scores, credits, verify flags, day locks, and payments are written to the database and read by the dashboard.
 - **Reschedule handling**: Calendly reschedules update booking date in-place (not mark+recreate)
-- **Show rate formula**: ONE definition everywhere — `computeShowRate` in `src/lib/utils.ts` = shows/(shows+noShows+cancelled), pending/rescheduled excluded (standardized Sep 2026; the demos-page day-lock card previously excluded cancelled and disagreed with the Slack lock recap/scoreboard/payroll). `DayLock.cancelledCount` is persisted at lock time (backfilled for all 124 historical locks) so frozen days render the official rate. The lock card's "X/Y showed" fraction uses the same denominator. `kpis.ts` `confirmedShowRate` (shows/(shows+noShows)) is a deliberately separate reference metric — leave it.
+- **Show rate formula**: ONE definition everywhere — `computeShowRate` in `src/lib/utils.ts` = shows/(shows+noShows+cancelled), pending/rescheduled excluded (standardized Sep 2026; the demos-page day-lock card previously excluded cancelled and disagreed with the scoreboard/payroll). `DayLock.cancelledCount` is persisted at lock time (backfilled for all 124 historical locks) so frozen days render the official rate. The lock card's "X/Y showed" fraction uses the same denominator. `kpis.ts` `confirmedShowRate` (shows/(shows+noShows)) is a deliberately separate reference metric — leave it.
 - **Booking feed**: shows all bookings created today across all weeks
-- **Team page**: Slack user ID field on add/edit forms for real @mentions
+- **Team page**: Slack user ID is still stored on TeamMember. Nothing reads it for notifications.
 - **Video game tier system**: COMMON/UNCOMMON/RARE/LEGENDARY pigeon tiers
-- **Slack CEO DM**: weekly briefing (Sat 11am ET)
 - **Dashboard**: New Revenue as headline KPI
 - **Setter pigeon gamification**: daily score tracking, tier crossings (4/9/12), points system
 - **Dynamic closer name stripping**: pulls closer last names from DB + known variants (no more hardcoded list)
 - **Self-booking attribution**: non-setter bookers auto-created as excludeFromLeaderboard TeamMembers (real name, excluded from leaderboards)
 - **Dashboard setter leaderboards**: medal-style leaderboard cards replace plain setter table (shared component with scoreboard)
 - **Demos setter filter**: `/demos?weekId=X&setter=Y` filters to specific setter's demos
-- **Setter verification system**: `/verify?weekId=X&setter=Y` read-only confirmation UI — setters confirm credit or flag issues, flags route to CEO DM, morning nudge for non-confirmers
+- **Setter verification system**: `/verify?weekId=X&setter=Y` read-only confirmation UI — setters confirm credit or flag issues. Flags are stored on SetterFlag and reviewed on `/verify/admin`. No Slack summary.
 - **CEO verification dashboard**: `/verify/admin?weekId=X` — per-setter summary, resolve flags, add missing demos, Lock Week button
 - **Payroll gate**: payroll generation blocked until week is verified via Lock Week
 - **Auth**: PIN-based login with role-based middleware — setters see verify+scoreboard, closers see demos+deals, admin sees everything
@@ -148,18 +143,13 @@ Show-rate rep work surface at `/confirmations` (role: `show_rate_rep` + admin). 
 - CONFIRMATIONS_AUTO_SEND ("true" = T-1 cron auto-sends staged-safe subset)
 - CONFIRMATIONS_DAYOF_AUTO ("false" = day-of cron stops auto-sending)
 - CONFIRMATIONS_ORIGINATION_LIVE ("true" = origination webhook reply sends real texts; unset = dry-run rows even when SENDBLUE_LIVE is true) — NOT YET SET
-- CONFIRMATIONS_REP_PHONE (show-rate rep's phone, E.164 — cron nudges go here as an iMessage FROM the SendBlue line, not Slack; the rep must text the line ONCE first so it's inbound-registered. Slack #show-rate-tpds is the fallback if the text fails) — NOT YET SET
+- CONFIRMATIONS_REP_PHONE (show-rate rep's phone, E.164 — cron nudges go here as an iMessage FROM the SendBlue line; the rep must text the line ONCE first so it's inbound-registered. If unset, or if SendBlue fails, the nudge is dropped — there is no Slack fallback) — NOT YET SET
 - TESTIMONIAL_VIDEO_URL (day-of attachment) — NOT YET SET
 - GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_KEY
 - STRIPE_WEBHOOK_SECRET + STRIPE_SECRET_KEY
 - FIREFLIES_API_KEY (comma-separated; Colin's is a team-admin key that sees ALL members' transcripts — covers Will/Matthew with no change)
-- SLACK_WEBHOOK_URL (#sales-team)
-- SLACK_CEO_WEBHOOK_URL (CEO DM)
-- SLACK_SETTER_WEBHOOK_URL (#setter-tpds)
-- SLACK_SHOWRATE_WEBHOOK_URL (#show-rate-tpds)
-- SLACK_CLOSER_WEBHOOK_URL (#closer-tpds)
-- SLACK_DATAVERIFICATION_WEBHOOK_URL (#setter-daily-verify)
 - SESSION_SECRET (random string for JWT signing)
+- Slack incoming webhooks are unused (the app no longer posts to Slack). Safe to delete in Vercel: SLACK_WEBHOOK_URL, SLACK_CEO_WEBHOOK_URL, SLACK_SETTER_WEBHOOK_URL, SLACK_SHOWRATE_WEBHOOK_URL, SLACK_CLOSER_WEBHOOK_URL, SLACK_DATAVERIFICATION_WEBHOOK_URL, SLACK_NOSHOW_WEBHOOK_URL
 - RECONNECT_LIVE (unset/false = reconnect sequence full dry-run; "true" = real texts + Resend emails) — NOT YET SET
 - RESEND_API_KEY (reconnect emails; = grassfedlite Railway's SMTP_PASSWORD, send-restricted key; verified domain is grsfd.ai)
 - ANTHROPIC_API_KEY (UNUSED since the AI recap was cut 2026-09-29 — set in prod, harmless, safe to delete)
@@ -171,14 +161,14 @@ Automated 3-touch nurture when a closer books a **second call** via a Calendly e
 - **NO Booking/Demo row is created.** The webhook branches BEFORE the demo filter and BEFORE `findExistingBooking` (which would otherwise absorb the reconnect as a reschedule of the prospect's first call and freeze it). A Booking row would contaminate setter activity, the scoreboard, payroll, `/demos`, the Fireflies show-verifier, and the confirmations T-1/day-of worklists. Instead the webhook creates a `ReconnectSequence` row (status active|cancelled|superseded|completed) linked to the prospect's most recent live Booking by email (fallback: phone) — phone/timezone fall back to that booking's values. The gcal sync excludes reconnects entirely (`isDemoEventType` + summary guard); Calendly webhook is the single source.
 - **Touches** (computed live by cron `/api/reconnect/process`, every 15 min; logic in `src/lib/reconnect/process.ts`):
   1. `reconnect_recap_email` — `bookedAt + 90min`: GENERIC "Great to chat." + the testimonials line (www.grsfd.ai/#testimonials). **Colin killed the AI-written Fireflies recap 2026-09-29** ("it's just going to make it weird") — the Claude/Fireflies modules were built, QA'd in dry-run, and removed in the same day (git history: `src/lib/reconnect/{recap,fireflies}.ts`, deleted commit ~09-29); don't re-add without asking. Once per prospect per 30 days (real sends).
-  2. `reconnect_t1_text` — day before the call, 12pm–10pm prospect-local, into the prospect's EXISTING SendBlue group from the first booking (`lookupGroup`). No group → skipped permanently + one Slack #show-rate-tpds alert (closer texts manually). Copy: "I know we're reconnecting tomorrow. I might be 1-2min late, but I'll give you a ring."
+  2. `reconnect_t1_text` — day before the call, 12pm–10pm prospect-local, into the prospect's EXISTING SendBlue group from the first booking (`lookupGroup`). No group → skipped permanently (logged `no_group`; closer texts manually). Copy: "I know we're reconnecting tomorrow. I might be 1-2min late, but I'll give you a ring."
   3. `reconnect_t1_email` — same window: "Hey {Name}, ahead of our call tomorrow, here are some final numbers if helpful: https://www.grsfd.ai/#results"
-  - Booked <24h before the call → touches 2+3 skipped. NOT automated: the closer's own "Reconnect {Day/Time}. Thanks" text at booking (the 🔁 Slack post is their cue).
-- **Emails**: from the CLOSER's `@grsfd.ai` identity with reply-to their real `TeamMember.email` @grsfd.co inbox (seeded: colin@grsfd.co, matthew@grsfd.co) via Resend (`src/lib/email.ts`, raw fetch). **grsfd.ai is the only Resend-verified sending domain** (grsfd.co 403s — verified 2026-09-29; the Railway key is send-restricted so domains can't be listed via API). Send log = `ConfirmationSend` rows with `reconnectId` set and `bookingId` = the ORIGINAL booking; per-touch dedup key is `(reconnectId, touchpoint)`; email log body includes `Subject:`/`From:` header lines for DB QA. A sequence with NO prior booking can't write log rows (required FK — deliberate); it Slack-alerts at creation and only emails go out, unlogged.
-- **Cancel/reschedule**: `invitee.canceled` matches `ReconnectSequence.calendlyEventId` exactly and returns early (so the generic email-fallback matchers can't cancel the prospect's original pending demo). Cancel → `cancelled`; reschedule-cancel → `superseded` immediately (the paired created event makes a fresh sequence; only the latest per prospect stays active). Duplicate webhook delivery → unique `calendlyEventId` replay guard. Failed sends retry each tick, cap 3 → skipped + Slack alert.
+  - Booked <24h before the call → touches 2+3 skipped. NOT automated: the closer's own "Reconnect {Day/Time}. Thanks" text at booking.
+- **Emails**: from the CLOSER's `@grsfd.ai` identity with reply-to their real `TeamMember.email` @grsfd.co inbox (seeded: colin@grsfd.co, matthew@grsfd.co) via Resend (`src/lib/email.ts`, raw fetch). **grsfd.ai is the only Resend-verified sending domain** (grsfd.co 403s — verified 2026-09-29; the Railway key is send-restricted so domains can't be listed via API). Send log = `ConfirmationSend` rows with `reconnectId` set and `bookingId` = the ORIGINAL booking; per-touch dedup key is `(reconnectId, touchpoint)`; email log body includes `Subject:`/`From:` header lines for DB QA. A sequence with NO prior booking can't write log rows (required FK — deliberate); only emails go out, unlogged. The `reconnect_created` audit row is the record.
+- **Cancel/reschedule**: `invitee.canceled` matches `ReconnectSequence.calendlyEventId` exactly and returns early (so the generic email-fallback matchers can't cancel the prospect's original pending demo). Cancel → `cancelled`; reschedule-cancel → `superseded` immediately (the paired created event makes a fresh sequence; only the latest per prospect stays active). Duplicate webhook delivery → unique `calendlyEventId` replay guard. Failed sends retry each tick, cap 3 → skipped (logged `retry_cap_exceeded`, plus a server log line).
 - **SAFETY**: no real send unless `RECONNECT_LIVE=true`. Dry-run still renders and logs the real email bodies to `ConfirmationSend` (dryRun=true) so copy can be QA'd from the DB before flipping live. Per-touch dedup: dry-run "sent" rows count as done ONLY while still in dry-run mode — flipping `RECONNECT_LIVE=true` makes touches that only dry-ran re-fire for real (still window-gated, so a T-1 whose day passed won't send stale) — prospects booked before go-live get their remaining touches. Texts additionally sit behind the global `SENDBLUE_LIVE` (via `sendConfirmation` `forceDryRun`, same pattern as origination).
 - **Key files**: `src/lib/reconnect/{process,copy}.ts`, `src/lib/email.ts`, `src/app/api/reconnect/process/route.ts`, reconnect branches in `src/app/api/webhooks/calendly/route.ts` (created + canceled), exclusion in `src/app/api/sync/gcal/route.ts`. Middleware: `/api/reconnect/` is cron-exempt.
-- **Send pings**: every REAL send (never dry-runs/skips) EMAILS all active closers' `TeamMember.email` from `Grassfed Reconnect <notifications@grsfd.ai>` — subject `Reconnect {touch} sent — {prospect}` (Colin explicitly wanted email, NOT #closer-tpds). Closer `slackUserId`s were seeded anyway (Colin U09UH7YSPV1, Matthew-as-Ming U0A1CD7BU9W) — usable for future mentions.
+- **Send pings**: every REAL send (never dry-runs/skips) EMAILS all active closers' `TeamMember.email` from `Grassfed Reconnect <notifications@grsfd.ai>` — subject `Reconnect {touch} sent — {prospect}`.
 - **Canary**: same fragility class as Known Bug #2 — the Calendly event type name must contain "reconnect" or events silently fall through to the demo filter/dedup. Watch `reconnect_created` audit rows.
 - **Copy note**: text bodies, email body lines, and the "Great to chat." lead are Colin's locked wording; the touch #1 subject is Colin's locked "One more thing" (2026-09-29); the T-1 subject "Ahead of our call tomorrow" in `src/lib/reconnect/copy.ts` is a draft he has not objected to.
 
@@ -213,7 +203,7 @@ Automated 3-touch nurture when a closer books a **second call** via a Calendly e
 4. **Email validation gate**: `/api/agents/verify` — call Omni Verifier before Smartlead push, cache results
 5. **GHL push endpoint**: Use Private Integration bearer tokens, create contacts + trigger workflow
 6. **Outbound page**: Campaign cards with analytics, push history
-7. **Slack #outbound-tpds**: Notifications when batches get pushed
+7. **Batch push log**: when outbound batches go out, record them in the app. Do not post to Slack.
 8. **Scheduled pushes**: Automated recurring pushes with filter criteria
 
 ### Smartlead Field Mapping (for push)
@@ -292,7 +282,7 @@ Automated 3-touch nurture when a closer books a **second call** via a Calendly e
 - Payroll transactions need payroll checkbox checked + category assigned on Expenses page
 
 ## What Was Built (Apr 3 session)
-- **Closer verification cron**: `/api/slack/closer/verify` at 8 PM ET → `#closer-tpds`, per-closer pending demos + WTD show rate + link to demos page
+- **Closer verification cron**: was `/api/slack/closer/verify` at 8 PM ET. Removed with the rest of the Slack posters. Closers still confirm on `/demos`.
 - **Setter verification env var fix**: `SLACK_DATAVERIFICATION_WEBHOOK_URL` (was mismatched as `SLACK_VERIFY_WEBHOOK_URL`)
 - **Fireflies show detection overhaul**: 5-signal verification in both sync cron and webhook (summary_status, silent_meeting, sentence count, speaker count, content relevance keywords)
 - **Smartlead import**: cherry-picked from orphaned branch — API client (`src/lib/smartlead.ts`), import route, UI page (`/smartlead`)
@@ -312,8 +302,8 @@ Automated 3-touch nurture when a closer books a **second call** via a Calendly e
 ## Backlog (lower priority improvements)
 - **Day-focused dashboard view** — main dashboard could have a "today" mode showing today's demos + cash instead of full week
 - **Deals page simplification** — feels redundant with demos page financial feed. Consider making it admin-only or merging
-- **Setter confirmation push** — daily Slack nudge for setters to confirm their bookings showed
-- **Closer confirmation push** — nudge closers to confirm show rate
+- **Setter confirmation push** — Colin no longer wants a Slack nudge. Setters confirm on `/verify`.
+- **Closer confirmation push** — Colin no longer wants a Slack nudge. Closers confirm on `/demos`.
 - **Booking feed vertical layout** — currently vertical list in right column, could be improved with more detail
 - **Booking feed closer assignment** — closer is shown but not always assigned at booking time
 - **30 old demos with null setter** — historical demos from before March 9 have no setter attribution, affects all-time scoreboard

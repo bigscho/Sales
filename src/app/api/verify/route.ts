@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendSlackVerify, sendSlackCEO } from "@/lib/slack";
-import { formatMention } from "@/lib/setter-game";
 
 // GET: Load setter's demos + verification state for a given week
 export async function GET(request: NextRequest) {
@@ -101,10 +99,10 @@ export async function GET(request: NextRequest) {
 // POST: Submit confirmation and/or flags
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { weekId, setterId, confirmedDemoIds, flags } = body as {
+  const { weekId, setterId, flags } = body as {
     weekId: string;
     setterId: string;
-    confirmedDemoIds: string[];  // demo IDs the setter says are correct
+    confirmedDemoIds?: string[];
     flags: Array<{
       demoId?: string;
       flagType: "wrong_status" | "not_mine" | "missing_demo";
@@ -166,54 +164,6 @@ export async function POST(request: NextRequest) {
         },
       });
       createdFlags.push(created);
-    }
-  }
-
-  // Get demo counts for the Slack summary
-  const allDemos = await prisma.demo.findMany({
-    where: { weekId, booking: { setterId } },
-    include: { booking: { select: { prospectName: true, demoDate: true } } },
-  });
-  const totalDemos = allDemos.length;
-  const confirmedCount = confirmedDemoIds?.length || 0;
-  const flaggedCount = flags?.length || 0;
-  const mention = formatMention(setter);
-
-  // Post to #setter-daily-verify
-  const summary = hasFlags
-    ? `${mention} confirmed ${confirmedCount}/${totalDemos} demos. *${flaggedCount} flagged for review.*`
-    : `${mention} confirmed all ${totalDemos} demos. No issues.`;
-  await sendSlackVerify(summary);
-
-  // Send each flag to CEO DM with detail
-  if (hasFlags) {
-    for (const flag of flags) {
-      let flagDetail: string;
-
-      if (flag.flagType === "missing_demo") {
-        flagDetail = [
-          `*Flag from ${setter.name}:* Missing demo`,
-          `Prospect: ${flag.missingProspectName || "not provided"}`,
-          flag.missingProspectEmail ? `Email: ${flag.missingProspectEmail}` : null,
-          flag.missingDemoDate ? `Approx date: ${flag.missingDemoDate}` : null,
-          flag.note ? `Note: ${flag.note}` : null,
-        ].filter(Boolean).join("\n");
-      } else {
-        // Find the demo details for context
-        const demo = allDemos.find(d => d.id === flag.demoId);
-        const demoLabel = demo
-          ? `${demo.booking.prospectName} (${new Date(demo.booking.demoDate).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })})`
-          : `Demo ${flag.demoId}`;
-
-        const typeLabel = flag.flagType === "wrong_status" ? "Wrong status" : "Not my booking";
-        flagDetail = [
-          `*Flag from ${setter.name}:* ${typeLabel}`,
-          `Demo: ${demoLabel}`,
-          flag.note ? `Note: "${flag.note}"` : null,
-        ].filter(Boolean).join("\n");
-      }
-
-      await sendSlackCEO(flagDetail);
     }
   }
 

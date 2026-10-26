@@ -8,7 +8,7 @@
 
 ## What This Is
 
-A real-time sales operations dashboard for Grassfed (cold email agency). Tracks the full sales pipeline: setter books demo → prospect shows up → closer runs demo → payment collected. Integrated with Calendly, Google Calendar, Stripe, Fireflies.ai, and Slack.
+A real-time sales operations dashboard for Grassfed (cold email agency). Tracks the full sales pipeline: setter books demo → prospect shows up → closer runs demo → payment collected. Integrated with Calendly, Google Calendar, Stripe, and Fireflies.ai. The app does not post to Slack.
 
 The sales team consists of:
 - **Setters** (Ming, Luke, Jett) — book demos via cold calling
@@ -28,19 +28,14 @@ The sales team consists of:
 ## Architecture Overview
 
 ```
-Calendly ──webhook──→ /api/webhooks/calendly ──→ DB (Booking + Demo)
-                                                  ├──→ Slack #setter-tpds
-                                                  └──→ Slack #sales-team
+Calendly ──webhook──→ /api/webhooks/calendly ──→ DB (Booking + Demo + weekday setter score)
 
-Google Cal ──10min cron──→ /api/sync/gcal ──→ DB (reschedule detection)
+Google Cal ──10min cron──→ /api/sync/gcal ──→ DB (reschedule detection, duplicate audit log)
 
 Fireflies ──webhook──→ /api/webhooks/fireflies ──→ DB (mark showed)
-           ──30min cron──→ /api/sync/fireflies      ├──→ Slack #show-rate-tpds
-                                                     └──→ Slack #sales-team
+           ──30min cron──→ /api/sync/fireflies
 
-Stripe ──webhook──→ /api/webhooks/stripe ──→ DB (Payment)
-                                              ├──→ Slack #closer-tpds
-                                              └──→ Slack #sales-team
+Stripe ──webhook──→ /api/webhooks/stripe ──→ DB (Payment, MRR events)
 
 Dashboard ──60s auto-refresh──→ /api/demos, /api/kpis ──→ UI
 ```
@@ -109,7 +104,7 @@ id, weekId, date, dayOfWeek, demoCount, showCount,
 noShowCount, cancelledCount, cashCents, lockedBy, lockedAt
 @@unique([weekId, date])
 ```
-Show rate on locked days = showCount/(showCount+noShowCount+cancelledCount) — the one app-wide definition (`computeShowRate`), matching the Slack lock recap, scoreboard, and payroll. `cancelledCount` added Sep 2026 (backfilled).
+Show rate on locked days = showCount/(showCount+noShowCount+cancelledCount) — the one app-wide definition (`computeShowRate`), matching the scoreboard and payroll. `cancelledCount` added Sep 2026 (backfilled).
 
 ### DismissedEvent
 ```
@@ -131,12 +126,7 @@ id, calendarEventId (unique), reason, dismissedAt
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (whsec_...) |
 | `STRIPE_SECRET_KEY` | Stripe secret key for API calls |
 | `FIREFLIES_API_KEY` | Comma-separated. Colin's key is a Fireflies TEAM ADMIN key — verified Aug 2026 that it returns transcripts org-wide (Matthew, Danielle, Will incl.), so new closers need NO key change, just a seat in the Fireflies workspace. Mark's key still in the list is harmless dead weight. |
-| `SLACK_WEBHOOK_URL` | #sales-team channel webhook |
-| `SLACK_CEO_WEBHOOK_URL` | CEO DM webhook |
-| `SLACK_SETTER_WEBHOOK_URL` | #setter-tpds channel webhook |
-| `SLACK_SHOWRATE_WEBHOOK_URL` | #show-rate-tpds channel webhook |
-| `SLACK_CLOSER_WEBHOOK_URL` | #closer-tpds channel webhook |
-| `SLACK_DATAVERIFICATION_WEBHOOK_URL` | #setter-daily-verify channel webhook |
+| `SLACK_*_WEBHOOK_URL` | Unused. The app no longer posts to Slack. Safe to delete `SLACK_WEBHOOK_URL`, `SLACK_CEO_WEBHOOK_URL`, `SLACK_SETTER_WEBHOOK_URL`, `SLACK_SHOWRATE_WEBHOOK_URL`, `SLACK_CLOSER_WEBHOOK_URL`, `SLACK_DATAVERIFICATION_WEBHOOK_URL`, `SLACK_NOSHOW_WEBHOOK_URL`. |
 | `RECONNECT_LIVE` | Reconnect sequence kill-switch: unset = full dry-run (bodies logged, no sends); "true" = live |
 | `RESEND_API_KEY` | Resend HTTP API key for reconnect emails (grsfd.co verified sending domain) |
 | `ANTHROPIC_API_KEY` | UNUSED (AI recap cut 2026-09-29; set in prod, safe to delete) |
@@ -149,30 +139,18 @@ id, calendarEventId (unique), reason, dismissedAt
 ### Webhooks (instant, event-driven)
 | Route | Purpose |
 |-------|---------|
-| `POST /api/webhooks/calendly` | Calendly invitee.created/canceled → creates booking + demo, fires setter Slack. Identity matching: calendly ID → email+date → strict name+date; same name + same phone overrides the different-emails veto (typo'd/alias emails), phone alone never matches (Sep 2026) |
+| `POST /api/webhooks/calendly` | Calendly invitee.created/canceled → creates booking + demo, refreshes the weekday setter score. Identity matching: calendly ID → email+date → strict name+date; same name + same phone overrides the different-emails veto (typo'd/alias emails), phone alone never matches (Sep 2026) |
 | `POST /api/webhooks/stripe` | payment_intent.succeeded → creates payment, classifies MRR/one-time + new/returning, auto-matches to demo |
 | `POST /api/webhooks/fireflies` | Transcription completed → matches to demo, marks showed |
 
 ### Sync Crons (scheduled polling)
 | Route | Schedule | Purpose |
 |-------|----------|---------|
-| `/api/sync/gcal` | Every 10 min | GCal service account reads active closer calendars (Colin + Matthew), detects reschedules, captures invite RSVP. Twin dedup matches ALL external attendee emails + name-with-phone-override (Sep 2026); "Canceled:"-renamed events cancel-don't-mint; `flagDuplicatePairs()` tripwire Slacks any two live same-person rows within an hour (once per pair, AuditLog `duplicate_pair_flagged`) |
+| `/api/sync/gcal` | Every 10 min | GCal service account reads active closer calendars (Colin + Matthew), detects reschedules, captures invite RSVP. Twin dedup matches ALL external attendee emails + name-with-phone-override (Sep 2026); "Canceled:"-renamed events cancel-don't-mint; `flagDuplicatePairs()` records any two live same-person rows within an hour (once per pair, AuditLog `duplicate_pair_flagged`) |
 | `/api/sync/fireflies` | Every 30 min | Fetches transcripts, auto-marks shows, flags missing transcripts |
 | `/api/sync` | Every 15 min | Legacy Stripe + Calendar sync |
-| `/api/sync/leaderboard` | Every 2hr weekdays | Setter leaderboard update |
 
-### Slack Notifications
-| Route | Schedule | Channel |
-|-------|----------|---------|
-| `/api/slack/setter/morning` | 9AM ET weekdays | #setter-tpds — Gay Pigeon + tag all setters |
-| `/api/slack/setter/midday` | 12PM ET weekdays | #setter-tpds — per-setter status + pigeon tier |
-| `/api/slack/setter/eod` | 6PM ET weekdays | #setter-tpds — final scores + points + pipeline |
-| `/api/slack/setter/confirm` | 10:05PM ET weekdays | #setter-daily-verify — per-setter WTD stats + verify link + CEO summary |
-| `/api/verify` | GET + POST | Setter verification — load demos/state, submit confirmations + flags → CEO DM |
-| `/api/verify/admin` | GET + POST | CEO verification — overview, resolve flags, add missing demos, lock week |
-| `/api/slack/daily` | 6PM ET daily | #sales-team — daily recap |
-| `/api/slack/ceo` | Sat 11AM ET | CEO DM — weekly P&L briefing |
-| `/api/slack` | Wed + Sat | #sales-team — midweek/weekly summary |
+Slack posting routes and their crons are gone (`/api/slack`, `/api/slack/daily`, `/api/slack/ceo`, `/api/slack/setter/{morning,midday,eod,confirm}`, `/api/slack/showrate/weekly`, `/api/slack/closer/verify`, `/api/sync/leaderboard`). `/api/ceo/audit` still returns a financial snapshot when called; its daily cron was removed because the snapshot was only posted to Slack and is not saved. `/api/verify` and `/api/verify/admin` still save confirmations, flags, and the week lock.
 
 ### Admin / Diagnostic
 | Route | Methods | Purpose |
@@ -211,48 +189,23 @@ id, calendarEventId (unique), reason, dismissedAt
 | Scoreboard | `/scoreboard` | Medal-ranked setter leaderboard, all-time stats, show rate rep bonus tracker |
 | Payroll | `/payroll` | Weekly payroll generation with tier-based compensation |
 | P&L | `/pnl` | Revenue breakdown, expense tracking, margin calculation |
-| Team | `/team` | Add/edit team members with Slack user ID field |
+| Team | `/team` | Add/edit team members. Slack user ID is still stored and unused by notifications. |
 | Settings | `/settings` | Sync logs, expense categories |
 
 ---
 
-## Slack Channel System
+## Setter Pigeon Tiers
 
-### #setter-tpds — Setter Pigeon Gamification
-**Tier System (daily bookings):**
+Daily booking tiers still write `SetterDailyScore` and feed weekly credit bonuses. Nothing is posted to Slack.
+
 | Tier | Bookings | Pigeon | Points |
 |------|----------|--------|--------|
 | Bad | 0-3 | Sad Pigeon | 0 |
-| Decent | 4-8 | Lesbian Pigeon | 1 |
+| Decent | 4-8 | Common Pigeon | 1 |
 | Great | 9-11 | TPD | 2 |
 | Legendary | 12+ | Tuffest Pigeon | 5 |
 
-**Messages:**
-- 9AM: Good morning, all setters tagged, Gay Pigeon GIF
-- Real-time: Every booking → "{emoji} @setter is at {count} today" + "TOTAL: X"
-- Real-time: Tier crossing at 4/9/12 → achievement GIF + message
-- 12PM: Per-setter midday status with pigeon tier
-- 6PM: Per-setter final score + points + team pipeline count
-- Corrections: When bookings deleted → "⚠️ Booking removed, updated count"
-
-### #show-rate-tpds — Show Rate Tracking
-- Fires when any demo is marked "showed" (Fireflies auto, admin manual, payment match)
-- Tags the setter who booked it
-- Shows: prospect name, closer, weekly show total, pending pipeline
-- Corrections: When showed→pending or demo deleted
-
-### #closer-tpds — Closer Performance
-- Fires on every Stripe payment
-- Tags the matched closer
-- Shows: amount, MRR/one-time, new/returning, weekly close total, new revenue total
-
-### #sales-team — General Alerts
-- Real-time: New demo booked, payment received
-- Daily recap at 6PM ET
-- Weekly summary Wed + Sat
-
-### CEO DM
-- Saturday 11AM ET: P&L, revenue breakdown, anomaly flags
+A weekday booking still calls `getSetterTodayBookings` and `checkAndFireTierCrossing` (records the crossing and awards the pigeon credit).
 
 ---
 
@@ -260,15 +213,13 @@ id, calendarEventId (unique), reason, dismissedAt
 
 ### src/lib/setter-game.ts
 - `getTierForCount(count)` → pigeon tier
-- `formatMention(member)` → `<@SLACK_ID>` or bold name
 - `getETDateBounds()` → today's start/end in UTC (Eastern Time)
 - `isWeekday()` → boolean
-- `getSetterTodayBookings(setterId)` → count, tier, daily score
-- `checkAndFireTierCrossing(setterId, count)` → fires Slack if threshold crossed
+- `getSetterTodayBookings(setterId)` → count, tier, daily score (writes SetterDailyScore)
+- `checkAndFireTierCrossing(setterId, count)` → records a new 4/9/12 crossing and awards the pigeon credit
 - `getAllSetterScoresToday()` → all setter daily stats
 - `getPipelineCount()` → future demos count
-- `sendShowNotification(...)` → posts to #show-rate-tpds
-- `sendCloseNotification(...)` → posts to #closer-tpds
+- `getWeeklyShowStats()` / `getSetterWeeklyShows()` → show counts for the current week
 
 ### src/lib/matching.ts
 - `matchPaymentToDemo(payment)` → match by email then fuzzy name
@@ -277,9 +228,6 @@ id, calendarEventId (unique), reason, dismissedAt
 
 ### src/lib/kpis.ts
 - `calculateWeeklyKPIs(weekId)` → full weekly metrics including New Revenue
-
-### src/lib/slack.ts
-- `sendSlackTeam/CEO/Setter/ShowRate/Closer(text, blocks?)` → 5 channels
 
 ### src/lib/utils.ts
 - `getWeekRange(date)` → Monday-Sunday UTC boundaries
@@ -312,16 +260,12 @@ Both have `Override` fields for manual correction via clickable badges in the UI
 ## Data Flow: New Demo Booking
 
 1. Prospect books via Calendly
-2. **Calendly webhook** fires instantly → creates Booking + Demo with setter attribution
-3. **Slack #setter-tpds** → "{emoji} @setter is at {count} today" + team total
-4. **Slack #sales-team** → "New demo booked: {prospect} with {closer}"
-5. **GCal sync** (10 min) → detects if already exists, skips or catches reschedules
-6. **Fireflies** records the demo call
-7. **Fireflies webhook/sync** → matches transcript to demo → marks as "showed"
-8. **Slack #show-rate-tpds** → "+1 SHOW for @setter"
-9. **Stripe webhook** → payment arrives → classified + matched → deal created
-10. **Slack #closer-tpds** → "+1 CLOSE for @closer"
-11. **Dashboard** auto-refreshes every 60s, no flash/scroll reset
+2. **Calendly webhook** fires instantly → creates Booking + Demo with setter attribution, and on weekdays refreshes the setter daily score / tier credit
+3. **GCal sync** (10 min) → detects if already exists, skips or catches reschedules
+4. **Fireflies** records the demo call
+5. **Fireflies webhook/sync** → matches transcript to demo → marks as "showed"
+6. **Stripe webhook** → payment arrives → classified + matched → deal created
+7. **Dashboard** auto-refreshes every 60s, no flash/scroll reset
 
 ---
 
@@ -378,24 +322,13 @@ Automated nurture between a closer booking a **second call** (Calendly event typ
 
 ---
 
-## Team Member Slack IDs
-
-| Member | Role | Slack ID |
-|--------|------|----------|
-| Ming | Setter | U0A1CD7BU9W |
-| Luke | Setter | U0APNBM43S7 |
-| Jett | Setter | U0B6EQNL6EA |
-| Christian | Setter | U0BA1725JD9 |
-| Nick | Setter | U0BA468RHB7 |
-| Oliver | Setter | U0BB1S4SG48 |
-| Colin | Closer | U09UH7YSPV1 |
-| Mark | Closer | U0AKMP7A36H |
+## Team members
 
 Logan (setter) was deactivated May 2026 — `isActive: false`, historical data preserved.
 
 Christian, Nick, and Oliver were promoted from auto-created Calendly attribution rows on 2026-06-12. They are active tier-1 setters, included in the leaderboard, have dashboard PIN `0000`, and keep their existing booking attribution.
 
-New team members: Add via Team page with Slack User ID field for real @mentions. Attribution is automatic once they're in the DB — GCal events with "Booked by: [name]" in the description will resolve to the matching setter.
+`TeamMember.slackUserId` is still stored (and editable on the Team page) but nothing posts to Slack, so the field is unused. New team members: add via the Team page. Attribution is automatic once they're in the DB — GCal events with "Booked by: [name]" in the description will resolve to the matching setter.
 
 ---
 
@@ -448,8 +381,8 @@ git push -u origin claude/recap-session-progress-CNZlu
 │   │   ├── settings/page.tsx    # Settings
 │   │   └── api/                 # 29 API routes
 │   │       ├── webhooks/        # Calendly, Stripe, Fireflies
-│   │       ├── sync/            # GCal, Fireflies, Calendly, Leaderboard
-│   │       ├── slack/           # Team, CEO, Daily, Setter (morning/midday/eod)
+│   │       ├── sync/            # GCal, Fireflies, Calendly, Stripe
+│   │       ├── verify/          # Setter + CEO verification (no Slack)
 │   │       ├── demos/           # CRUD + lock
 │   │       ├── deals/           # CRUD
 │   │       ├── payments/        # Override + match
@@ -465,8 +398,7 @@ git push -u origin claude/recap-session-progress-CNZlu
 │   │   └── ui/                  # badge, button, card (Radix-based)
 │   └── lib/
 │       ├── db.ts                # Prisma client singleton
-│       ├── slack.ts             # 6 channel functions
-│       ├── setter-game.ts       # Pigeon gamification + Slack helpers
+│       ├── setter-game.ts       # Pigeon tiers, daily scores, tier-crossing credits
 │       ├── matching.ts          # Payment + transcript matching
 │       ├── kpis.ts              # Weekly KPI calculations
 │       └── utils.ts             # Formatting + date utilities

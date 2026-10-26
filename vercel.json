@@ -1,18 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/slack",
-      "schedule": "0 14 * * 3"
-    },
-    {
-      "path": "/api/slack",
-      "schedule": "0 14 * * 6"
-    },
-    {
-      "path": "/api/sync/leaderboard",
-      "schedule": "0 */2 * * 1-5"
-    },
-    {
       "path": "/api/sync",
       "schedule": "*/15 * * * *"
     },
@@ -33,48 +21,12 @@
       "schedule": "*/30 * * * *"
     },
     {
-      "path": "/api/slack/daily",
-      "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/slack/ceo",
-      "schedule": "0 15 * * 6"
-    },
-    {
-      "path": "/api/slack/setter/morning",
-      "schedule": "0 13 * * 1-5"
-    },
-    {
-      "path": "/api/slack/setter/midday",
-      "schedule": "0 16 * * 1-5"
-    },
-    {
-      "path": "/api/slack/setter/eod",
-      "schedule": "0 22 * * 1-5"
-    },
-    {
-      "path": "/api/slack/showrate/weekly",
-      "schedule": "0 22 * * 5"
-    },
-    {
-      "path": "/api/slack/closer/verify",
-      "schedule": "0 0 * * 2-6"
-    },
-    {
-      "path": "/api/slack/setter/confirm",
-      "schedule": "5 2 * * 2-6"
-    },
-    {
       "path": "/api/credits/award",
       "schedule": "0 5 * * 1"
     },
     {
       "path": "/api/blasts/process",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/ceo/audit",
-      "schedule": "0 11 * * *"
     },
     {
       "path": "/api/confirmations/t1",

@@ -6,7 +6,7 @@ type ActivityRange = { gte?: Date; lt?: Date; lte?: Date };
 /**
  * THE canonical "new booking activity" filter. Use this everywhere a surface
  * counts bookings-credited-in-a-period (scoreboard, dashboard KPIs, pigeon
- * tiers, weekly credits, Slack setter recaps, Bookings Today). Do not re-derive
+ * tiers, weekly credits, Bookings Today). Do not re-derive
  * this where-clause inline — the whole point is that every surface agrees.
  *
  * Semantics (count each real booking EVENT once, in its own week, under its own setter):

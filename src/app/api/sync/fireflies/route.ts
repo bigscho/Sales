@@ -335,13 +335,6 @@ export async function POST() {
           },
         });
 
-        // Notify show rate channel only for real shows
-        if (isRealShow && !wasAlreadyConfirmed) {
-          try {
-            const { sendShowNotification } = await import("@/lib/setter-game");
-            await sendShowNotification(demo.booking.prospectName, demo.booking.setterId, demo.closer?.name || null, "fireflies_auto");
-          } catch { /* show rate notification failed */ }
-        }
         results.showed += isRealShow ? 1 : 0;
         results.skipped += isRealShow ? 0 : 1;
       } else {

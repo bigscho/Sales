@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendSlackVerify } from "@/lib/slack";
 import { computeShowRate } from "@/lib/utils";
 
 // GET: Load full verification overview for a week (CEO view)
@@ -279,13 +278,9 @@ export async function POST(request: NextRequest) {
         entityId: weekId,
         action: "week_locked_via_verify",
         newValue: JSON.stringify({ lockedBy: "ceo_verify" }),
-        performedBy: "ceo",
-      },
-    });
-
-    // Slack notification
-    const weekLabel = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    await sendSlackVerify(`🔒 *Week of ${weekLabel} locked by CEO.* Numbers are final.`);
+      performedBy: "ceo",
+    },
+  });
 
     return NextResponse.json({ success: true, weekStatus: "confirmed" });
   }

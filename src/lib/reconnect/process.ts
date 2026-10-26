@@ -195,8 +195,8 @@ async function maybeSendRecapEmail(seq: Seq, now: Date, result: ProcessResult): 
 async function maybeSendT1Text(seq: Seq, result: ProcessResult): Promise<void> {
   // Without a prior booking there's no SendBlue group to text into (group
   // lookup is keyed on the original booking) — skip the text permanently for
-  // this sequence (ops was alerted at creation); emails still go. Mark it on
-  // the touchLog so it isn't re-evaluated every tick in the window.
+  // this sequence; emails still go. Mark it on the touchLog so it isn't
+  // re-evaluated every tick in the window.
   if (!seq.originalBookingId) {
     console.error(`reconnect ${seq.id}: no originalBooking — T-1 text skipped`);
     await markTouch(seq, "reconnect_t1_text", { status: "skipped", dryRun: true });
@@ -206,25 +206,13 @@ async function maybeSendT1Text(seq: Seq, result: ProcessResult): Promise<void> {
   const groupId = await lookupGroup(seq.originalBookingId, seq.prospectPhone);
   if (!groupId) {
     // Setter never made a group on the FIRST call (rare). Skip the text
-    // permanently and tell ops once so the closer texts manually.
+    // permanently. The skip is on the send log (error "no_group"); emails still go.
     await logEmailRow(seq, "reconnect_t1_text", renderReconnectT1Text(), {
       status: "skipped",
       error: "no_group",
       dryRun: true,
     });
     result.skipped++;
-    if (!seq.opsAlertedAt) {
-      await prisma.reconnectSequence.update({ where: { id: seq.id }, data: { opsAlertedAt: new Date() } });
-      try {
-        const { sendSlackShowRate } = await import("@/lib/slack");
-        await sendSlackShowRate(
-          `⚠️ Reconnect for ${seq.prospectName}: no SendBlue group — T-1 text skipped, ` +
-            `${closerFirstName(seq)} should text manually. Emails still go out.`
-        );
-      } catch (err) {
-        console.error("reconnect no_group Slack alert failed:", err);
-      }
-    }
     return;
   }
 
@@ -291,12 +279,7 @@ async function sendReconnectEmail(
   if (failures >= MAX_FAILURES) {
     await logEmailRow(seq, touchpoint, body, { status: "skipped", error: "retry_cap_exceeded", dryRun: true, variant });
     result.skipped++;
-    try {
-      const { sendSlackShowRate } = await import("@/lib/slack");
-      await sendSlackShowRate(`⚠️ Reconnect ${touchpoint} for ${seq.prospectName} gave up after ${MAX_FAILURES} failures.`);
-    } catch {
-      /* alert best-effort */
-    }
+    console.error(`reconnect ${touchpoint} for ${seq.prospectName} gave up after ${MAX_FAILURES} failures`);
     return;
   }
 

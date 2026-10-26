@@ -101,7 +101,6 @@ export default function SettingsPage() {
         <CardContent>
           <div className="space-y-3 text-sm">
             <EnvStatus name="STRIPE_SECRET_KEY" label="Stripe" />
-            <EnvStatus name="SLACK_WEBHOOK_URL" label="Slack Notifications" />
             <EnvStatus name="GOOGLE_CALENDAR_CREDENTIALS" label="Google Calendar" />
             <EnvStatus name="AIRTABLE_API_KEY" label="Airtable" />
             <EnvStatus name="FIREFLIES_API_KEY" label="Fireflies" />

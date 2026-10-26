@@ -289,30 +289,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Send Slack notifications
-      try {
-        const { sendSlackTeam, sendSlackCEO } = await import("@/lib/slack");
-        const amountStr = `$${(amount / 100).toFixed(2)}`;
-        const typeLabel = revenueType === "mrr" ? "MRR" : revenueType === "one_time" ? "One-time" : "Misc";
-        const statusLabel = customerStatus === "new" ? "🆕 New" : customerStatus === "returning" ? "🔄 Returning" : "";
-        const matchLabel = matchResult.matched ? " → matched to deal" : "";
-        const message = `💰 ${statusLabel} ${typeLabel}: ${amountStr} from ${customerName || customerEmail || "Unknown"}${matchLabel}`;
-
-        // #sales-team gets everything
-        await sendSlackTeam(message);
-
-        // CEO gets all revenue notifications
-        await sendSlackCEO(message);
-      } catch { /* Slack not configured */ }
-
-      // Closer channel — only new revenue (not returning)
-      if (customerStatus === "new") {
-        try {
-          const { sendCloseNotification } = await import("@/lib/setter-game");
-          await sendCloseNotification(amount, customerName || customerEmail, matchResult.closerId, revenueType, customerStatus);
-        } catch { /* closer notification failed */ }
-      }
-
       return NextResponse.json({
         received: true,
         action: "created",
@@ -384,14 +360,6 @@ export async function POST(request: NextRequest) {
               performedBy: "stripe_webhook",
             },
           });
-
-          // Slack alert for refunds
-          try {
-            const { sendSlackCEO } = await import("@/lib/slack");
-            const refundStr = `$${(amountRefunded / 100).toFixed(2)}`;
-            const label = isFullRefund ? "Full refund" : "Partial refund";
-            await sendSlackCEO(`⚠️ ${label}: ${refundStr} for ${existing.customerName || existing.customerEmail || "Unknown"}`);
-          } catch { /* Slack not configured */ }
         }
       }
 
@@ -430,15 +398,6 @@ export async function POST(request: NextRequest) {
               performedBy: "stripe_webhook",
             },
           });
-
-          // Slack alert — disputes are urgent
-          try {
-            const { sendSlackCEO, sendSlackTeam } = await import("@/lib/slack");
-            const amountStr = `$${(disputeAmount / 100).toFixed(2)}`;
-            const msg = `🚨 DISPUTE: ${amountStr} from ${existing.customerName || existing.customerEmail || "Unknown"} — Reason: ${reason || "unknown"}`;
-            await sendSlackCEO(msg);
-            await sendSlackTeam(msg);
-          } catch { /* Slack not configured */ }
         }
       }
 
@@ -469,12 +428,6 @@ export async function POST(request: NextRequest) {
               ...(disputeStatus !== "won" ? { refundedAt: existing.refundedAt || new Date() } : {}),
             },
           });
-
-          try {
-            const { sendSlackCEO } = await import("@/lib/slack");
-            const outcome = disputeStatus === "won" ? "✅ WON" : "❌ LOST";
-            await sendSlackCEO(`Dispute ${outcome} for ${existing.customerName || "Unknown"} ($${(existing.amountCents / 100).toFixed(2)})`);
-          } catch { /* Slack not configured */ }
         }
       }
 
@@ -525,11 +478,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      try {
-        const { sendSlackCEO } = await import("@/lib/slack");
-        await sendSlackCEO(`📈 New subscription: ${clientName} at $${(mrrAmount / 100).toFixed(2)}/mo`);
-      } catch { /* Slack not configured */ }
-
       return NextResponse.json({ received: true, action: "subscription_created", clientName, mrr: mrrAmount });
     }
 
@@ -575,42 +523,13 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      try {
-        const { sendSlackCEO, sendSlackTeam } = await import("@/lib/slack");
-        const msg = `🔴 Churn: ${clientName} canceled — lost $${(mrrAmount / 100).toFixed(2)}/mo MRR`;
-        await sendSlackCEO(msg);
-        await sendSlackTeam(msg);
-      } catch { /* Slack not configured */ }
-
       return NextResponse.json({ received: true, action: "subscription_churned", clientName, mrrLost: mrrAmount });
     }
 
     // === customer.subscription.updated (downgrades, cancel_at_period_end, etc.) ===
+    // cancel_at_period_end is read live from Stripe on the CEO revenue page.
+    // This event does not write a row of its own.
     if (eventType === "customer.subscription.updated") {
-      const subRaw = data as Record<string, unknown>;
-      const previousAttributes = (body.data?.previous_attributes || {}) as Record<string, unknown>;
-      const customerId = typeof subRaw.customer === "string" ? subRaw.customer : null;
-
-      let clientName = "Unknown";
-      if (customerId && process.env.STRIPE_SECRET_KEY) {
-        try {
-          const Stripe = (await import("stripe")).default;
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-          const customer = await stripe.customers.retrieve(customerId);
-          if (!("deleted" in customer && customer.deleted)) {
-            clientName = customer.name || customer.email || "Unknown";
-          }
-        } catch { /* customer lookup failed */ }
-      }
-
-      // Detect cancel_at_period_end being set (early warning of churn)
-      if (subRaw.cancel_at_period_end === true && previousAttributes.cancel_at_period_end === false) {
-        try {
-          const { sendSlackCEO } = await import("@/lib/slack");
-          await sendSlackCEO(`⚠️ ${clientName} set to cancel at period end — churn incoming`);
-        } catch { /* Slack not configured */ }
-      }
-
       return NextResponse.json({ received: true, action: "subscription_updated" });
     }
 

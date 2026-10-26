@@ -801,8 +801,8 @@ async function syncCalendar(
 }
 
 // Scan recent + upcoming live bookings for same-person pairs booked within an
-// hour of each other and alert Slack once per pair. Catches every duplication
-// flavor — including Calendly-side double-books the gcal matchers never see.
+// hour of each other and record each pair once on the audit log. Catches every
+// duplication flavor — including Calendly-side double-books the gcal matchers never see.
 async function flagDuplicatePairs() {
   const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
   const rows = await prisma.booking.findMany({
@@ -836,7 +836,6 @@ async function flagDuplicatePairs() {
   }
   if (pairs.length === 0) return;
 
-  const fresh: string[] = [];
   for (const [a, b] of pairs) {
     const pairKey = [a.id, b.id].sort().join("+");
     const already = await prisma.auditLog.findFirst({
@@ -859,19 +858,7 @@ async function flagDuplicatePairs() {
         performedBy: "gcal_sync",
       },
     });
-    fresh.push(
-      `• *${a.prospectName}* — ${a.demoDate.toISOString().slice(0, 16).replace("T", " ")} UTC: ` +
-        `${a.source} (${a.prospectEmail || "no email"}, ${a.demo?.status}) vs ` +
-        `${b.source} (${b.prospectEmail || "no email"}, ${b.demo?.status})`
-    );
   }
-  if (fresh.length === 0) return;
-
-  const { sendSlackMessage } = await import("@/lib/slack");
-  await sendSlackMessage(
-    `🚨 *Possible duplicate booking${fresh.length > 1 ? "s" : ""} detected* — same person, two live rows. ` +
-      `Review on /demos and delete/merge the extra row so it isn't double-counted:\n${fresh.join("\n")}`
-  );
 }
 
 // --- Route handlers ---
@@ -924,8 +911,8 @@ export async function POST() {
 
     // Duplicate tripwire: whatever the matchers miss should surface in minutes,
     // not sit until payroll. Two LIVE rows for the same person (name or phone)
-    // within an hour of each other = a double-counted meeting; flag each pair to
-    // Slack exactly once (AuditLog dedup on the pair key).
+    // within an hour of each other = a double-counted meeting; record each pair
+    // once (AuditLog dedup on the pair key). Review them on /demos.
     try {
       await flagDuplicatePairs();
     } catch { /* tripwire failure never blocks the sync */ }
