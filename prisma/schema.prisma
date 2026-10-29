@@ -699,6 +699,16 @@ model ConfirmationSend {
   groupId           String?
   sendblueMessageId String?
   error             String?
+  // Set only on an open claim (queued | sent | failed). Postgres unique
+  // indexes treat NULL as distinct, so skipped/audit rows leave these null.
+  // claimKey: one open claim per booking (or reconnect sequence) + touchpoint + dry/live lane.
+  // dayOfGroupDayKey: at most one day-of claim per group per Eastern day per lane.
+  // bodyDedupeKey: at most one identical body per group per Eastern day per lane.
+  claimKey          String?   @unique
+  dayOfGroupDayKey  String?   @unique
+  bodyDedupeKey     String?   @unique
+  bodyHash          String?
+  etDay             String?   // YYYY-MM-DD in America/New_York
   // QA instrumentation for automation-readiness
   edited            Boolean   @default(false)  // rep changed the text before sending
   autoSent          Boolean   @default(false)  // fired by cron without manual approval
@@ -718,6 +728,34 @@ model ConfirmationSend {
   @@index([prospectPhone, touchpoint, status])
   @@index([bookingId])
   @@index([reconnectId, touchpoint])
+  @@index([groupId, bodyHash, createdAt])
+  @@index([groupId, touchpoint, etDay])
+}
+
+// One row per UTC hour and dry/live lane. The send path increments `count`
+// only while it is still under the hourly cap (see CONFIRMATIONS_MAX_SENDS_PER_HOUR).
+model ConfirmationRateBucket {
+  hourBucket String
+  dryRun     Boolean
+  count      Int     @default(0)
+
+  @@id([hourBucket, dryRun])
+}
+
+// Numbers and groups that must not be texted. Fed by inbound STOP-style
+// messages and Sendblue opted_out flags. An empty phone or groupId means
+// "not set" — lookups never match on the empty string.
+model ConfirmationOptOut {
+  id        String   @id @default(cuid())
+  phone     String   @default("")
+  groupId   String   @default("")
+  reason    String
+  source    String
+  createdAt DateTime @default(now())
+
+  @@unique([phone, groupId])
+  @@index([phone])
+  @@index([groupId])
 }
 
 // === RECONNECT SEQUENCE (closer books a 2nd call via the "Grassfed Reconnect"

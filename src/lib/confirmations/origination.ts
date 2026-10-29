@@ -34,9 +34,10 @@ import {
   formatDemoTime,
   firstNameOf,
 } from "./copy";
+import { originationTextingEnabled } from "./guards";
 
-function originationLive(): boolean {
-  return process.env.CONFIRMATIONS_ORIGINATION_LIVE === "true";
+export function originationLive(): boolean {
+  return originationTextingEnabled();
 }
 
 /** Only reply to a group the webhook just registered. */

@@ -4,6 +4,7 @@ import { sendConfirmation, type SendOutcome } from "@/lib/confirmations/send";
 import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 // POST /api/confirmations/send
 // { touchpoint: "t1" | "day_of", items: [{ bookingId, body? }] }
@@ -50,5 +51,6 @@ export async function POST(request: NextRequest) {
 
   const sent = results.filter((r) => r.status === "sent").length;
   const deferred = results.filter((r) => r.status === "deferred").length;
-  return NextResponse.json({ results, sent, deferred, total: items.length });
+  const skipped = results.filter((r) => r.status === "skipped").length;
+  return NextResponse.json({ results, sent, deferred, skipped, total: items.length });
 }

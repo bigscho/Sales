@@ -15,6 +15,8 @@ const SYSTEM_ROUTES = [
   "/api/seed",
   "/api/credits/award",
   "/api/blasts/process",
+  // Session-less so a scheduler can call them. The handlers require
+  // Authorization: Bearer CRON_SECRET and reject GET.
   "/api/confirmations/t1",
   "/api/confirmations/dayof",
   "/api/reconnect/",

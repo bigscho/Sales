@@ -14,6 +14,7 @@ import {
   withSenderEmail,
 } from "@/lib/confirmations/internal-group";
 import { saveInternalInboundMessage } from "@/lib/confirmations/internal-messages";
+import { recordInboundOptOut } from "@/lib/confirmations/opt-out";
 
 // SendBlue inbound webhook. Two jobs:
 //  1. Learn group_ids and match them to bookings by prospect phone. The setter
@@ -172,6 +173,22 @@ export async function POST(request: NextRequest) {
           console.error(`Failed to store internal group message for ${groupId}`);
           throw new Error(`internal_message_store_failed:${groupId}`, { cause: err });
         }
+      }
+    }
+
+    // Honor STOP / opted_out before any reply. Internal coaching chats are not
+    // a prospect opt-out. A write failure must not 500 the webhook (Sendblue
+    // would retry the whole event).
+    if (!isOutbound && !internal) {
+      try {
+        await recordInboundOptOut({
+          content: typeof body.content === "string" ? body.content : null,
+          optedOut: body.opted_out === true,
+          fromNumber,
+          groupId,
+        });
+      } catch (err) {
+        console.error("Failed to record SMS opt-out:", err);
       }
     }
 
