@@ -21,6 +21,8 @@ const SYSTEM_ROUTES = [
   "/api/confirmations/t1",
   "/api/confirmations/dayof",
   "/api/reconnect/",
+  // Bots authenticate with their own bearer token inside the handler.
+  "/api/sendblue/",
 ];
 
 // Role-based route access
