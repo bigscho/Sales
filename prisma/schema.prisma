@@ -758,6 +758,49 @@ model ConfirmationOptOut {
   @@index([groupId])
 }
 
+// Bot / script sends (Chief SDR, Solo Live, @coach, …). They do not have a
+// Booking row, so they cannot use ConfirmationSend. claimKey is one open claim
+// per caller + idempotency key + dry/live lane. bodyDedupeKey is one identical
+// body per recipient (phone or group) per Eastern day per lane. Skipped audit
+// rows leave both keys null. The global hourly cap still uses ConfirmationRateBucket.
+model BotSend {
+  id                String    @id @default(cuid())
+  caller            String
+  idempotencyKey    String
+  channel           String    // direct | group
+  recipient         String    // E.164 phone or Sendblue group id
+  phone             String?   // last-10 digits when this is a 1:1, for opt-out
+  groupId           String?
+  bodyHash          String
+  mediaUrl          String?
+  status            String    @default("queued") // queued | sent | failed | skipped
+  reason            String?
+  dryRun            Boolean   @default(true)
+  claimKey          String?   @unique
+  bodyDedupeKey     String?   @unique
+  etDay             String?
+  sendblueMessageId String?
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([caller, createdAt])
+  @@index([recipient, bodyHash, createdAt])
+  @@index([recipient, etDay])
+}
+
+// How many bot claims have been taken for a recipient on an Eastern day.
+// Incremented only while still under the daily cap. Confirmations already sent
+// that day reduce the room before the first increment.
+model BotRecipientDay {
+  recipientKey String
+  etDay        String
+  dryRun       Boolean
+  count        Int     @default(0)
+
+  @@id([recipientKey, etDay, dryRun])
+}
+
 // === RECONNECT SEQUENCE (closer books a 2nd call via the "Grassfed Reconnect"
 // Calendly event type). Deliberately NOT a Booking row — a Booking would leak
 // into setter activity, the scoreboard, payroll, /demos, the Fireflies show
