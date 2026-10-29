@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { beginSend, finishSend, type SendRunPhase } from "@/lib/confirmations/send-run";
 
 // Confirmations — the show-rate rep's daily work surface.
 // T-1 tab: tomorrow's brand-new demos, call list + text QA merged into one row.
@@ -28,7 +29,7 @@ interface WorklistRow {
   sendable: boolean;
   skipReason: string | null;
   blockReason: string | null;
-  sendStatus: "not_sent" | "sent" | "failed";
+  sendStatus: "not_sent" | "sent" | "failed" | "queued";
   sentDryRun: boolean;
   sentAt: string | null;
 }
@@ -55,6 +56,7 @@ const SKIP_LABEL: Record<string, string> = {
   rescheduled_in: "Rescheduled in — already contacted",
   cancelled: "Cancelled",
   no_phone: "No phone number on the booking",
+  opted_out: "Opted out — do not text",
 };
 
 export default function ConfirmationsPage() {
@@ -63,7 +65,8 @@ export default function ConfirmationsPage() {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState<Set<string>>(new Set());
+  const [run, setRun] = useState<SendRunPhase>({ phase: "idle" });
+  const runRef = useRef<SendRunPhase>({ phase: "idle" });
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Set<string>>(new Set());
   const [showSkips, setShowSkips] = useState(true);
@@ -91,22 +94,39 @@ export default function ConfirmationsPage() {
     setTimeout(() => setToast(null), 2500);
   };
 
+  const setPhase = (next: SendRunPhase) => {
+    runRef.current = next;
+    setRun(next);
+  };
+
+  // One run at a time. A timeout or a non-JSON response leaves the buttons
+  // off for the life of this page — it does not fire the request again.
   const sendItems = async (items: Array<{ bookingId: string; body?: string }>) => {
-    if (!items.length) return;
-    setSending((prev) => new Set([...prev, ...items.map((i) => i.bookingId)]));
+    const begun = beginSend(
+      runRef.current,
+      items.map((i) => i.bookingId)
+    );
+    if (!begun.start) return;
+    setPhase(begun.state);
+    const touchpoint = view === "dayof" ? "day_of" : "t1";
     try {
       const res = await fetch("/api/confirmations/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ touchpoint: view === "dayof" ? "day_of" : "t1", items }),
+        cache: "no-store",
+        body: JSON.stringify({ touchpoint, items }),
       });
       const data = await res.json();
-      const deferred = Number(data.deferred || 0);
-      const held = deferred > 0 ? `, ${deferred} held for quiet hours (8 AM-8 PM local)` : "";
-      flash(`${data.sent} of ${data.total} sent${held}${live ? "" : " (dry run)"}`);
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "send failed");
       await load(view);
-    } finally {
-      setSending(new Set());
+      setPhase(finishSend(runRef.current, "completed"));
+      const deferred = Number(data.deferred || 0);
+      const skipped = Number(data.skipped || 0);
+      const held = deferred > 0 ? `, ${deferred} held for quiet hours (8 AM-8 PM local)` : "";
+      const skipNote = skipped > 0 ? `, ${skipped} skipped` : "";
+      flash(`${data.sent} of ${data.total} sent${held}${skipNote}${live ? "" : " (dry run)"}`);
+    } catch {
+      setPhase(finishSend(runRef.current, "lost"));
     }
   };
 
@@ -123,6 +143,7 @@ export default function ConfirmationsPage() {
   const active = useMemo(() => rows.filter((r) => !r.skipReason), [rows]);
   const skips = useMemo(() => rows.filter((r) => !!r.skipReason), [rows]);
   const pendingCount = active.filter((r) => r.sendable && r.sendStatus === "not_sent").length;
+  const locked = run.phase !== "idle";
   const sentCount = rows.filter((r) => r.sendStatus === "sent").length;
   const noGroupCount = active.filter((r) => r.blockReason === "no_group").length;
 
@@ -146,13 +167,29 @@ export default function ConfirmationsPage() {
           )}
           <button
             onClick={sendAll}
-            disabled={pendingCount === 0 || sending.size > 0}
+            disabled={pendingCount === 0 || locked}
             className="px-4 py-2 rounded-lg text-sm font-semibold bg-[var(--lime)] text-black hover:opacity-90 disabled:opacity-40"
           >
-            Send all ({pendingCount})
+            {run.phase === "running" ? "Sending…" : run.phase === "uncertain" ? "Send locked" : `Send all (${pendingCount})`}
           </button>
         </div>
       </div>
+
+      {run.phase !== "idle" && (
+        <div role="status" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+          <div className="font-semibold">{run.phase === "running" ? "Sending…" : "Send locked"}</div>
+          <p className="mt-1 text-[var(--muted-foreground)]">
+            {run.phase === "running"
+              ? `Sending ${run.bookingIds.length} text${run.bookingIds.length === 1 ? "" : "s"}. Buttons stay off until this request finishes.`
+              : run.message}
+          </p>
+          {run.phase === "uncertain" && (
+            <button type="button" onClick={() => load(view)} className="mt-2 text-xs font-semibold underline">
+              Check status
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-6 border-b border-[var(--border)] mb-5">
@@ -233,7 +270,7 @@ export default function ConfirmationsPage() {
                 key={row.bookingId}
                 row={row}
                 view={view}
-                busy={sending.has(row.bookingId)}
+                busy={locked}
                 editValue={edits[row.bookingId]}
                 isEditing={editing.has(row.bookingId)}
                 onEditToggle={() =>
@@ -352,6 +389,7 @@ function Row({
   const noGroup = row.blockReason === "no_group";
   const sent = row.sendStatus === "sent";
   const failed = row.sendStatus === "failed";
+  const queued = row.sendStatus === "queued";
 
   return (
     <div className={`p-4 flex flex-col sm:flex-row gap-4 ${noGroup ? "bg-red-500/5" : ""}`}>
@@ -453,10 +491,15 @@ function Row({
           <span className="text-sm font-semibold text-[var(--lime)]">
             Sent ✓{row.sentDryRun && <span className="block text-[10px] text-[var(--muted-foreground)] font-normal">dry run</span>}
           </span>
+        ) : queued ? (
+          <span className="text-sm font-semibold text-amber-600">In progress</span>
+        ) : failed ? (
+          <span className="text-[11px] text-red-500">Failed — held, not resent</span>
         ) : noGroup ? (
           <span className="text-xs text-[var(--muted-foreground)]">Call only</span>
         ) : (
           <button
+            type="button"
             onClick={onSend}
             disabled={busy || !row.sendable}
             className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--lime)] text-black hover:opacity-90 disabled:opacity-40"
@@ -464,7 +507,6 @@ function Row({
             {busy ? "Sending…" : "Send text"}
           </button>
         )}
-        {failed && <span className="text-[11px] text-red-500">Failed — retry</span>}
       </div>
     </div>
   );

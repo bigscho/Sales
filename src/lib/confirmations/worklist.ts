@@ -3,6 +3,8 @@
 // type, address variable and frozen count derive deterministically from the
 // booking row, so what the rep sees is always current and exactly what sends.
 import { prisma } from "@/lib/db";
+import { isLive } from "@/lib/sendblue";
+import { loadOptOutIndex, matchesOptOut, type OptOutIndex } from "./opt-out";
 import {
   classifyListingInput,
   frozenCount,
@@ -104,7 +106,7 @@ export interface WorklistRow {
   sendable: boolean;
   skipReason: string | null; // already_contacted | rescheduled_in | cancelled | no_phone
   blockReason: string | null; // no_group
-  sendStatus: "not_sent" | "sent" | "failed";
+  sendStatus: "not_sent" | "sent" | "failed" | "queued";
   sentDryRun: boolean;
   sentAt: string | null;
 }
@@ -330,12 +332,29 @@ export async function everSent(
   return !!hit;
 }
 
-/** Latest send for this booking+touchpoint — drives row status display. */
+/**
+ * Latest open claim for this booking+touchpoint — drives row status.
+ * A live claim always wins, so a dry-run row cannot hide a real send.
+ * While SENDBLUE_LIVE is on, a dry-run row does not block the real send.
+ * Queued claims count: the text is already reserved and must not be sent again.
+ */
 async function latestSend(bookingId: string, touchpoint: Touchpoint) {
-  return prisma.confirmationSend.findFirst({
-    where: { bookingId, touchpoint, status: { in: ["sent", "failed"] } },
+  const open = { bookingId, touchpoint, status: { in: ["queued", "sent", "failed"] } };
+  const live = await prisma.confirmationSend.findFirst({
+    where: { ...open, dryRun: false },
     orderBy: { createdAt: "desc" },
   });
+  if (live) return live;
+  if (isLive()) return null;
+  return prisma.confirmationSend.findFirst({
+    where: { ...open, dryRun: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+function statusOf(send: { status: string } | null): WorklistRow["sendStatus"] {
+  if (send?.status === "sent" || send?.status === "failed" || send?.status === "queued") return send.status;
+  return "not_sent";
 }
 
 // === T-1 WORKLIST (tomorrow's brand-new demos) ===
@@ -344,14 +363,15 @@ export async function buildT1Worklist(): Promise<WorklistRow[]> {
   await syncGroupsFromApi(); // learn any new setter-created groups first
   const { start, end } = etDayRange(1); // tomorrow ET
   const bookings = await fetchBookingsInRange(start, end);
+  const optOuts = await loadOptOutIndex();
   const rows: WorklistRow[] = [];
   for (const b of bookings) {
-    rows.push(await buildT1Row(b));
+    rows.push(await buildT1Row(b, optOuts));
   }
   return rows;
 }
 
-async function buildT1Row(b: BookingWithRels): Promise<WorklistRow> {
+async function buildT1Row(b: BookingWithRels, optOuts: OptOutIndex): Promise<WorklistRow> {
   const fallbackArea = b.listingAddress ? null : await lookupFallbackArea(b.prospectEmail);
   const cls = classifyListingInput(b.listingAddress, fallbackArea);
   const count = usesCount(cls.caseType) ? frozenCount(b.id) : null;
@@ -370,6 +390,9 @@ async function buildT1Row(b: BookingWithRels): Promise<WorklistRow> {
   else if (!send && (await everSent("t1", b.prospectEmail, b.prospectPhone))) skipReason = "already_contacted";
   else if (b.rescheduledFromId) skipReason = "rescheduled_in";
   else if (!b.prospectPhone) skipReason = "no_phone";
+  if (skipReason !== "cancelled" && matchesOptOut(optOuts, b.prospectPhone, groupId)) {
+    skipReason = "opted_out";
+  }
 
   const blockReason = !skipReason && !groupId ? "no_group" : null;
 
@@ -395,7 +418,7 @@ async function buildT1Row(b: BookingWithRels): Promise<WorklistRow> {
     sendable: !skipReason && !blockReason && !send,
     skipReason,
     blockReason,
-    sendStatus: send ? (send.status as "sent" | "failed") : "not_sent",
+    sendStatus: statusOf(send),
     sentDryRun: send?.dryRun ?? false,
     sentAt: send?.sentAt?.toISOString() || null,
   };
@@ -407,18 +430,19 @@ export async function buildDayOfWorklist(): Promise<WorklistRow[]> {
   await syncGroupsFromApi(); // learn any new setter-created groups first
   const { start, end } = etDayRange(0); // today ET
   const bookings = await fetchBookingsInRange(start, end);
+  const optOuts = await loadOptOutIndex();
   const rows: WorklistRow[] = [];
   const now = new Date(); // cron is hourly: never text about a demo that already started
   for (const b of bookings) {
     const demoStatus = b.demo?.status || "pending";
     if (demoStatus !== "pending") continue; // cancelled/showed/etc drop off
     if (b.demoDate.getTime() <= now.getTime()) continue; // demo time already passed
-    rows.push(await buildDayOfRow(b));
+    rows.push(await buildDayOfRow(b, optOuts));
   }
   return rows;
 }
 
-async function buildDayOfRow(b: BookingWithRels): Promise<WorklistRow> {
+async function buildDayOfRow(b: BookingWithRels, optOuts: OptOutIndex): Promise<WorklistRow> {
   // Variant keys off the send-log, not the reschedule flag: only someone who
   // actually RECEIVED a day-of before gets the "again" copy.
   const gotOneBefore = await everSent("day_of", b.prospectEmail, b.prospectPhone);
@@ -429,7 +453,8 @@ async function buildDayOfRow(b: BookingWithRels): Promise<WorklistRow> {
   const groupId = await lookupGroup(b.id, b.prospectPhone);
   const send = await latestSend(b.id, "day_of");
 
-  const skipReason = !b.prospectPhone ? "no_phone" : null;
+  let skipReason = !b.prospectPhone ? "no_phone" : null;
+  if (matchesOptOut(optOuts, b.prospectPhone, groupId)) skipReason = "opted_out";
   const blockReason = !skipReason && !groupId ? "no_group" : null;
 
   // No listing classification needed day-of, but keep the shape consistent.
@@ -456,7 +481,7 @@ async function buildDayOfRow(b: BookingWithRels): Promise<WorklistRow> {
     sendable: !skipReason && !blockReason && !send,
     skipReason,
     blockReason,
-    sendStatus: send ? (send.status as "sent" | "failed") : "not_sent",
+    sendStatus: statusOf(send),
     sentDryRun: send?.dryRun ?? false,
     sentAt: send?.sentAt?.toISOString() || null,
   };

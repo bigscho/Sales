@@ -8,7 +8,7 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --test src/lib/confirmations/internal-group.test.ts src/lib/trellus-roster.test.ts src/lib/confirmations/send-window.test.ts",
+    "test": "DATABASE_URL=\"${DATABASE_URL:-postgresql://user:pass@127.0.0.1:5432/sales_test}\" tsx --test --test-concurrency=1 src/lib/confirmations/internal-group.test.ts src/lib/trellus-roster.test.ts src/lib/confirmations/send-window.test.ts src/lib/confirmations/idempotency.test.ts src/lib/confirmations/send-run.test.ts src/lib/confirmations/claim.pg.test.ts",
     "flatten-participants": "tsx scripts/flatten-sendblue-participants.ts"
   },
   "dependencies": {

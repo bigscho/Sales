@@ -1,24 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { buildDayOfWorklist } from "@/lib/confirmations/worklist";
 import { sendConfirmation } from "@/lib/confirmations/send";
 import { nudgeRep } from "@/lib/confirmations/nudge";
 import { isLive } from "@/lib/sendblue";
+import { authorizeCron, dayOfAutoEnabled } from "@/lib/confirmations/guards";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const BASE_URL = process.env.VERCEL_URL
   ? `https://barn.grsfd.ai`
   : "http://localhost:3000";
 
-// Day-of cron — the testimonial + invite reminder. Hourly so a send that
-// landed outside quiet hours goes out at the next in-window hour. Mostly
-// automated by design (less custom than T-1): sends to every pending demo
-// today, with the std-vs-"again" variant chosen by the send log. Set
-// CONFIRMATIONS_DAYOF_AUTO to "false" to fall back to rep-approved sending
-// on the page (that kill switch is unchanged).
-export async function POST() {
+// Day-of cron — the testimonial + invite reminder. POST only, with
+// `Authorization: Bearer $CRON_SECRET` (Vercel cron style). GET is rejected
+// so a link preview or a monitor cannot text anyone.
+//
+// Auto-send stays OFF unless CONFIRMATIONS_DAYOF_AUTO is exactly "true".
+// Vercel Cron invokes this path with GET, which now returns 405. Point a
+// scheduler at POST with the bearer secret before turning auto-send on.
+// SENDBLUE_LIVE remains the master kill switch inside sendConfirmation.
+export async function POST(request: NextRequest) {
+  const auth = authorizeCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   const rows = await buildDayOfWorklist();
-  const autoEnabled = process.env.CONFIRMATIONS_DAYOF_AUTO !== "false";
+  const autoEnabled = dayOfAutoEnabled();
 
   const sendable = rows.filter((r) => r.sendable);
   const noGroup = rows.filter((r) => r.blockReason === "no_group");
@@ -27,6 +36,7 @@ export async function POST() {
   let failed = 0;
   let again = 0;
   let deferred = 0;
+  let skipped = 0;
   if (autoEnabled) {
     for (const row of sendable) {
       const res = await sendConfirmation(row, "day_of", { autoSent: true });
@@ -34,6 +44,7 @@ export async function POST() {
         sent++;
         if (row.variant === "again") again++;
       } else if (res.status === "deferred") deferred++;
+      else if (res.status === "skipped") skipped++;
       else failed++;
     }
   }
@@ -41,7 +52,7 @@ export async function POST() {
   const lines = [
     `Day-of testimonials — ${rows.length} demos today.`,
     autoEnabled
-      ? `Sent ${sent}${again ? ` (${again} "again" variant)` : ""}${failed ? `, ${failed} failed` : ""}${deferred ? `, ${deferred} deferred (quiet hours)` : ""}.`
+      ? `Sent ${sent}${again ? ` (${again} "again" variant)` : ""}${failed ? `, ${failed} failed` : ""}${deferred ? `, ${deferred} deferred (quiet hours)` : ""}${skipped ? `, ${skipped} skipped` : ""}.`
       : `Auto-send off — ${sendable.length} waiting on the page.`,
     noGroup.length ? `${noGroup.length} missing a group chat: ${noGroup.map((r) => r.prospectName).join(", ")}.` : null,
     !isLive() ? `DRY RUN mode — no real texts fire.` : null,
@@ -58,6 +69,7 @@ export async function POST() {
     sent,
     failed,
     deferred,
+    skipped,
     noGroup: noGroup.length,
     nudged,
     live: isLive(),
@@ -65,5 +77,5 @@ export async function POST() {
 }
 
 export async function GET() {
-  return POST();
+  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }
