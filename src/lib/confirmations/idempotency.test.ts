@@ -16,8 +16,12 @@ import {
   type ClaimSnapshot,
   type ClaimTx,
 } from "./claim";
+import { GET as reconnectGet, POST as reconnectPost } from "../../app/api/reconnect/process/route";
+import { nudgeRep } from "./nudge";
+import { providerMaySend, sendGroupMessage, sendMessage } from "../sendblue";
 import {
   authorizeCron,
+  authorizeScheduler,
   bodyHash,
   dayOfAutoEnabled,
   dedupeWindowMs,
@@ -542,12 +546,23 @@ test("opt-out phrases match STOP and miss ordinary sentences", () => {
   assert.equal(inboundOptOutIdentity({ optedOut: true, fromNumber: "+13135550100", groupId: "g" })?.reason, "opted_out");
 });
 
-test("Eastern day window covers midnight EDT and EST", () => {
+test("Eastern day window covers midnight EDT and EST, including DST", () => {
   assert.equal(etDayString(NOW), "2026-07-15");
+  assert.equal(etDayString(new Date("2026-07-15T03:30:00.000Z")), "2026-07-14");
   const summer = etDayWindow("2026-07-15");
   assert.equal(summer.start.toISOString(), "2026-07-15T04:00:00.000Z");
+  assert.equal(summer.end.toISOString(), "2026-07-16T04:00:00.000Z");
   const winter = etDayWindow("2026-01-15");
   assert.equal(winter.start.toISOString(), "2026-01-15T05:00:00.000Z");
+  assert.equal(winter.end.toISOString(), "2026-01-16T05:00:00.000Z");
+  // 2026-03-08 is the spring-forward day (23h). 2026-11-01 is the fall-back day (25h).
+  const spring = etDayWindow("2026-03-08");
+  assert.equal(spring.start.toISOString(), "2026-03-08T05:00:00.000Z");
+  assert.equal(spring.end.toISOString(), "2026-03-09T04:00:00.000Z");
+  const fall = etDayWindow("2026-11-01");
+  assert.equal(fall.start.toISOString(), "2026-11-01T04:00:00.000Z");
+  assert.equal(fall.end.toISOString(), "2026-11-02T05:00:00.000Z");
+  assert.equal(etDayString(new Date("2026-11-02T04:30:00.000Z")), "2026-11-01");
   assert.equal(hourBucket(NOW), "2026-07-15T17");
 });
 
@@ -566,6 +581,11 @@ test("cron auth requires a bearer secret and rejects GET", () => {
   if (!wrong.ok) assert.equal(wrong.status, 401);
   assert.equal(authorizeCron({ method: "POST", headers: headers("Bearer s3cret") }, "s3cret").ok, true);
   assert.equal(authorizeCron({ method: "POST", headers: headers("Bearer s3cret-extra") }, "s3cret").ok, false);
+  assert.equal(authorizeCron({ method: "GET", headers: headers("Bearer s3cret") }, "s3cret").ok, false);
+  assert.equal(authorizeScheduler({ method: "GET", headers: headers("Bearer s3cret") }, "s3cret").ok, true);
+  assert.equal(authorizeScheduler({ method: "HEAD", headers: headers("Bearer s3cret") }, "s3cret").ok, false);
+  assert.equal(authorizeScheduler({ method: "GET", headers: headers(null) }, undefined).ok, false);
+  assert.equal(authorizeScheduler({ method: "GET", headers: headers("Bearer no") }, "s3cret").ok, false);
 });
 
 test("day-of and t1 routes reject GET and unauthenticated POST", async () => {
@@ -599,4 +619,190 @@ test("day-of and t1 routes reject GET and unauthenticated POST", async () => {
     if (prev === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = prev;
   }
+});
+
+test("reconnect cron rejects unauthenticated GET and POST", async () => {
+  const prev = process.env.CRON_SECRET;
+  delete process.env.CRON_SECRET;
+  try {
+    const get = await reconnectGet(new NextRequest("http://localhost/api/reconnect/process", { method: "GET" }));
+    const post = await reconnectPost(new NextRequest("http://localhost/api/reconnect/process", { method: "POST" }));
+    assert.equal(get.status, 401);
+    assert.equal(post.status, 401);
+    assert.equal((await get.json()).error, "cron_secret_unconfigured");
+  } finally {
+    if (prev === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = prev;
+  }
+
+  process.env.CRON_SECRET = "test-secret";
+  try {
+    const denied = await reconnectGet(
+      new NextRequest("http://localhost/api/reconnect/process", {
+        method: "GET",
+        headers: { authorization: "Bearer wrong" },
+      })
+    );
+    assert.equal(denied.status, 401);
+    assert.equal((await denied.json()).error, "unauthorized");
+  } finally {
+    if (prev === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = prev;
+  }
+});
+
+test("live:true cannot bypass SENDBLUE_LIVE", async () => {
+  const prev = process.env.SENDBLUE_LIVE;
+  const prevFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response(JSON.stringify({ status: "sent", message_handle: "h" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    delete process.env.SENDBLUE_LIVE;
+    assert.equal(providerMaySend(true), false);
+    const forced = await sendGroupMessage({ groupId: "g", content: "hello", live: true });
+    const oneToOne = await sendMessage({ number: "+13135550100", content: "hi", live: true });
+    assert.equal(forced.dryRun, true);
+    assert.equal(oneToOne.dryRun, true);
+    assert.equal(calls, 0);
+
+    process.env.SENDBLUE_LIVE = "false";
+    const off = await sendGroupMessage({ groupId: "g", content: "hello", live: true });
+    assert.equal(off.dryRun, true);
+    assert.equal(calls, 0);
+
+    process.env.SENDBLUE_LIVE = "true";
+    const suppressed = await sendGroupMessage({ groupId: "g", content: "hello", live: false });
+    assert.equal(suppressed.dryRun, true);
+    assert.equal(calls, 0);
+
+    let attempted = false;
+    try {
+      await sendGroupMessage({ groupId: "g", content: "hello" });
+      attempted = calls === 1;
+    } catch (err) {
+      attempted = err instanceof Error && /credentials missing/.test(err.message);
+    }
+    assert.equal(attempted, true);
+    assert.ok(calls <= 1);
+  } finally {
+    globalThis.fetch = prevFetch;
+    if (prev === undefined) delete process.env.SENDBLUE_LIVE;
+    else process.env.SENDBLUE_LIVE = prev;
+  }
+});
+
+test("rep nudge does not call Sendblue when SENDBLUE_LIVE is off", async () => {
+  const prevLive = process.env.SENDBLUE_LIVE;
+  const prevPhone = process.env.CONFIRMATIONS_REP_PHONE;
+  const prevFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  delete process.env.SENDBLUE_LIVE;
+  process.env.CONFIRMATIONS_REP_PHONE = "+13135550999";
+  try {
+    assert.equal(await nudgeRep("batch finished"), "none");
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = prevFetch;
+    if (prevLive === undefined) delete process.env.SENDBLUE_LIVE;
+    else process.env.SENDBLUE_LIVE = prevLive;
+    if (prevPhone === undefined) delete process.env.CONFIRMATIONS_REP_PHONE;
+    else process.env.CONFIRMATIONS_REP_PHONE = prevPhone;
+  }
+});
+
+test("a provider dry-run stops the day-of text, and a text failure after the video is marked", async () => {
+  let calls = 0;
+  const dry = await deliverConfirmationMessage(
+    {
+      groupId: "group-9",
+      touchpoint: "day_of",
+      body: "hello",
+      dryRun: false,
+      mediaUrl: "https://example.com/video.mp4",
+      pauseMs: 0,
+    },
+    {
+      live: true,
+      sendGroup: async () => {
+        calls++;
+        return { status: "dry_run", dryRun: true, messageHandle: "dry_x" };
+      },
+    }
+  );
+  assert.equal(dry.dryRun, true);
+  assert.equal(calls, 1);
+
+  calls = 0;
+  await assert.rejects(
+    () =>
+      deliverConfirmationMessage(
+        {
+          groupId: "group-9",
+          touchpoint: "day_of",
+          body: "hello",
+          dryRun: false,
+          mediaUrl: "https://example.com/video.mp4",
+          pauseMs: 0,
+        },
+        {
+          live: true,
+          sendGroup: async () => {
+            calls++;
+            if (calls === 1) return { status: "sent", dryRun: false, messageHandle: "vid" };
+            throw new Error("gateway dropped");
+          },
+        }
+      ),
+    /text_failed_after_video: gateway dropped/
+  );
+  assert.equal(calls, 2);
+});
+
+test("an opt-out that lands after the claim is not delivered", async () => {
+  const h = harness();
+  let checks = 0;
+  h.db.optedOut = async () => {
+    checks++;
+    return checks === 2;
+  };
+  let calls = 0;
+  const res = await sendConfirmation(
+    row(),
+    "day_of",
+    {},
+    deps(h, {
+      deliver: async () => {
+        calls++;
+        return { dryRun: false, messageHandle: "m" };
+      },
+    })
+  );
+  assert.equal(res.status, "skipped");
+  assert.equal(res.error, "opted_out");
+  assert.equal(calls, 0);
+  assert.equal(h.rows.filter((r) => r.status === "failed" && r.body === row().body).length, 1);
+
+  const again = await sendConfirmation(
+    row(),
+    "day_of",
+    {},
+    deps(h, {
+      deliver: async () => {
+        calls++;
+        return { dryRun: false, messageHandle: "m2" };
+      },
+    })
+  );
+  assert.equal(again.error, "already_claimed");
+  assert.equal(calls, 0);
 });

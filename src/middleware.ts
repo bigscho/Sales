@@ -15,8 +15,9 @@ const SYSTEM_ROUTES = [
   "/api/seed",
   "/api/credits/award",
   "/api/blasts/process",
-  // Session-less so a scheduler can call them. The handlers require
-  // Authorization: Bearer CRON_SECRET and reject GET.
+  // Session-less so a scheduler can call them. Confirmations crons reject
+  // GET. Reconnect allows Vercel Cron's GET only with Bearer CRON_SECRET.
+  // Missing secret fails closed on all three.
   "/api/confirmations/t1",
   "/api/confirmations/dayof",
   "/api/reconnect/",

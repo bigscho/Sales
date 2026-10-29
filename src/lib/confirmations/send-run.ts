@@ -10,7 +10,8 @@ export type SendRunPhase =
 export const UNCERTAIN_MESSAGE =
   "The send request did not return. Buttons stay off so this page cannot start another batch. Check status reloads what the server already claimed — it does not send.";
 
-/** Start a run only from idle. A second click, a second tab's echo, or a lost run returns start: false. */
+/** Start a run only from idle. A second click or a lost run returns start: false.
+ *  A second browser tab has its own memory; the database claim is what stops it. */
 export function beginSend(
   state: SendRunPhase,
   bookingIds: string[]

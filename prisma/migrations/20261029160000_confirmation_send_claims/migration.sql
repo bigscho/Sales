@@ -1,12 +1,24 @@
 -- Claim-before-send for confirmation texts.
 --
--- prisma db push (the Vercel build) creates the new columns and tables from
--- schema.prisma. This migration is still required: it backfills claim keys
--- onto the historical winner of each duplicate burst so an old send occupies
--- the unique slot, and it creates the indexes if db push has not run yet.
+-- prisma db push (the Vercel build) creates the new columns, tables, and
+-- unique indexes from schema.prisma. It does NOT backfill claim keys.
+-- This file is still required: it backfills keys onto the historical winner
+-- of each duplicate burst so an old send occupies the unique slot, and it
+-- creates the indexes if db push has not run yet.
 --
--- Safe to run once Colin approves it. It does not send messages.
--- Re-running is a no-op for rows that already have keys.
+-- Run it in one transaction (Prisma does). It does not send messages.
+-- Re-running is a no-op for rows that already have keys. A key that the app
+-- already wrote (db push deployed first, then a send, then this file) is
+-- left alone — the backfill will not assign that same key to an older row.
+--
+-- pgcrypto supplies sha256, matching Node's body hash. Neon allows
+-- CREATE EXTENSION pgcrypto for the database owner. If it fails, this
+-- transaction rolls back. The build's `prisma db push` does not pass
+-- --accept-data-loss, so a destructive schema drift fails the build
+-- instead of dropping rows.
+--
+-- CREATE INDEX takes a brief ShareLock. ConfirmationSend is the send log,
+-- not a large table. CONCURRENTLY cannot run inside Prisma's transaction.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -54,7 +66,17 @@ SET "claimKey" =
   || ':' || c."touchpoint" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
 FROM winners AS w
 WHERE c.id = w.id
-  AND c."claimKey" IS NULL;
+  AND c."claimKey" IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "ConfirmationSend" AS taken
+    WHERE taken."claimKey" =
+      CASE
+        WHEN c."reconnectId" IS NOT NULL THEN 'reconnect:' || c."reconnectId"
+        ELSE 'booking:' || c."bookingId"
+      END
+      || ':' || c."touchpoint" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
+  );
 
 -- At most one day-of claim per group per Eastern day per lane.
 WITH winners AS (
@@ -81,7 +103,13 @@ SET "dayOfGroupDayKey" =
   c."groupId" || ':' || c."etDay" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
 FROM winners AS w
 WHERE c.id = w.id
-  AND c."dayOfGroupDayKey" IS NULL;
+  AND c."dayOfGroupDayKey" IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "ConfirmationSend" AS taken
+    WHERE taken."dayOfGroupDayKey" =
+      c."groupId" || ':' || c."etDay" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
+  );
 
 -- At most one identical body per group per Eastern day per lane.
 WITH winners AS (
@@ -108,7 +136,13 @@ SET "bodyDedupeKey" =
   c."groupId" || ':' || c."bodyHash" || ':' || c."etDay" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
 FROM winners AS w
 WHERE c.id = w.id
-  AND c."bodyDedupeKey" IS NULL;
+  AND c."bodyDedupeKey" IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "ConfirmationSend" AS taken
+    WHERE taken."bodyDedupeKey" =
+      c."groupId" || ':' || c."bodyHash" || ':' || c."etDay" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
+  );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "ConfirmationSend_claimKey_key" ON "ConfirmationSend"("claimKey");
 CREATE UNIQUE INDEX IF NOT EXISTS "ConfirmationSend_dayOfGroupDayKey_key" ON "ConfirmationSend"("dayOfGroupDayKey");

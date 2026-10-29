@@ -32,14 +32,44 @@ export function bodyDedupeKeyFor(groupId: string, hash: string, etDay: string, d
   return `${groupId}:${hash}:${etDay}:${dryRun ? "dry" : "live"}`;
 }
 
-/** YYYY-MM-DD in America/New_York. */
+/** YYYY-MM-DD in America/New_York. Parts are assembled so the order cannot flip. */
 export function etDayString(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function shiftCalendarDay(etDay: string, days: number): string {
+  const [y, m, d] = etDay.split("-").map((n) => Number(n));
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  const yy = t.getUTCFullYear();
+  const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(t.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** UTC instant of midnight at the start of this Eastern calendar day. */
+function easternMidnightUtc(etDay: string): Date {
+  const [y, m, d] = etDay.split("-").map((n) => Number(n));
+  for (const hour of [4, 5]) {
+    const start = new Date(Date.UTC(y, m - 1, d, hour, 0, 0));
+    if (etDayString(start) !== etDay) continue;
+    const clock = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(start);
+    const hh = clock.find((p) => p.type === "hour")?.value;
+    const mm = clock.find((p) => p.type === "minute")?.value;
+    if ((hh === "00" || hh === "24") && mm === "00") return start;
+  }
+  return new Date(Date.UTC(y, m - 1, d, 5, 0, 0));
 }
 
 /** UTC hour bucket, `YYYY-MM-DDTHH`. The global cap counts inside one of these. */
@@ -52,26 +82,12 @@ export function hourBucket(now: Date): string {
  * Used so legacy rows (no etDay column value yet) still count toward the cap.
  */
 export function etDayWindow(etDay: string): { start: Date; end: Date } {
-  const [y, m, d] = etDay.split("-").map((n) => Number(n));
-  for (const hour of [4, 5]) {
-    const start = new Date(Date.UTC(y, m - 1, d, hour));
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).formatToParts(start);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value;
-    const label = `${get("year")}-${get("month")}-${get("day")}`;
-    if (label === etDay && get("hour") === "00" && get("minute") === "00") {
-      return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
-    }
-  }
-  const start = new Date(Date.UTC(y, m - 1, d, 4));
-  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+  // End is the next Eastern midnight, not start+24h. Fall-back days are 25h
+  // and spring-forward days are 23h; a fixed 24h window misses or overlaps an hour.
+  return {
+    start: easternMidnightUtc(etDay),
+    end: easternMidnightUtc(shiftCalendarDay(etDay, 1)),
+  };
 }
 
 type EnvLike = { [key: string]: string | undefined };
@@ -165,10 +181,26 @@ export type CronAuth =
   | { ok: false; status: 401 | 405; error: "method_not_allowed" | "unauthorized" | "cron_secret_unconfigured" };
 
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+  // Hash first so the compare is fixed-length. timingSafeEqual throws (and
+  // the early length return leaks) when the raw strings differ in length.
+  const ah = createHash("sha256").update(a, "utf8").digest();
+  const bh = createHash("sha256").update(b, "utf8").digest();
+  return timingSafeEqual(ah, bh);
+}
+
+function bearerMatches(
+  request: { headers: { get(name: string): string | null } },
+  secret: string | undefined
+): CronAuth {
+  if (!secret) {
+    return { ok: false, status: 401, error: "cron_secret_unconfigured" };
+  }
+  const header = request.headers.get("authorization")?.trim() ?? "";
+  const prefix = "Bearer ";
+  if (!header.startsWith(prefix) || !safeEqual(header.slice(prefix.length), secret)) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+  return { ok: true };
 }
 
 /**
@@ -184,13 +216,22 @@ export function authorizeCron(
   if (method !== "POST") {
     return { ok: false, status: 405, error: "method_not_allowed" };
   }
-  if (!secret) {
-    return { ok: false, status: 401, error: "cron_secret_unconfigured" };
+  return bearerMatches(request, secret);
+}
+
+/**
+ * Scheduler auth that also allows GET. Vercel Cron calls GET and, when
+ * CRON_SECRET is set, sends `Authorization: Bearer $CRON_SECRET`.
+ * A link preview does not send that header. Missing secret fails closed.
+ * Day-of and T-1 do not use this — their GET handlers never send.
+ */
+export function authorizeScheduler(
+  request: { method?: string; headers: { get(name: string): string | null } },
+  secret: string | undefined = process.env.CRON_SECRET
+): CronAuth {
+  const method = (request.method || "").toUpperCase();
+  if (method !== "GET" && method !== "POST") {
+    return { ok: false, status: 405, error: "method_not_allowed" };
   }
-  const header = request.headers.get("authorization")?.trim() ?? "";
-  const prefix = "Bearer ";
-  if (!header.startsWith(prefix) || !safeEqual(header.slice(prefix.length), secret)) {
-    return { ok: false, status: 401, error: "unauthorized" };
-  }
-  return { ok: true };
+  return bearerMatches(request, secret);
 }

@@ -104,12 +104,28 @@ export async function deliverConfirmationMessage(
 
   const sendGroup = io.sendGroup ?? sendGroupMessage;
   const sleep = io.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  if (args.touchpoint === "day_of" && args.mediaUrl) {
-    await sendGroup({ groupId: args.groupId, content: "", mediaUrl: args.mediaUrl, live: true });
-    await sleep(args.pauseMs ?? 4000);
+  let videoAccepted = false;
+  try {
+    if (args.touchpoint === "day_of" && args.mediaUrl) {
+      const video = await sendGroup({ groupId: args.groupId, content: "", mediaUrl: args.mediaUrl, live: true });
+      // The provider refuses when SENDBLUE_LIVE is off, even if this branch
+      // asked for a live deliver. Do not follow a dry-run video with a text.
+      if (video.dryRun) return { dryRun: true, messageHandle: video.messageHandle };
+      videoAccepted = true;
+      await sleep(args.pauseMs ?? 4000);
+    }
+    const result = await sendGroup({ groupId: args.groupId, content: args.body, live: true });
+    return { dryRun: result.dryRun, messageHandle: result.messageHandle };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (videoAccepted) {
+      // The video was accepted. The claim is marked failed and is not retried,
+      // so this must not be sent again. The prefix tells an operator the video
+      // already went out.
+      throw new Error(`text_failed_after_video: ${msg}`);
+    }
+    throw err;
   }
-  const result = await sendGroup({ groupId: args.groupId, content: args.body, live: true });
-  return { dryRun: false, messageHandle: result.messageHandle };
 }
 
 function baseRow(
@@ -224,6 +240,17 @@ export async function sendConfirmation(
 
   const claimed = await db.claim(input);
   if (!claimed.ok) return skip(claimed.reason);
+
+  // A STOP can land after the pre-claim check. Hold the claim either way so
+  // the provider is not called and a later retry cannot send.
+  if (await db.optedOut(row.prospectPhone, row.groupId)) {
+    try {
+      await db.mark(claimed.id, { status: "failed", dryRun, error: "opted_out" });
+    } catch (markErr) {
+      console.error(`confirmation claim ${claimed.id} stayed queued after opt-out`, markErr);
+    }
+    return { bookingId: row.bookingId, status: "skipped", dryRun, error: "opted_out" };
+  }
 
   const mediaUrl = touchpoint === "day_of" ? process.env.TESTIMONIAL_VIDEO_URL || null : null;
   try {

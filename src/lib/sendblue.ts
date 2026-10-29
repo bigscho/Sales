@@ -5,9 +5,9 @@
 // the line). It cannot cold-initiate. So every confirmation is a reply into an
 // existing group via /api/send-group-message with the captured group_id.
 //
-// SAFETY: nothing actually sends unless SENDBLUE_LIVE === "true" (or a call
-// passes { live: true }). Until then every send is a no-op "dry_run" so the
-// whole flow can be exercised end-to-end without texting real prospects.
+// SAFETY: nothing is delivered unless SENDBLUE_LIVE === "true".
+// `live: false` forces a dry-run. `live: true` does NOT override the kill
+// switch — a caller cannot text while the env var is off.
 
 const BASE = process.env.SENDBLUE_BASE_URL || "https://api.sendblue.co";
 const KEY_ID = process.env.SENDBLUE_API_KEY_ID;
@@ -19,6 +19,15 @@ export const SENDBLUE_LINE = process.env.SENDBLUE_LINE_NUMBER || "";
 /** Global kill-switch: real sends only happen when this is explicitly true. */
 export function isLive(): boolean {
   return process.env.SENDBLUE_LIVE === "true";
+}
+
+/**
+ * Provider gate. `false` always dry-runs. Any other value still requires
+ * SENDBLUE_LIVE === "true", so a stale `live: true` cannot text prospects.
+ */
+export function providerMaySend(requested?: boolean): boolean {
+  if (requested === false) return false;
+  return isLive();
 }
 
 function authHeaders(): Record<string, string> {
@@ -58,7 +67,7 @@ export interface SendGroupOptions {
  * Send a message into a SendBlue group. Returns a dry-run result unless live.
  */
 export async function sendGroupMessage(opts: SendGroupOptions): Promise<SendResult> {
-  const live = opts.live ?? isLive();
+  const live = providerMaySend(opts.live);
   if (!live) {
     return {
       status: "dry_run",
@@ -102,7 +111,7 @@ export async function sendMessage(opts: {
   mediaUrl?: string;
   live?: boolean;
 }): Promise<SendResult> {
-  const live = opts.live ?? isLive();
+  const live = providerMaySend(opts.live);
   if (!live) {
     return { status: "dry_run", messageHandle: `dry_${Date.now()}`, dryRun: true };
   }

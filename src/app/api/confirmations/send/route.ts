@@ -13,6 +13,9 @@ export const maxDuration = 300;
 // booking that's no longer sendable (rescheduled/cancelled since page load).
 export async function POST(request: NextRequest) {
   const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
   const payload = await request.json();
   const touchpoint: "t1" | "day_of" = payload.touchpoint === "day_of" ? "day_of" : "t1";
   const items: Array<{ bookingId: string; body?: string }> = payload.items || [];

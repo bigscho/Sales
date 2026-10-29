@@ -5,20 +5,27 @@
 //
 // There is no fallback. If CONFIRMATIONS_REP_PHONE is unset, or SendBlue
 // fails, the nudge is logged and dropped.
-import { sendMessage } from "@/lib/sendblue";
+import { isLive, sendMessage } from "@/lib/sendblue";
 
 /** The show-rate rep's phone (E.164). They must have texted the line once. */
-const REP_PHONE = process.env.CONFIRMATIONS_REP_PHONE;
+function repPhone(): string | undefined {
+  const phone = process.env.CONFIRMATIONS_REP_PHONE?.trim();
+  return phone || undefined;
+}
 
 export async function nudgeRep(text: string): Promise<"sendblue" | "none"> {
-  if (!REP_PHONE) {
+  const phone = repPhone();
+  if (!phone) {
     console.warn("CONFIRMATIONS_REP_PHONE not set, skipping rep nudge");
     return "none";
   }
+  // Same kill switch as prospect texts. A nudge is still a Sendblue call.
+  if (!isLive()) {
+    console.log("confirmation rep nudge dry-run (SENDBLUE_LIVE is not true)");
+    return "none";
+  }
   try {
-    // Nudges are operational, so they fire for real even in dry-run mode —
-    // they only go to our own rep, never a prospect.
-    await sendMessage({ number: REP_PHONE, content: text, live: true });
+    await sendMessage({ number: phone, content: text });
     return "sendblue";
   } catch (err) {
     console.error("SendBlue rep nudge failed:", err);

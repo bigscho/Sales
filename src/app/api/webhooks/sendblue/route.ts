@@ -14,7 +14,7 @@ import {
   withSenderEmail,
 } from "@/lib/confirmations/internal-group";
 import { saveInternalInboundMessage } from "@/lib/confirmations/internal-messages";
-import { recordInboundOptOut } from "@/lib/confirmations/opt-out";
+import { inboundOptOutIdentity, recordInboundOptOut } from "@/lib/confirmations/opt-out";
 
 // SendBlue inbound webhook. Two jobs:
 //  1. Learn group_ids and match them to bookings by prospect phone. The setter
@@ -178,15 +178,17 @@ export async function POST(request: NextRequest) {
 
     // Honor STOP / opted_out before any reply. Internal coaching chats are not
     // a prospect opt-out. A write failure must not 500 the webhook (Sendblue
-    // would retry the whole event).
-    if (!isOutbound && !internal) {
+    // would retry the whole event) and must not still send the origination.
+    const optOutInput = {
+      content: typeof body.content === "string" ? body.content : null,
+      optedOut: body.opted_out === true,
+      fromNumber,
+      groupId,
+    };
+    const forbidsReply = !isOutbound && !internal && inboundOptOutIdentity(optOutInput) !== null;
+    if (forbidsReply) {
       try {
-        await recordInboundOptOut({
-          content: typeof body.content === "string" ? body.content : null,
-          optedOut: body.opted_out === true,
-          fromNumber,
-          groupId,
-        });
+        await recordInboundOptOut(optOutInput);
       } catch (err) {
         console.error("Failed to record SMS opt-out:", err);
       }
@@ -199,6 +201,8 @@ export async function POST(request: NextRequest) {
     let origination: { action: string; reason?: string } | null = null;
     if (!isOutbound && internal) {
       origination = { action: "skipped", reason: "internal_group" };
+    } else if (forbidsReply) {
+      origination = { action: "skipped", reason: "opted_out" };
     } else if (!isOutbound) {
       try {
         origination = await maybeSendOriginationReply(groupId);
