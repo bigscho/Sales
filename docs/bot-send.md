@@ -76,11 +76,12 @@ A provider failure keeps the claim. The same key will not retry the provider. Pi
 |---|---|
 | `idempotency` | This caller already claimed this key in this dry/live lane. |
 | `body_dedupe` | This phone or group already has this exact text (and media URL) in the last 24 hours, or another open claim for it today. Confirmation sends count. |
-| `recipient_daily_cap` | This phone or group is at the daily cap (default 2, Eastern day), including confirmation sends that day. |
-| `rate_cap` | The app-wide hourly cap is full (default 30, shared with confirmation texts). |
-| `caller_rate_cap` | This bot is at its own hourly cap (default 10). |
+| `recipient_daily_cap` | This phone or non-internal group is at the daily cap (default 2, Eastern day), including confirmation sends that day. An internal group uses the higher cap below. |
+| `rate_cap` | The hourly cap for this lane is full. Prospect sends share the confirmation cap (default 30). Internal groups use their own cap (default 60). |
+| `caller_rate_cap` | This bot is at its hourly cap. Default 10 for a prospect or other scoped target, 60 when the target is an internal group. |
 | `opted_out` | The phone or group is on the STOP / opted-out list. |
 | `caller_disabled` | This caller is listed in `BOT_SEND_DISABLED_CALLERS`. |
+| `out_of_scope` | This caller is not allowed to text that phone or group. |
 
 `caller_disabled` and `opted_out` do not burn the idempotency key. Caps and dedupe do not either: a later hour or a different body can still claim. The key is burned only when a claim is inserted (`sent`, `dry_run`, or `failed`).
 
@@ -92,10 +93,49 @@ A provider failure keeps the claim. The same key will not retry the provider. Pi
 | `BOT_SEND_LIVE` | Bot switch. Must be exactly `true`. Default off. |
 | `BOT_SEND_DISABLED_CALLERS` | Comma-separated caller names that skip without sending. Example: `coach,solo-live`. |
 | `BOT_SEND_TOKENS` | JSON map of token hash → caller name. Empty or invalid rejects every bot. |
-| `BOT_SEND_MAX_PER_CALLER_PER_HOUR` | Default `10`. |
-| `BOT_SEND_MAX_PER_RECIPIENT_PER_DAY` | Default `2`, per phone or group, America/New_York day. |
-| `CONFIRMATIONS_MAX_SENDS_PER_HOUR` | Shared global cap. Default `30`. |
-| `CONFIRMATIONS_DEDUPE_WINDOW_HOURS` | Identical body window. Default `24`. |
+| `BOT_SEND_MAX_PER_CALLER_PER_HOUR` | Default `10`. Used for phones and groups that are not internal. |
+| `BOT_SEND_MAX_PER_CALLER_PER_HOUR_INTERNAL` | Default `60`. Used when the target is an internal group, so a 5-minute reply loop is not cut off at 10. |
+| `BOT_SEND_MAX_PER_RECIPIENT_PER_DAY` | Default `2`, per phone or non-internal group, America/New_York day. |
+| `BOT_SEND_MAX_PER_INTERNAL_GROUP_PER_DAY` | Default `40`, per internal group, America/New_York day. |
+| `BOT_SEND_MAX_INTERNAL_PER_HOUR` | Default `60`. Internal groups do not consume the confirmation hourly cap. |
+| `CONFIRMATIONS_MAX_SENDS_PER_HOUR` | Shared global cap for prospect sends. Default `30`. |
+| `CONFIRMATIONS_DEDUPE_WINDOW_HOURS` | Identical body window. Default `24`. Still applies inside internal groups. |
+| `BOT_SEND_INTERNAL_GROUPS` | Group ids, separated by commas or whitespace, that are internal chats. |
+| `SENDBLUE_INTERNAL_GROUPS` | Existing coaching-group config. Any `groupIds` pinned there are also internal. |
+| `BOT_SEND_CALLER_SCOPES` | Optional JSON allowlist. A caller omitted here may text internal groups only. |
+
+## Internal groups and who may text them
+
+Chief SDR's hourly check-ins and @coach's replies go to the setters' group. Solo Live's nightly summary goes to the Solo G x GRSFD group. Those are internal chats. A prospect thread is not.
+
+List their Sendblue group ids:
+
+```bash
+BOT_SEND_INTERNAL_GROUPS="grp_setters,grp_solo"
+```
+
+Group ids already pinned on `SENDBLUE_INTERNAL_GROUPS` (`name:+1555...,+1555...|grp_setters`) count too. You do not have to copy them.
+
+An internal group may receive 40 texts per Eastern day (`BOT_SEND_MAX_PER_INTERNAL_GROUP_PER_DAY`), not 2. The sender may send 60 of those per hour, and internal traffic has its own hourly ceiling of 60, separate from the confirmation cap. Identical bodies are still deduped for 24 hours, and the idempotency key still sends once.
+
+40 a day is enough for hourly check-ins plus a modest number of @coach replies. A reply on every 5-minute poll is about 12 an hour. Raise `BOT_SEND_MAX_PER_INTERNAL_GROUP_PER_DAY` if that group needs more than 40.
+
+## Caller scope
+
+`BOT_SEND_CALLER_SCOPES` is optional. If a caller has no entry, they may text internal groups only. A phone, or a group that is not internal, is `out_of_scope` and is not sent. That default is what keeps a bot off prospect threads.
+
+```json
+{
+  "solo-live": { "groups": ["grp_solo"] },
+  "chief-sdr": { "groups": ["grp_setters"] },
+  "coach": { "groups": ["grp_setters"] },
+  "ops-bot": { "phones": ["+13135550100"], "groups": ["grp_setters"] }
+}
+```
+
+A caller who is listed may text only those groups and phones. Phones are still under the cap of 2 a day and the opt-out list. A caller who is not listed keeps the internal-groups default. Malformed JSON fails closed: nothing is sent and history returns 403.
+
+`out_of_scope` does not burn the idempotency key.
 
 ## Status and history
 
@@ -109,10 +149,13 @@ curl -sS "$BASE/api/sendblue/bot-sends" -H "Authorization: Bearer $TOKEN"
 { "hours": 24, "callers": [{ "caller": "chief-sdr", "sent": 1, "dry_run": 3, "skipped": 0, "failed": 0, "queued": 0 }] }
 ```
 
-Recent Sendblue messages (read-only, does not send). `limit` defaults to 20 and caps at 100. Participants are not included.
+Recent Sendblue messages (read-only, does not send). `limit` defaults to 20 and caps at 100. The route scans up to 500 recent messages. Participants are not included. Results are limited to groups this caller may text. `groupId` keeps one chat, which is how @coach reads the setters' group.
 
 ```bash
-curl -sS "$BASE/api/sendblue/messages?limit=20" -H "Authorization: Bearer $TOKEN"
+curl -sS "$BASE/api/sendblue/messages?groupId=grp_setters&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+A `groupId` outside that caller's scope returns 403 and does not call Sendblue.
 
 Every attempt is stored with the caller, recipient or group id, body hash, and outcome. The message text is not stored on the bot row.

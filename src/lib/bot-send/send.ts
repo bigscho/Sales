@@ -14,6 +14,13 @@ import {
 import { isRecipientOptedOut } from "@/lib/confirmations/opt-out";
 import { botSendLive, callerDisabled, callerHourlyCap, recipientDailyCap, type EnvLike } from "./auth";
 import {
+  internalCallerHourlyCap,
+  internalGlobalHourlyCap,
+  internalGroupDailyCap,
+  isInternalGroupTarget,
+  recipientAllowed,
+} from "./scope";
+import {
   claimBotWithPrisma,
   logBotSkip,
   markBotSend,
@@ -27,7 +34,7 @@ export type BotOutcomeStatus = "sent" | "dry_run" | "skipped" | "failed";
 
 export interface BotOutcome {
   status: BotOutcomeStatus;
-  reason?: BotClaimReason | "opted_out" | "caller_disabled" | "provider";
+  reason?: BotClaimReason | "opted_out" | "caller_disabled" | "out_of_scope" | "provider";
 }
 
 export interface BotDeliverArgs {
@@ -90,6 +97,7 @@ function claimInput(caller: string, req: BotSendRequest, dryRun: boolean, now: D
   const window = etDayWindow(etDay);
   const lane = dryRun ? "dry" : "live";
   const hour = hourBucket(now);
+  const internal = isInternalGroupTarget(req.groupId, env);
   return {
     caller,
     idempotencyKey: req.idempotencyKey,
@@ -106,11 +114,13 @@ function claimInput(caller: string, req: BotSendRequest, dryRun: boolean, now: D
     etDayStart: window.start,
     etDayEnd: window.end,
     windowStart: new Date(now.getTime() - dedupeWindowMs(env)),
-    hourBucket: hour,
-    callerBucket: `bot:${caller}:${hour}`,
-    globalLimit: maxSendsPerHour(env),
-    callerLimit: callerHourlyCap(env),
-    dailyLimit: recipientDailyCap(env),
+    // Internal groups use their own buckets so a coaching chat does not eat
+    // the prospect hourly cap, and a prospect cap does not silence the coaches.
+    hourBucket: internal ? `bot-internal:${hour}` : hour,
+    callerBucket: internal ? `bot:${caller}:internal:${hour}` : `bot:${caller}:${hour}`,
+    globalLimit: internal ? internalGlobalHourlyCap(env) : maxSendsPerHour(env),
+    callerLimit: internal ? internalCallerHourlyCap(env) : callerHourlyCap(env),
+    dailyLimit: internal ? internalGroupDailyCap(env) : recipientDailyCap(env),
   };
 }
 
@@ -141,6 +151,7 @@ export async function sendBotMessage(caller: string, req: BotSendRequest, deps: 
   };
 
   if (callerDisabled(caller, env)) return skip("caller_disabled");
+  if (!recipientAllowed(caller, req, env)) return skip("out_of_scope");
   if (await db.optedOut(req.phone, req.groupId)) return skip("opted_out");
 
   const claimed = await db.claim(input);

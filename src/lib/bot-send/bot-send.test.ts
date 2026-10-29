@@ -15,6 +15,13 @@ import {
 } from "./claim";
 import { clampMessageLimit, recentMessages, toPublicMessage } from "./messages";
 import { deliverBotMessage, sendBotMessage, summarizeBotSends, type BotSendDeps } from "./send";
+import {
+  groupsVisibleToCaller,
+  internalGroupDailyCap,
+  internalGroupIds,
+  parseCallerScopes,
+  recipientAllowed,
+} from "./scope";
 import { parseBotSendBody, type BotSendRequest } from "./validate";
 
 const TOKEN = "test-token-chief-sdr";
@@ -236,6 +243,15 @@ function env(over: Record<string, string> = {}): Record<string, string> {
     BOT_SEND_MAX_PER_CALLER_PER_HOUR: "10",
     BOT_SEND_MAX_PER_RECIPIENT_PER_DAY: "2",
     CONFIRMATIONS_MAX_SENDS_PER_HOUR: "30",
+    // Existing cases text specific fixtures. Production default is internal groups only.
+    BOT_SEND_CALLER_SCOPES: JSON.stringify({
+      "chief-sdr": {
+        groups: ["g-1", "group-1"],
+        phones: ["+13135550100", "+13135550101", "+13135550103", "+13135550104"],
+      },
+      "solo-live": { phones: ["+13135550102"] },
+      coach: { groups: ["g-1"] },
+    }),
     ...over,
   };
 }
@@ -529,12 +545,140 @@ test("message proxy trims history and does not send", async () => {
   assert.equal(trimmed.content?.length, 500);
   assert.equal("participants" in trimmed, false);
 
-  const listed = await recentMessages(1, async () => [
-    { group_id: "g", content: "hi", is_outbound: false, date_sent: null },
-    { group_id: "h", content: "second", is_outbound: true, date_sent: null },
-  ]);
+  const sample = async () => [
+    { group_id: "grp-setters", content: "check in", is_outbound: true, date_sent: null },
+    { group_id: "grp-prospect", content: "secret", is_outbound: false, date_sent: null },
+    { group_id: "grp-setters", content: "second", is_outbound: true, date_sent: null },
+  ];
+  const listed = await recentMessages(1, sample, { allowed: new Set(["grp-setters", "grp-prospect"]) });
   assert.equal(listed.length, 1);
-  assert.equal(listed[0].group_id, "g");
+  assert.equal(listed[0].group_id, "grp-setters");
+  const only = await recentMessages(10, sample, {
+    allowed: new Set(["grp-setters", "grp-prospect"]),
+    groupId: "grp-setters",
+  });
+  assert.equal(only.length, 2);
+  assert.equal(only.every((m) => m.group_id === "grp-setters"), true);
+  const hidden = await recentMessages(10, sample, { allowed: new Set(["grp-setters"]) });
+  assert.equal(hidden.some((m) => m.group_id === "grp-prospect"), false);
+});
+
+test("an unscoped caller can text an internal group and cannot text a prospect", async () => {
+  const internalEnv = env({
+    BOT_SEND_CALLER_SCOPES: "",
+    BOT_SEND_INTERNAL_GROUPS: "grp-setters grp-solo",
+    BOT_SEND_MAX_PER_RECIPIENT_PER_DAY: "2",
+    BOT_SEND_MAX_PER_INTERNAL_GROUP_PER_DAY: "40",
+    SENDBLUE_INTERNAL_GROUPS: "closers:+15557001111,+15557002222|grp-closers",
+  });
+  assert.equal(internalGroupIds(internalEnv).has("grp-setters"), true);
+  assert.equal(internalGroupIds(internalEnv).has("grp-closers"), true);
+  assert.equal(internalGroupDailyCap(internalEnv), 40);
+  const setters = body({ groupId: "grp-setters", content: "hourly check-in" });
+  assert.equal(recipientAllowed("chief-sdr", setters, internalEnv), true);
+  assert.equal(recipientAllowed("chief-sdr", body(), internalEnv), false);
+  assert.equal(recipientAllowed("chief-sdr", body({ groupId: "grp-prospect", content: "hi" }), internalEnv), false);
+
+  const h = harness();
+  let calls = 0;
+  const deliver = async () => {
+    calls++;
+    return { dryRun: false, messageHandle: "m" };
+  };
+  const prospect = await sendBotMessage("chief-sdr", body(), deps(h, { deliver, env: internalEnv }));
+  assert.equal(prospect.reason, "out_of_scope");
+  assert.equal(calls, 0);
+  assert.equal(h.rows.filter((r) => r.claimKey).length, 0);
+
+  for (let i = 0; i < 3; i++) {
+    const result = await sendBotMessage(
+      "chief-sdr",
+      body({ groupId: "grp-setters", idempotencyKey: `setters-key-${i}0`, content: `check-in ${i}` }),
+      deps(h, { deliver, env: internalEnv })
+    );
+    assert.equal(result.status, "sent");
+  }
+  assert.equal(calls, 3);
+
+  const same = await sendBotMessage(
+    "coach",
+    body({ groupId: "grp-setters", idempotencyKey: "setters-key-00", content: "check-in 0" }),
+    deps(h, { deliver, env: internalEnv })
+  );
+  assert.equal(same.reason, "body_dedupe");
+  const replay = await sendBotMessage(
+    "chief-sdr",
+    body({ groupId: "grp-setters", idempotencyKey: "setters-key-00", content: "check-in 0" }),
+    deps(h, { deliver, env: internalEnv })
+  );
+  assert.equal(replay.reason, "idempotency");
+  assert.equal(calls, 3);
+});
+
+test("a caller scope allows only the listed groups and phones", async () => {
+  const scoped = env({
+    BOT_SEND_CALLER_SCOPES: JSON.stringify({
+      "solo-live": { groups: ["grp-solo"] },
+      "ops-bot": { phones: ["3135550199"] },
+    }),
+    BOT_SEND_INTERNAL_GROUPS: "grp-setters,grp-solo",
+  });
+  assert.equal(recipientAllowed("solo-live", body({ groupId: "grp-solo", content: "nightly" }), scoped), true);
+  assert.equal(recipientAllowed("solo-live", body({ groupId: "grp-setters", content: "nope" }), scoped), false);
+  assert.equal(recipientAllowed("ops-bot", body({ to: "+13135550199", content: "ping" }), scoped), true);
+  assert.equal(recipientAllowed("coach", body({ groupId: "grp-setters", content: "reply" }), scoped), true);
+  assert.equal(recipientAllowed("coach", body({ to: "+13135550100", content: "dm" }), scoped), false);
+  assert.equal(groupsVisibleToCaller("coach", scoped)?.has("grp-setters"), true);
+  assert.equal(groupsVisibleToCaller("solo-live", scoped)?.has("grp-setters"), false);
+  assert.equal(parseCallerScopes("{").ok, false);
+  assert.equal(groupsVisibleToCaller("solo-live", { BOT_SEND_CALLER_SCOPES: "{" }), null);
+
+  const h = harness();
+  let calls = 0;
+  const blocked = await sendBotMessage(
+    "solo-live",
+    body({ groupId: "grp-setters", content: "wrong room" }),
+    deps(h, {
+      env: scoped,
+      deliver: async () => {
+        calls++;
+        return { dryRun: false, messageHandle: "m" };
+      },
+    })
+  );
+  assert.equal(blocked.reason, "out_of_scope");
+  assert.equal(calls, 0);
+});
+
+test("internal groups use the higher daily cap and their own hourly bucket", async () => {
+  const internalEnv = env({
+    BOT_SEND_CALLER_SCOPES: "",
+    BOT_SEND_INTERNAL_GROUPS: "grp-setters",
+    BOT_SEND_MAX_PER_CALLER_PER_HOUR: "2",
+    BOT_SEND_MAX_PER_CALLER_PER_HOUR_INTERNAL: "60",
+    BOT_SEND_MAX_PER_RECIPIENT_PER_DAY: "2",
+    BOT_SEND_MAX_PER_INTERNAL_GROUP_PER_DAY: "40",
+    CONFIRMATIONS_MAX_SENDS_PER_HOUR: "2",
+    BOT_SEND_MAX_INTERNAL_PER_HOUR: "60",
+  });
+  const h = harness();
+  let calls = 0;
+  const deliver = async () => {
+    calls++;
+    return { dryRun: false, messageHandle: "m" };
+  };
+  for (let i = 0; i < 3; i++) {
+    const result = await sendBotMessage(
+      "coach",
+      body({ groupId: "grp-setters", idempotencyKey: `coach-key-${i}0`, content: `reply ${i}` }),
+      deps(h, { deliver, env: internalEnv })
+    );
+    assert.equal(result.status, "sent");
+  }
+  assert.equal(calls, 3);
+  assert.equal(h.rates.get("bot-internal:2026-07-15T17:false"), 3);
+  assert.equal(h.rates.get("bot:coach:internal:2026-07-15T17:false"), 3);
+  assert.equal(h.rates.has("2026-07-15T17:false"), false);
 });
 
 test("summary groups the last day's rows by caller", () => {

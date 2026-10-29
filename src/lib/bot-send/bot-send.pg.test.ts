@@ -71,6 +71,7 @@ test("postgres bot claims send once under parallel identical calls", async (t) =
             BOT_SEND_MAX_PER_CALLER_PER_HOUR: "20",
             BOT_SEND_MAX_PER_RECIPIENT_PER_DAY: "20",
             CONFIRMATIONS_MAX_SENDS_PER_HOUR: "30",
+            BOT_SEND_CALLER_SCOPES: JSON.stringify({ "pgtest-bot": { phones: ["+13135550199"] } }),
           },
           deliver: async () => {
             calls++;
