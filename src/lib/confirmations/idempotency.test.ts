@@ -18,7 +18,7 @@ import {
 } from "./claim";
 import { GET as reconnectGet, POST as reconnectPost } from "../../app/api/reconnect/process/route";
 import { nudgeRep } from "./nudge";
-import { providerMaySend, sendGroupMessage, sendMessage } from "../sendblue";
+import { isLive, providerMaySend, sendGroupMessage, sendMessage } from "../sendblue";
 import {
   authorizeCron,
   authorizeScheduler,
@@ -694,6 +694,67 @@ test("live:true cannot bypass SENDBLUE_LIVE", async () => {
     globalThis.fetch = prevFetch;
     if (prev === undefined) delete process.env.SENDBLUE_LIVE;
     else process.env.SENDBLUE_LIVE = prev;
+  }
+});
+
+test("unset SENDBLUE_LIVE and confirmation auto flags cannot send a real text", async () => {
+  const keys = [
+    "SENDBLUE_LIVE",
+    "CONFIRMATIONS_DAYOF_AUTO",
+    "CONFIRMATIONS_AUTO_SEND",
+    "CONFIRMATIONS_ORIGINATION_LIVE",
+    "CONFIRMATIONS_REP_PHONE",
+  ] as const;
+  const prev = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  const prevFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response(JSON.stringify({ status: "sent", message_handle: "h" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  for (const key of keys) delete process.env[key];
+  process.env.CONFIRMATIONS_REP_PHONE = "+13135550999";
+  try {
+    assert.equal(isLive(), false);
+    assert.equal(providerMaySend(undefined), false);
+    assert.equal(providerMaySend(true), false);
+    assert.equal(dayOfAutoEnabled(), false);
+    assert.equal(t1AutoEnabled(), false);
+    assert.equal(originationTextingEnabled(), false);
+    assert.equal(originationLive(), false);
+
+    const group = await sendGroupMessage({ groupId: "g", content: "hello", live: true });
+    const oneToOne = await sendMessage({ number: "+13135550100", content: "hi", live: true });
+    const delivered = await deliverConfirmationMessage(
+      {
+        groupId: "g",
+        touchpoint: "day_of",
+        body: "hello",
+        dryRun: false,
+        mediaUrl: "https://example.com/video.mp4",
+        pauseMs: 0,
+      }
+    );
+    assert.equal(group.dryRun, true);
+    assert.equal(oneToOne.dryRun, true);
+    assert.equal(delivered.dryRun, true);
+    assert.equal(await nudgeRep("batch finished"), "none");
+    assert.equal(calls, 0);
+
+    process.env.SENDBLUE_LIVE = "false";
+    const stillOff = await sendGroupMessage({ groupId: "g", content: "hello", live: true });
+    assert.equal(stillOff.dryRun, true);
+    assert.equal(dayOfAutoEnabled(), false);
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = prevFetch;
+    for (const key of keys) {
+      if (prev[key] === undefined) delete process.env[key];
+      else process.env[key] = prev[key];
+    }
   }
 });
 

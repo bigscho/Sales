@@ -1,24 +1,47 @@
--- Claim-before-send for confirmation texts.
+-- Claim-before-send schema for confirmation texts (PR #18).
 --
--- prisma db push (the Vercel build) creates the new columns, tables, and
--- unique indexes from schema.prisma. It does NOT backfill claim keys.
--- This file is still required: it backfills keys onto the historical winner
--- of each duplicate burst so an old send occupies the unique slot, and it
--- creates the indexes if db push has not run yet.
+-- Run this file by hand, in one transaction. It does not send messages.
+-- The Vercel build must not run it: `npm run build` is
+-- `prisma generate && next build` and does not connect to the database.
 --
--- Run it in one transaction (Prisma does). It does not send messages.
--- Re-running is a no-op for rows that already have keys. A key that the app
--- already wrote (db push deployed first, then a send, then this file) is
--- left alone — the backfill will not assign that same key to an older row.
+-- Do not use `prisma migrate deploy` for this repo. Production was built
+-- with `prisma db push`, so `_prisma_migrations` is not a baseline, and the
+-- older SQL file in prisma/migrations is not idempotent.
 --
--- pgcrypto supplies sha256, matching Node's body hash. Neon allows
--- CREATE EXTENSION pgcrypto for the database owner. If it fails, this
--- transaction rolls back. The build's `prisma db push` does not pass
--- --accept-data-loss, so a destructive schema drift fails the build
--- instead of dropping rows.
+-- Why production deploy dpl_J56Def7smLqouUGb8mXZDnpocSHK failed on
+-- 2026-10-29: the build ran `prisma db push` with no TTY. Prisma exits
+-- before any DDL when the diff adds a unique constraint to an existing
+-- table, unless `--accept-data-loss` is passed:
+--
+--   A unique constraint covering the columns `[claimKey]` on the table
+--   `ConfirmationSend` will be added. If there are existing duplicate
+--   values, this will fail.
+--
+-- The same warning is raised for `dayOfGroupDayKey` and `bodyDedupeKey`.
+-- `next build` never started. Reproduced locally against the pre-#18 schema
+-- with duplicate day-of rows: the command exited 1 and added no columns.
+--
+-- This script is the schema change, and it is non-destructive:
+--   * nullable columns and new empty tables only; no drops, no deletes
+--   * duplicate historical sends stay in the log
+--   * a unique key is written only onto one winner per slot (prefer sent,
+--     then queued, then failed; earliest createdAt). The other copies keep
+--     NULL keys. Postgres unique indexes allow many NULLs, so the duplicates
+--     do not have to be deleted before the indexes are created
+--   * a key the application already wrote is left alone — the backfill will
+--     not assign that same key to an older row
+-- Re-running is a no-op for rows that already have keys.
+--
+-- pgcrypto supplies sha256, matching Node
+-- createHash("sha256").update(body, "utf8").digest("hex").
+-- Neon allows CREATE EXTENSION pgcrypto for the database owner. If it
+-- fails, this transaction rolls back and no index is created.
+--
+-- ConfirmationSend.createdAt is timestamp without time zone, stored as UTC
+-- by Prisma. The Eastern day below matches etDayString in guards.ts.
 --
 -- CREATE INDEX takes a brief ShareLock. ConfirmationSend is the send log,
--- not a large table. CONCURRENTLY cannot run inside Prisma's transaction.
+-- not a large table. CONCURRENTLY cannot run inside this transaction.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -143,6 +166,35 @@ WHERE c.id = w.id
     WHERE taken."bodyDedupeKey" =
       c."groupId" || ':' || c."bodyHash" || ':' || c."etDay" || ':' || CASE WHEN c."dryRun" THEN 'dry' ELSE 'live' END
   );
+
+-- Refuse to lock in a unique index if the backfill itself produced a duplicate.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "ConfirmationSend"
+    WHERE "claimKey" IS NOT NULL
+    GROUP BY "claimKey"
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'duplicate claimKey after backfill';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM "ConfirmationSend"
+    WHERE "dayOfGroupDayKey" IS NOT NULL
+    GROUP BY "dayOfGroupDayKey"
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'duplicate dayOfGroupDayKey after backfill';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM "ConfirmationSend"
+    WHERE "bodyDedupeKey" IS NOT NULL
+    GROUP BY "bodyDedupeKey"
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'duplicate bodyDedupeKey after backfill';
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "ConfirmationSend_claimKey_key" ON "ConfirmationSend"("claimKey");
 CREATE UNIQUE INDEX IF NOT EXISTS "ConfirmationSend_dayOfGroupDayKey_key" ON "ConfirmationSend"("dayOfGroupDayKey");
