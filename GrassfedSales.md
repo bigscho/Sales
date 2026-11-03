@@ -348,7 +348,7 @@ Christian, Nick, and Oliver were promoted from auto-created Calendly attribution
 # Local development
 npm run dev
 
-# Build (auto-runs prisma generate + db push)
+# Build (prisma generate + next build; does not connect to or change the database)
 npm run build
 
 # Deploy: push to branch, promote latest deployment to production in Vercel
