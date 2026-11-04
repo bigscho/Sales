@@ -513,6 +513,13 @@ export async function GET(request: NextRequest) {
     })
     .filter((c) => c.demos > 0 || c.closes > 0 || c.cashCents !== 0);
 
+  // Minimum recorded dial-hours before a per-hour rate is trustworthy. Below
+  // this, the Trellus feed is absent or only partially synced for the period, so
+  // dividing real-time bookings by a sliver of dial time produces garbage (e.g.
+  // 18 bookings ÷ 0.17h = 108 "bk/hr" during the 2026-10-31+ Trellus outage).
+  // Show "—" instead of a fake spike. convs/booking is unaffected (not per-hour).
+  const MIN_RATE_HOURS = 1;
+
   // Build scoreboard entries
   const scoreboard = [...setters, ...activeCloserSetters].map((s) => {
     const activity = activityBySetterId[s.id] || 0;
@@ -528,8 +535,8 @@ export async function GET(request: NextRequest) {
           hours,
           dials: dial.dials,
           conversations: dial.conversations,
-          bookingsPerHour: hours > 0 ? activity / hours : null,
-          gcalsPerHour: hours > 0 ? (acceptedActivityBySetterId[s.id] || 0) / hours : null,
+          bookingsPerHour: hours >= MIN_RATE_HOURS ? activity / hours : null,
+          gcalsPerHour: hours >= MIN_RATE_HOURS ? (acceptedActivityBySetterId[s.id] || 0) / hours : null,
           convsPerBooking: activity > 0 ? dial.conversations / activity : null,
         }
       : null;
@@ -570,8 +577,8 @@ export async function GET(request: NextRequest) {
         hours: dialTeam.dialMinutes / 60,
         dials: dialTeam.dials,
         conversations: dialTeam.conversations,
-        bookingsPerHour: dialTeam.dialMinutes > 0 ? activityTotal / (dialTeam.dialMinutes / 60) : null,
-        gcalsPerHour: dialTeam.dialMinutes > 0 ? acceptedActivityTotal / (dialTeam.dialMinutes / 60) : null,
+        bookingsPerHour: dialTeam.dialMinutes / 60 >= MIN_RATE_HOURS ? activityTotal / (dialTeam.dialMinutes / 60) : null,
+        gcalsPerHour: dialTeam.dialMinutes / 60 >= MIN_RATE_HOURS ? acceptedActivityTotal / (dialTeam.dialMinutes / 60) : null,
         convsPerBooking: activityTotal > 0 ? dialTeam.conversations / activityTotal : null,
       },
       leadTime: {
