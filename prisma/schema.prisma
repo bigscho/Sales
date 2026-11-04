@@ -96,6 +96,13 @@ model Booking {
   bookedAt         DateTime?
   demoDate         DateTime
   calendarEventId  String?  @unique
+  // Google Calendar event id — the deterministic cross-channel join key. The
+  // Calendly webhook stores calendar_event.external_id; the gcal sync stores the
+  // event id. They are equal, so both channels resolve the same meeting without
+  // fuzzy email/date matching. NOT unique: Calendly reuses the same Google event
+  // across reschedules, so a frozen original + its successor share this id (match
+  // the LIVE row via supersededAt: null).
+  googleEventId    String?
   airtableRecordId String?
   listingAddress   String?  // Calendly "Listing address / zip codes" free-text (setter-entered); blank -> DB area fallback
   prospectTimezone String?  // IANA tz from Calendly invitee, for prospect-local send timing
@@ -132,6 +139,8 @@ model Booking {
   reconnectSequences ReconnectSequence[]
   rescheduledFrom    Booking?    @relation("RescheduleChain", fields: [rescheduledFromId], references: [id])
   rescheduledTo      Booking?    @relation("RescheduleChain")
+
+  @@index([googleEventId])
 }
 
 model Demo {

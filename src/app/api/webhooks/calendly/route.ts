@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     let eventTypeName: string | null = null;
     let listingAddress: string | null = null; // "Listing address / zip codes" custom Q&A
     let prospectTimezone: string | null = null; // IANA tz from invitee
+    let googleEventId: string | null = null; // calendar_event.external_id — gcal cross-channel key
 
     const calendlyToken = process.env.CALENDLY_API_TOKEN;
     if (calendlyToken && eventUri) {
@@ -67,6 +68,9 @@ export async function POST(request: NextRequest) {
           const resource = eventData.resource;
           demoDate = resource.start_time ? new Date(resource.start_time) : null;
           eventTypeName = resource.name || null;
+          // Google Calendar event id for this meeting — the deterministic key the
+          // gcal sync also stores, so both channels resolve the same booking.
+          googleEventId = resource.calendar_event?.external_id || null;
 
           // The PRIMARY closer is the event-type OWNER. event_memberships lists
           // every host on the event — a closer added to shadow (e.g. Will sitting
@@ -304,6 +308,19 @@ export async function POST(request: NextRequest) {
       });
       if (byCalendlyId && !byCalendlyId.supersededAt) return byCalendlyId;
 
+      // Deterministic cross-channel key: calendar_event.external_id == the Google
+      // event id the gcal sync keys on. Finds the SAME meeting even after the gcal
+      // sync has overwritten calendarEventId (the duplicate-booking root cause), and
+      // across reschedules (Calendly reuses the Google event). Resolve to the live row.
+      if (googleEventId) {
+        const byGoogle = await prisma.booking.findFirst({
+          where: { googleEventId, supersededAt: null },
+          orderBy: { demoDate: "desc" },
+          include: { demo: true },
+        });
+        if (byGoogle) return byGoogle;
+      }
+
       // Find by email + date (within 4 hour window to account for timezone shifts)
       if (inviteeEmail && demoDate) {
         const windowStart = new Date(demoDate.getTime() - 4 * 60 * 60 * 1000);
@@ -482,6 +499,7 @@ export async function POST(request: NextRequest) {
         if (phone && !existing.prospectPhone) enrich.prospectPhone = phone;
         if (listingAddress && !existing.listingAddress) enrich.listingAddress = listingAddress;
         if (prospectTimezone && !existing.prospectTimezone) enrich.prospectTimezone = prospectTimezone;
+        if (googleEventId && !existing.googleEventId) enrich.googleEventId = googleEventId;
 
         const isReschedule = !!demoDate && Math.abs(new Date(existing.demoDate).getTime() - demoDate.getTime()) > 60000;
 
@@ -583,6 +601,7 @@ export async function POST(request: NextRequest) {
             prospectPhone: phone || existing.prospectPhone,
             listingAddress: listingAddress || existing.listingAddress,
             prospectTimezone: prospectTimezone || existing.prospectTimezone,
+            googleEventId: googleEventId || existing.googleEventId,
             setterId: successorSetterId,
             bookedAt: successorBookedAt,
             isBookingEvent: successorIsBookingEvent,
@@ -681,6 +700,7 @@ export async function POST(request: NextRequest) {
           prospectPhone: phone,
           listingAddress,
           prospectTimezone,
+          googleEventId,
           setterId,
           bookedAt: new Date(),
           demoDate: effectiveDate,

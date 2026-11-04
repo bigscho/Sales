@@ -289,6 +289,12 @@ async function supersedeAndCreate(opts: {
   }
 
   const newEventId = opts.transferEventId ? opts.old.calendarEventId : opts.newCalendarEventId;
+  // Google event id = the composite's prefix (<gcalid>_<Closer>); null for a
+  // calendly_<uuid>-keyed id (the Calendly webhook re-stamps it on next contact).
+  const successorGoogleId =
+    newEventId && newEventId.includes("_") && !newEventId.startsWith("calendly_")
+      ? newEventId.slice(0, newEventId.lastIndexOf("_"))
+      : null;
   const successor = await prisma.booking.create({
     data: {
       weekId: week.id,
@@ -303,6 +309,7 @@ async function supersedeAndCreate(opts: {
       isBookingEvent: true,
       demoDate: opts.newDemoDate,
       calendarEventId: newEventId,
+      googleEventId: successorGoogleId,
       source: "gcal_sync",
       // Lead source is fixed at the ORIGINAL booking (§4.6) — reschedules inherit it.
       leadSource: opts.old.leadSource,
@@ -630,6 +637,33 @@ async function syncCalendar(
       //    fall through so the rebook path below can split it properly.
       //  - Tiebreak deterministically: email match beats phone match beats name
       //    match, live beats superseded, then oldest row.
+      // Deterministic cross-channel dedup FIRST: if a live booking already carries
+      // this Google event id (stamped by the Calendly webhook), it's the SAME
+      // meeting. Adopt it into the composite-id namespace so status/RSVP updates keep
+      // flowing, and never mint a duplicate. This is the reliable key the fuzzy
+      // email/time match below only approximates (and misses → duplicate bookings).
+      {
+        const linked = await prisma.booking.findFirst({
+          where: { googleEventId: event.id, supersededAt: null },
+          include: { demo: true },
+        });
+        if (linked) {
+          const sameTime = Math.abs(linked.demoDate.getTime() - eventStart.getTime()) <= 60_000;
+          const linkedTerminal =
+            !!linked.demo && ["showed", "no_show", "cancelled"].includes(linked.demo.status);
+          if (!(linkedTerminal && !sameTime)) {
+            if (linked.calendarEventId !== compositeId && !linked.calendarEventId?.startsWith(event.id)) {
+              await prisma.booking.update({
+                where: { id: linked.id },
+                data: { calendarEventId: compositeId },
+              });
+            }
+            continue;
+          }
+          // terminal link at a different time → a rebook; fall through to the rebook path
+        }
+      }
+
       const attendeeEmails = externalAttendees(event.attendees, calendarEmail)
         .map((a) => a.email!.toLowerCase());
       {
@@ -675,8 +709,12 @@ async function syncCalendar(
             if (twin.calendarEventId !== compositeId && !twin.calendarEventId?.startsWith(event.id)) {
               await prisma.booking.update({
                 where: { id: twin.id },
-                data: { calendarEventId: compositeId },
+                // Heal the cross-channel key so future polls + the Calendly webhook
+                // resolve this meeting deterministically (no more fuzzy dedup).
+                data: { calendarEventId: compositeId, googleEventId: event.id },
               });
+            } else if (!twin.googleEventId) {
+              await prisma.booking.update({ where: { id: twin.id }, data: { googleEventId: event.id } });
             }
             continue;
           }
@@ -778,6 +816,7 @@ async function syncCalendar(
           bookedAt: getEventBookedAt(event),
           demoDate: eventStart,
           calendarEventId: compositeId,
+          googleEventId: event.id,
           source: "gcal_sync",
           leadSource,
         },
