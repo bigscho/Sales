@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { CLOSER_SOURCE_MANUAL } from "@/lib/closer-from-transcript";
 
 export async function GET(request: NextRequest) {
   const weekId = request.nextUrl.searchParams.get("weekId");
@@ -144,7 +145,12 @@ export async function PATCH(request: NextRequest) {
     updateData.confirmedBy = performedBy;
     updateData.confirmedAt = new Date();
   }
-  if (closerId !== undefined) updateData.closerId = closerId;
+  if (closerId !== undefined) {
+    updateData.closerId = closerId;
+    // A person resolved the credit. The recording sync must not overwrite it.
+    updateData.closerSource = CLOSER_SOURCE_MANUAL;
+    updateData.closerReviewReason = null;
+  }
   if (notes !== undefined) updateData.notes = notes;
 
   const oldDemo = existingDemo;

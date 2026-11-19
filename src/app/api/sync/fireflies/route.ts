@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { applyTranscriptCloser } from "@/lib/apply-transcript-closer";
+import type { TranscriptForCloser } from "@/lib/closer-from-transcript";
 
 // Syncs Fireflies transcripts with demo records to auto-detect show/no-show.
 // Logic:
@@ -20,7 +22,7 @@ interface FirefliesTranscript {
   organizer_email: string;
   participants: string[];
   speakers: { name: string; id: number }[];
-  sentences: { text: string; speaker_id: number | null; speaker_name: string | null }[];
+  sentences: { text: string; speaker_id: number | null; speaker_name: string | null; start_time?: number | null; end_time?: number | null }[];
   meeting_info: { summary_status: string; silent_meeting: boolean } | null;
   summary: { short_summary: string; keywords: string[] } | null;
 }
@@ -63,6 +65,8 @@ async function fetchFirefliesTranscripts(apiKey: string, fromDate: string, toDat
           text
           speaker_id
           speaker_name
+          start_time
+          end_time
         }
         meeting_info {
           summary_status
@@ -146,58 +150,6 @@ function verifyRealShow(t: FirefliesTranscript, teamNames: string[]): boolean {
   return true;
 }
 
-// Match a Fireflies speaker name to a closer TeamMember (full-name or first-name).
-// Only closers are candidates — a demo can only be "run by" a closer, so setters
-// and the prospect never match.
-function matchCloserId(speakerName: string, closers: { id: string; name: string }[]): string | null {
-  const nm = speakerName.trim().toLowerCase();
-  if (!nm) return null;
-  const nmFirst = nm.split(/\s+/)[0];
-  for (const c of closers) {
-    const cn = c.name.toLowerCase();
-    const cFirst = cn.split(/\s+/)[0];
-    if (nm === cn) return c.id;
-    if (cFirst && nmFirst && cFirst === nmFirst && cFirst.length > 2) return c.id;
-  }
-  return null;
-}
-
-// Detect the primary presenter of a demo from its transcript — the closer who
-// did the most talking (talk-share proxy = sentence count). Returns that closer
-// + their share of INTERNAL talk, or null when no closer is identifiable or the
-// call is genuinely co-run (no clear majority). Advisory only: the caller stores
-// this to surface a reconcile badge, never to overwrite closerId.
-const PRESENTER_MIN_SHARE = 0.6;
-function detectPresenter(
-  t: FirefliesTranscript,
-  closers: { id: string; name: string }[]
-): { id: string; share: number } | null {
-  const sentences = t.sentences || [];
-  if (!sentences.length || !closers.length) return null;
-
-  const byCloser = new Map<string, number>();
-  for (const s of sentences) {
-    if (!s.speaker_name) continue;
-    const id = matchCloserId(s.speaker_name, closers);
-    if (id) byCloser.set(id, (byCloser.get(id) || 0) + 1);
-  }
-
-  let total = 0;
-  for (const c of byCloser.values()) total += c;
-  if (total === 0) return null;
-
-  let bestId: string | null = null;
-  let best = 0;
-  for (const [id, c] of byCloser) {
-    if (c > best) { best = c; bestId = id; }
-  }
-  if (!bestId) return null;
-
-  const share = best / total;
-  if (share < PRESENTER_MIN_SHARE) return null; // co-run / ambiguous — don't flag
-  return { id: bestId, share };
-}
-
 // GET handler for Vercel cron
 export async function GET() {
   return POST();
@@ -217,12 +169,6 @@ export async function POST() {
   // Load all team member names for speaker cross-reference (Signal 6)
   const teamMembers = await prisma.teamMember.findMany({ select: { name: true } });
   const teamNames = teamMembers.map(m => m.name.toLowerCase());
-
-  // Closers only — candidates for "who actually ran the demo" (presenter detection)
-  const closers = await prisma.teamMember.findMany({
-    where: { role: "closer" },
-    select: { id: true, name: true },
-  });
 
   // Get all demos from the last 2 weeks that Fireflies hasn't verified yet
   const twoWeeksAgo = new Date();
@@ -282,7 +228,9 @@ export async function POST() {
         const withinWindow = timeDiff < 3 * 60 * 60 * 1000; // 3 hours
 
         if (!withinWindow) return false;
-        if (t.duration < 2) return false; // Too short
+        // Short recordings still match so the closer can be flagged for review.
+        // They are not auto-marked showed (see below).
+        if (typeof t.duration === "number" && t.duration < 0) return false;
 
         // Check email match
         const emailMatch = prospectEmail && t.participants.some(
@@ -307,28 +255,21 @@ export async function POST() {
       });
 
       if (match) {
-        // Transcript found — but was it a REAL conversation?
-        // Check for genuine two-party interaction:
-        const isRealShow = verifyRealShow(match, teamNames);
+        // Credit the closer from who spoke. Ambiguous recordings leave the
+        // current closer in place and set closerReviewReason.
+        await applyTranscriptCloser(demo.id, transcriptForCloser(match), "fireflies_sync");
 
-        // Who actually presented? (advisory — never overwrites closerId)
-        const presenter = detectPresenter(match, closers);
-
-        // Always link the transcript to the demo for reference
+        const tooShortToShow = typeof match.duration === "number" && match.duration <= 1;
+        const isRealShow = !tooShortToShow && verifyRealShow(match, teamNames);
         const wasAlreadyConfirmed = demo.status === "showed";
         await prisma.demo.update({
           where: { id: demo.id },
           data: {
             hasFirefliesRecording: true,
             firefliesTranscriptId: match.id,
-            ...(presenter
-              ? { detectedCloserId: presenter.id, detectedCloserShare: presenter.share }
-              : {}),
-            // Only auto-mark as showed if it was a real conversation
             ...(isRealShow && !wasAlreadyConfirmed
               ? { status: "showed", confirmedBy: "fireflies_auto", confirmedAt: new Date() }
               : {}),
-            // Flag transcript-exists-but-not-a-real-show for manual review
             ...(!isRealShow && !wasAlreadyConfirmed
               ? { notes: [demo.notes, "transcript_no_conversation"].filter(Boolean).join(",") }
               : {}),
@@ -360,30 +301,24 @@ export async function POST() {
     }
   }
 
-  // Backfill presenter detection for already-recorded demos that predate this
-  // feature, reusing the transcripts we already fetched. Advisory field only —
-  // never touches closerId, and skips rows that already have a detection.
+  // Recordings already linked (including ones still on a provisional calendar
+  // closer) get the same credit pass. applyTranscriptCloser is a no-op when
+  // the stored credit already matches.
   try {
-    const undetected = await prisma.demo.findMany({
+    const linked = await prisma.demo.findMany({
       where: {
         firefliesTranscriptId: { not: null },
-        detectedCloserId: null,
         booking: { demoDate: { gte: twoWeeksAgo } },
+        OR: [{ closerSource: null }, { closerSource: "calendar" }],
       },
       select: { id: true, firefliesTranscriptId: true },
     });
-    for (const d of undetected) {
+    for (const d of linked) {
       const t = transcripts.find((tr) => tr.id === d.firefliesTranscriptId);
       if (!t) continue;
-      const presenter = detectPresenter(t, closers);
-      if (presenter) {
-        await prisma.demo.update({
-          where: { id: d.id },
-          data: { detectedCloserId: presenter.id, detectedCloserShare: presenter.share },
-        });
-      }
+      await applyTranscriptCloser(d.id, transcriptForCloser(t), "fireflies_sync");
     }
-  } catch { /* presenter backfill is best-effort */ }
+  } catch { /* closer credit on already-linked demos is best-effort */ }
 
   // Log sync
   await prisma.syncLog.create({
@@ -403,4 +338,15 @@ export async function POST() {
     transcriptsChecked: transcripts.length,
     pendingDemosChecked: pendingDemos.length,
   });
+}
+
+function transcriptForCloser(t: FirefliesTranscript): TranscriptForCloser {
+  return {
+    duration: t.duration,
+    organizer_email: t.organizer_email,
+    participants: t.participants,
+    speakers: t.speakers,
+    sentences: t.sentences,
+    meeting_info: t.meeting_info,
+  };
 }

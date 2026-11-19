@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCents } from "@/lib/utils";
 import { useSession } from "@/components/app-shell";
 import { CloserStatsPanel } from "@/components/closer-stats";
+import { closerReviewLabel } from "@/lib/closer-from-transcript";
 
 
 interface TeamMember { id: string; name: string; role: string }
@@ -40,6 +41,8 @@ interface DemoRecord {
   // disagrees with `closer`, the demos tab shows a one-click reconcile badge.
   detectedCloserId?: string | null;
   detectedCloserShare?: number | null;
+  closerSource?: string | null;
+  closerReviewReason?: string | null;
 }
 
 interface DayLockRecord {
@@ -533,6 +536,7 @@ export default function DemosPage() {
                       : null;
                     // A non-admin closer can CLAIM a demo the transcript says they ran.
                     const iRanIt = !!session?.memberId && demo.detectedCloserId === session.memberId && creditedId !== session.memberId;
+                    const reviewLabel = closerReviewLabel(demo.closerReviewReason);
                     return (
                       <div className="flex flex-col gap-1">
                         {isCloser ? (
@@ -553,8 +557,29 @@ export default function DemosPage() {
                           </select>
                         )}
 
-                        {/* Admin: one-click reassign to the detected presenter */}
-                        {!isCloser && mismatch && detected && (
+                        {reviewLabel && (
+                          <span
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800"
+                            title={reviewLabel}
+                          >
+                            Review closer
+                          </span>
+                        )}
+                        {demo.closerSource === "calendar" && (
+                          <span className="text-[10px] text-[var(--muted-foreground)]" title="Provisional credit from the personal calendar. The recording replaces this.">
+                            from calendar
+                          </span>
+                        )}
+                        {demo.closerSource === "transcript" && (
+                          <span className="text-[10px] text-[var(--muted-foreground)]" title="Credited from the Fireflies recording.">
+                            from recording
+                          </span>
+                        )}
+
+                        {/* Admin: one-click reassign when the recording names someone else.
+                            Hidden for ambiguous recordings (no guess). Shown when a lock
+                            or a manual credit is what held the previous closer. */}
+                        {!isCloser && mismatch && detected && demo.closerReviewReason !== "both_on_call" && demo.closerReviewReason !== "unidentified" && demo.closerReviewReason !== "silent_or_short" && (
                           <button
                             onClick={() => {
                               if (dayLock) return;
