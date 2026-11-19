@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { isDemoEventType, isSharedDemoCalendarEmail, provisionalCloserFromHost } from "@/lib/demo-calendars";
+import { CLOSER_SOURCE_CALENDAR } from "@/lib/closer-from-transcript";
 
 // Calendly sends: invitee.created, invitee.canceled
 // GCal sync may have already created the booking with a different calendarEventId format.
@@ -49,8 +51,10 @@ export async function POST(request: NextRequest) {
 
     // Fetch event details from Calendly API
     let demoDate: Date | null = null;
-    let closerName: string | null = null;
     let phone: string | null = null;
+    let membershipEmails: string[] = [];
+    let poolingType: string | null = null;
+    let eventTypeOwnerEmail: string | null = null;
     let setterFromDescription: string | null = null;
     let eventTypeName: string | null = null;
     let listingAddress: string | null = null; // "Listing address / zip codes" custom Q&A
@@ -72,9 +76,15 @@ export async function POST(request: NextRequest) {
           // gcal sync also stores, so both channels resolve the same booking.
           googleEventId = resource.calendar_event?.external_id || null;
 
-          // The PRIMARY closer is the event-type OWNER. event_memberships lists
-          // every host on the event — a closer added to shadow (e.g. Will sitting
-          // in on Matthew's demos) shows up there and must NOT take attribution.
+          // Provisional closer comes from a personal closer EMAIL, never from
+          // the profile display name. colin@grassfed.tech is named "Colin
+          // Schofield" and must not be credited to Colin. Co-host memberships
+          // are ignored except on a round robin, where the assigned host's
+          // email is the calendar the booking landed on.
+          const memberships = resource.event_memberships || [];
+          membershipEmails = memberships
+            .map((m: { user_email?: string }) => m.user_email)
+            .filter((email: string | undefined): email is string => !!email);
           if (resource.event_type) {
             try {
               const etRes = await fetch(resource.event_type, {
@@ -82,13 +92,20 @@ export async function POST(request: NextRequest) {
               });
               if (etRes.ok) {
                 const etData = await etRes.json();
-                closerName = etData.resource?.profile?.name?.split(" ")[0] || null;
+                const et = etData.resource;
+                poolingType = et?.pooling_type || null;
+                const ownerUri = et?.profile?.owner;
+                if (ownerUri) {
+                  const userRes = await fetch(ownerUri, {
+                    headers: { Authorization: `Bearer ${calendlyToken}` },
+                  });
+                  if (userRes.ok) {
+                    const userData = await userRes.json();
+                    eventTypeOwnerEmail = userData.resource?.email || null;
+                  }
+                }
               }
-            } catch { /* fall back to memberships below */ }
-          }
-          const memberships = resource.event_memberships || [];
-          if (!closerName && memberships.length > 0) {
-            closerName = memberships[0].user_name?.split(" ")[0] || null;
+            } catch { /* no provisional closer; the recording will credit the call */ }
           }
 
           // Parse "Booked by" from Calendly event description (if present)
@@ -197,13 +214,17 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Closer = the reconnect event type's OWNER (same shadowing rule as
-      // demos). Resolve it BEFORE the name fallback below so a same-name
-      // collision can be broken by the closer who booked the reconnect.
+      // Closer = the reconnect event's personal-calendar host (email, not
+      // display name). Falls back to the original demo's closer below.
       let reconnectCloserId: string | null = null;
-      if (closerName) {
+      const reconnectCloserName = provisionalCloserFromHost({
+        eventTypeOwnerEmail,
+        poolingType,
+        membershipEmails,
+      });
+      if (reconnectCloserName) {
         const closer = await prisma.teamMember.findFirst({
-          where: { name: { contains: closerName, mode: "insensitive" }, role: "closer" },
+          where: { name: { contains: reconnectCloserName, mode: "insensitive" }, role: "closer", isActive: true },
         });
         reconnectCloserId = closer?.id || null;
       }
@@ -274,16 +295,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Filter: only process demo event types (skip onboarding, launch calls, quick calls, etc.)
-    // Current demo event type names contain "farm", "just-listed", "just-closed", "just listed", "just closed", "demo", or "e-mailers"
+    // The cold-email calendar ("Grassfed Cold Email: Just Listed/Sold/Closed")
+    // is a demo. Onboarding is not, even when the title also says "just".
     if (eventTypeName && event === "invitee.created") {
-      const nameLower = eventTypeName.toLowerCase();
-      const isDemoEvent =
-        nameLower.includes("farm") ||
-        nameLower.includes("just") ||
-        nameLower.includes("demo") ||
-        nameLower.includes("e-mailers") ||
-        nameLower.includes("setup");
-      if (!isDemoEvent) {
+      if (!isDemoEventType(eventTypeName)) {
         await prisma.auditLog.create({
           data: {
             entityType: "booking",
@@ -614,11 +629,35 @@ export async function POST(request: NextRequest) {
             rescheduledFromId: existing.id,
           },
         });
+        const successorCloserName = provisionalCloserFromHost({
+          eventTypeOwnerEmail,
+          poolingType,
+          membershipEmails,
+        });
+        let successorCloserId: string | null = null;
+        let successorCloserSource: string | null = null;
+        if (successorCloserName) {
+          const successorCloser = await prisma.teamMember.findFirst({
+            where: { name: { contains: successorCloserName, mode: "insensitive" }, role: "closer", isActive: true },
+          });
+          successorCloserId = successorCloser?.id || null;
+          successorCloserSource = successorCloserId ? CLOSER_SOURCE_CALENDAR : null;
+        } else if (isSharedDemoCalendarEmail(eventTypeOwnerEmail)) {
+          // Moved onto the cold-email or admin calendar. Don't carry the
+          // previous closer forward just because that calendar is named Colin.
+          successorCloserId = null;
+        } else if (!eventTypeOwnerEmail && membershipEmails.length === 0) {
+          // Host email didn't come back. Keep the previous credit until a
+          // recording arrives rather than blanking a reschedule on an API miss.
+          successorCloserId = existing.demo?.closerId || null;
+          successorCloserSource = existing.demo?.closerSource || (successorCloserId ? CLOSER_SOURCE_CALENDAR : null);
+        }
         await prisma.demo.create({
           data: {
             bookingId: successor.id,
             weekId: newWeek.id,
-            closerId: existing.demo?.closerId || null,
+            closerId: successorCloserId,
+            closerSource: successorCloserSource,
           },
         });
 
@@ -645,15 +684,21 @@ export async function POST(request: NextRequest) {
         update: {},
       });
 
-      // Resolve closer (Calendly event host) — needed before setter resolution so
-      // a "Booked by: <closer>" on their own calendar can be tagged self-sourced
+      // Provisional closer from the personal calendar email. Shared calendars
+      // (cold email, admin) stay uncredited until the recording is in.
+      const closerName = provisionalCloserFromHost({
+        eventTypeOwnerEmail,
+        poolingType,
+        membershipEmails,
+      });
       let closerId: string | null = null;
       if (closerName) {
         const closer = await prisma.teamMember.findFirst({
-          where: { name: { contains: closerName, mode: "insensitive" }, role: "closer" },
+          where: { name: { contains: closerName, mode: "insensitive" }, role: "closer", isActive: true },
         });
         closerId = closer?.id || null;
       }
+      const closerSource = closerId ? CLOSER_SOURCE_CALENDAR : null;
 
       // Resolve setter — use contains matching to handle whitespace/special chars in Q&A answers
       const setterName = resolveSetterAlias(setterFromDescription || tracking.utm_source || tracking.utm_campaign || null);
@@ -715,6 +760,7 @@ export async function POST(request: NextRequest) {
           bookingId: booking.id,
           weekId: week.id,
           closerId,
+          closerSource,
         },
       });
 

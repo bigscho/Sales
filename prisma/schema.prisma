@@ -153,12 +153,17 @@ model Demo {
   confirmedAt            DateTime?
   firefliesTranscriptId  String?
   hasFirefliesRecording  Boolean   @default(false)
-  // Advisory ONLY — the primary presenter Fireflies detected from transcript
-  // talk-share. Never auto-applied to closerId (respects the shadowing rule +
-  // "automation must not overwrite manual corrections"); it surfaces a reconcile
-  // badge on /demos so an admin can one-click reassign a double-booked jump-in.
+  // Who closerId came from. calendar = provisional personal-calendar host,
+  // replaced when a recording identifies the closer. transcript = the recording.
+  // manual = set on /demos; automation does not overwrite it.
+  closerSource           String?   // calendar | transcript | manual
+  // Set when the recording cannot safely name a closer. closerId is left as-is.
+  // both_on_call | unidentified | silent_or_short | day_locked | manual_override
+  closerReviewReason     String?
+  // The closer the recording identified, when exactly one of Colin or Matthew
+  // ran the call. Null when the recording is ambiguous (no guess is stored).
   detectedCloserId       String?
-  detectedCloserShare    Float?    // 0-1 share of internal talk the presenter held; null when co-run/ambiguous
+  detectedCloserShare    Float?    // 0-1 share of closer talk the presenter held
   notes                  String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt

@@ -4,6 +4,13 @@ import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { matchCloserByName, isSelfSourcedViaIdentity, LEAD_SOURCE_FED, LEAD_SOURCE_SELF } from "@/lib/lead-source";
 import { resolveSetterAlias } from "@/lib/setter-aliases";
+import {
+  demoCalendarsForSync,
+  eventBelongsToOtherDemoCalendar,
+  isDemoEventType,
+  type DemoCalendarSync,
+} from "@/lib/demo-calendars";
+import { CLOSER_SOURCE_CALENDAR } from "@/lib/closer-from-transcript";
 
 // Google Calendar sync via service account
 // Reads Calendly-booked events from the active closers' calendars,
@@ -11,12 +18,13 @@ import { resolveSetterAlias } from "@/lib/setter-aliases";
 // NOTE: each calendar must be shared with the service account
 // (GOOGLE_SERVICE_ACCOUNT_EMAIL) or its sync 404s on every poll.
 
-// Departed closers (Mark, Will 2026-09) must be REMOVED from this list — their
+// Departed closers (Mark, Will 2026-09) must stay off this list — their
 // calendars 404 on every poll once the account is gone.
-const CALENDARS = [
-  { email: "colin@grsfd.co", closerName: "Colin" },
-  { email: "matthew@grsfd.co", closerName: "Matthew" }, // shared with service acct 2026-09-11
-];
+// Shared calendars (admin, cold email) are polled so their bookings are
+// ingested, but they do not provisional-credit a closer. A 403/404 means the
+// calendar is not shared with the service account yet; that skip does not fail
+// the rest of the poll.
+const CALENDARS: DemoCalendarSync[] = demoCalendarsForSync();
 
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -96,23 +104,11 @@ interface GCalEvent {
   updated?: string;
 }
 
-// A demo appears on a closer's calendar without being THEIRS when they're
-// invited to shadow another closer. Two independent signals catch it:
-// (1) the GCal organizer is a different @grsfd.co account, (2) the Calendly
-// summary ("Prospect and Matthew Schofield") names a different closer.
-// Such events must be skipped entirely — the true host's calendar/webhook
-// owns them, and ingesting the guest copy creates duplicates.
-function isHostedByOtherCloser(event: GCalEvent, calendarEmail: string, closerName: string): boolean {
-  const organizer = event.organizer?.email?.toLowerCase();
-  if (organizer && organizer.endsWith("@grsfd.co") && organizer !== calendarEmail.toLowerCase()) {
-    return true;
-  }
-  const summaryCloser = (event.summary || "").match(/\s+and\s+(Colin|Will|Matthew|Mark)(\s+\w+)?\s*$/i)?.[1];
-  if (summaryCloser && summaryCloser.toLowerCase() !== closerName.toLowerCase()) {
-    return true;
-  }
-  return false;
-}
+// A demo appears on a calendar without belonging to it when someone is invited
+// to shadow, or when a shared-calendar event is copied onto a personal one.
+// The owning calendar (organizer) keeps the row. Personal calendars also skip
+// a summary that names a different closer. Shared calendars do not use the
+// summary: the cold-email calendar titles every event "and Colin Schofield".
 
 // Resolve the actual booking event time from the GCal event metadata.
 // Falls back to `updated` then `now` if `created` isn't available.
@@ -138,7 +134,11 @@ function isCalendlyEvent(event: GCalEvent): boolean {
   return (
     text.includes("Calendly") ||
     text.includes("Grassfed Demo") ||
-    text.includes("Booked by")
+    text.includes("Booked by") ||
+    // Calendly's description always has an "Event Name" line. The cold-email
+    // calendar's bookings use that line and must not be dropped when the
+    // footer word "Calendly" is missing.
+    text.includes("Event Name")
   );
 }
 
@@ -152,24 +152,6 @@ function parseSetterName(description: string): string | null {
 function parseEventTypeName(description: string): string | null {
   const match = description.match(/Event Name\s*\n\s*([^\n]+)/i);
   return match ? match[1].trim() : null;
-}
-
-// Mirror of the calendly webhook's event-type filter: only sales-demo event types
-// should land in the scoreboard. Onboarding / launch calls / quick calls etc. are out.
-function isDemoEventType(eventTypeName: string | null): boolean {
-  if (!eventTypeName) return true; // unknown — keep current permissive behavior
-  const n = eventTypeName.toLowerCase();
-  // Reconnect (2nd call) events are handled entirely by the Calendly webhook →
-  // ReconnectSequence. They must never mint a Booking here — a Booking would
-  // leak into setter activity/scoreboard/payroll and the confirmations lists.
-  if (n.includes("reconnect")) return false;
-  return (
-    n.includes("farm") ||
-    n.includes("just") ||
-    n.includes("demo") ||
-    n.includes("e-mailers") ||
-    n.includes("setup")
-  );
 }
 
 function parsePhone(description: string): string | null {
@@ -262,6 +244,8 @@ async function supersedeAndCreate(opts: {
   newCalendarEventId: string | null;
   bookedAt: Date;
   setterId: string | null;
+  closerId: string | null;
+  closerSource: string | null;
   transferEventId?: boolean; // same GCal event dragged: successor takes over the event id
 }): Promise<string> {
   const { start, end } = getWeekRange(opts.newDemoDate);
@@ -320,7 +304,8 @@ async function supersedeAndCreate(opts: {
     data: {
       bookingId: successor.id,
       weekId: week.id,
-      closerId: opts.old.demo?.closerId || null,
+      closerId: opts.closerId,
+      closerSource: opts.closerId ? opts.closerSource : null,
     },
   });
   await prisma.auditLog.create({
@@ -339,11 +324,20 @@ async function supersedeAndCreate(opts: {
 // --- Main sync logic ---
 
 async function syncCalendar(
-  calendarEmail: string,
-  closerName: string,
+  calendar: DemoCalendarSync,
   accessToken: string
-): Promise<{ new: number; updated: number; canceled: number; scanned: number; errors: string[] }> {
-  const results = { new: 0, updated: 0, canceled: 0, scanned: 0, errors: [] as string[] };
+): Promise<{ new: number; updated: number; canceled: number; scanned: number; errors: string[]; skippedNotShared: string | null }> {
+  const calendarEmail = calendar.email;
+  // idSuffix is only the composite-id key. Attribution uses provisionalCloserName.
+  const closerName = calendar.idSuffix;
+  const results = {
+    new: 0,
+    updated: 0,
+    canceled: 0,
+    scanned: 0,
+    errors: [] as string[],
+    skippedNotShared: null as string | null,
+  };
 
   const now = new Date();
   const timeMin = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString();
@@ -371,6 +365,10 @@ async function syncCalendar(
     });
 
     if (!res.ok) {
+      if (res.status === 403 || res.status === 404) {
+        results.skippedNotShared = calendarEmail;
+        return results;
+      }
       const text = await res.text();
       results.errors.push(`API error for ${calendarEmail}: ${res.status} ${text.slice(0, 200)}`);
       return results;
@@ -381,11 +379,20 @@ async function syncCalendar(
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  // Resolve closer from DB
-  const closer = await prisma.teamMember.findFirst({
-    where: { name: { contains: closerName, mode: "insensitive" }, role: "closer" },
-  });
-  const closerId = closer?.id || null;
+  // Provisional closer for a personal calendar only. The cold-email and admin
+  // calendars leave closerId empty until a recording names Colin or Matthew.
+  let closerId: string | null = null;
+  if (calendar.provisionalCloserName) {
+    const closer = await prisma.teamMember.findFirst({
+      where: {
+        name: { contains: calendar.provisionalCloserName, mode: "insensitive" },
+        role: "closer",
+        isActive: true,
+      },
+    });
+    closerId = closer?.id || null;
+  }
+  const closerSource = closerId ? CLOSER_SOURCE_CALENDAR : null;
 
   for (const event of allEvents) {
     try {
@@ -393,7 +400,11 @@ async function syncCalendar(
 
       // Shadow guard: this closer is only a guest on another closer's demo —
       // skip it or we duplicate the true host's booking under the wrong closer.
-      if (isHostedByOtherCloser(event, calendarEmail, closerName)) continue;
+      if (eventBelongsToOtherDemoCalendar({
+        organizerEmail: event.organizer?.email,
+        summary: event.summary,
+        calendarEmail,
+      })) continue;
 
       // Reconnect (2nd call) events are Calendly-webhook-only (ReconnectSequence).
       // Belt-and-suspenders on the summary: isDemoEventType is permissive when
@@ -555,6 +566,8 @@ async function syncCalendar(
               newCalendarEventId: null,
               bookedAt: getEventBookedAt({ ...event, created: event.updated || event.created }),
               setterId: existing.setterId,
+              closerId,
+              closerSource,
               transferEventId: true,
             });
             results.updated++;
@@ -758,6 +771,8 @@ async function syncCalendar(
             bookedAt: getEventBookedAt(event),
             // most-recent setter gets credit for the rebook
             setterId: await resolveRebookSetter(description, pastNoShow.setterId),
+            closerId,
+            closerSource,
           });
           results.updated++;
           continue;
@@ -827,6 +842,7 @@ async function syncCalendar(
           bookingId: booking.id,
           weekId: week.id,
           closerId,
+          closerSource,
         },
       });
 
@@ -924,18 +940,19 @@ export async function POST() {
     data: { source: "gcal", syncType: "calendar_poll", status: "success", startedAt: new Date() },
   });
 
-  const totals = { new: 0, updated: 0, canceled: 0, scanned: 0, errors: [] as string[] };
+  const totals = { new: 0, updated: 0, canceled: 0, scanned: 0, errors: [] as string[], skippedCalendars: [] as string[] };
 
   try {
     const accessToken = await getAccessToken(clientEmail, privateKey);
 
     for (const cal of CALENDARS) {
-      const result = await syncCalendar(cal.email, cal.closerName, accessToken);
+      const result = await syncCalendar(cal, accessToken);
       totals.new += result.new;
       totals.updated += result.updated;
       totals.canceled += result.canceled;
       totals.scanned += result.scanned;
       totals.errors.push(...result.errors);
+      if (result.skippedNotShared) totals.skippedCalendars.push(result.skippedNotShared);
     }
 
     await prisma.syncLog.update({
@@ -973,5 +990,6 @@ export async function POST() {
     message: `GCal sync: ${totals.new} new, ${totals.updated} rescheduled, ${totals.canceled} canceled (${totals.scanned} Calendly events scanned)`,
     totals,
     calendars: CALENDARS.map((c) => c.email),
+    skippedCalendars: totals.skippedCalendars,
   });
 }

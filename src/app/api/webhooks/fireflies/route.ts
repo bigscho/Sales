@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { applyTranscriptCloser } from "@/lib/apply-transcript-closer";
+import type { TranscriptForCloser } from "@/lib/closer-from-transcript";
 
 // Fireflies webhook: fires when a transcription is completed.
 // Payload: { meetingId, eventType, clientReferenceId }
@@ -15,7 +17,7 @@ interface TranscriptData {
   organizer_email: string;
   participants: string[];
   speakers: { name: string; id: number }[];
-  sentences: { text: string; speaker_id: number | null; speaker_name: string | null }[];
+  sentences: { text: string; speaker_id: number | null; speaker_name: string | null; start_time?: number | null; end_time?: number | null }[];
   meeting_info: { summary_status: string; silent_meeting: boolean } | null;
   summary: { short_summary: string; keywords: string[] } | null;
 }
@@ -97,6 +99,8 @@ async function fetchTranscript(apiKey: string, meetingId: string): Promise<Trans
           text
           speaker_id
           speaker_name
+          start_time
+          end_time
         }
         meeting_info {
           summary_status
@@ -150,11 +154,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, action: "transcript_not_found" });
     }
 
-    // Skip if too short (< 2 min = probably not a real demo)
-    if (transcript.duration < 2) {
-      return NextResponse.json({ received: true, action: "too_short" });
-    }
-
     const meetingDate = new Date(typeof transcript.date === "number" ? transcript.date : parseInt(transcript.date));
     const windowStart = new Date(meetingDate.getTime() - 3 * 60 * 60 * 1000);
     const windowEnd = new Date(meetingDate.getTime() + 3 * 60 * 60 * 1000);
@@ -193,8 +192,11 @@ export async function POST(request: NextRequest) {
       );
 
       if (emailMatch || nameMatch) {
-        const isRealShow = verifyRealShow(transcript, teamNames);
+        const tooShortToShow = typeof transcript.duration === "number" && transcript.duration <= 1;
+        const isRealShow = !tooShortToShow && verifyRealShow(transcript, teamNames);
         const wasAlreadyConfirmed = demo.status === "showed";
+
+        await applyTranscriptCloser(demo.id, transcript as TranscriptForCloser, "fireflies_webhook");
 
         await prisma.demo.update({
           where: { id: demo.id },

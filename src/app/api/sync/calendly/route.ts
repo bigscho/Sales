@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWeekRange } from "@/lib/utils";
 import { resolveSetterAlias } from "@/lib/setter-aliases";
+import { isDemoEventType, provisionalCloserFromHost } from "@/lib/demo-calendars";
+import { CLOSER_SOURCE_CALENDAR } from "@/lib/closer-from-transcript";
 
 // Polls Calendly API for scheduled events and syncs:
 // 1. New events not yet in DB (backup for webhook misses)
@@ -16,7 +18,7 @@ interface CalendlyEvent {
   status: string; // active | canceled
   start_time: string;
   end_time: string;
-  event_memberships: { user: string; user_name: string }[];
+  event_memberships: { user: string; user_name: string; user_email?: string }[];
   invitees_counter: { total: number; active: number; limit: number };
 }
 
@@ -103,11 +105,15 @@ export async function POST() {
       const compositeId = `calendly_${eventUuid}`;
       const eventStart = new Date(event.start_time);
 
-      // Determine closer from event memberships
-      let closerName: string | null = null;
-      if (event.event_memberships?.length > 0) {
-        closerName = event.event_memberships[0].user_name?.split(" ")[0] || null;
-      }
+      // Onboarding / reconnect / launch calls are not demos. The cold-email
+      // event is. Closer credit uses a personal host email, never the
+      // calendar's display name (the cold-email user is named Colin).
+      if (!isDemoEventType(event.name)) continue;
+      const closerName = provisionalCloserFromHost({
+        eventTypeOwnerEmail: null,
+        poolingType: null,
+        membershipEmails: (event.event_memberships || []).map((m) => m.user_email),
+      });
 
       // Check if this event exists in DB
       const existing = await prisma.booking.findUnique({
@@ -189,7 +195,7 @@ export async function POST() {
       let closerId: string | null = null;
       if (closerName) {
         const closer = await prisma.teamMember.findFirst({
-          where: { name: { contains: closerName, mode: "insensitive" }, role: "closer" },
+          where: { name: { contains: closerName, mode: "insensitive" }, role: "closer", isActive: true },
         });
         closerId = closer?.id || null;
       }
@@ -228,6 +234,7 @@ export async function POST() {
           bookingId: booking.id,
           weekId: week.id,
           closerId,
+          closerSource: closerId ? CLOSER_SOURCE_CALENDAR : null,
         },
       });
 
