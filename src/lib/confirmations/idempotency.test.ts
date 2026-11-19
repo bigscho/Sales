@@ -588,36 +588,89 @@ test("cron auth requires a bearer secret and rejects GET", () => {
   assert.equal(authorizeScheduler({ method: "GET", headers: headers("Bearer no") }, "s3cret").ok, false);
 });
 
-test("day-of and t1 routes reject GET and unauthenticated POST", async () => {
-  assert.equal((await dayofGet()).status, 405);
-  assert.equal((await t1Get()).status, 405);
-
-  const prev = process.env.CRON_SECRET;
+test("day-of cron GET requires the bearer secret; t1 GET stays rejected", async () => {
+  const prevSecret = process.env.CRON_SECRET;
+  const prevAuto = process.env.CONFIRMATIONS_DAYOF_AUTO;
+  const prevLive = process.env.SENDBLUE_LIVE;
   delete process.env.CRON_SECRET;
+  delete process.env.CONFIRMATIONS_DAYOF_AUTO;
+  delete process.env.SENDBLUE_LIVE;
+  const dayofUrl = "http://localhost/api/confirmations/dayof";
   try {
-    const day = await dayofPost(new NextRequest("http://localhost/api/confirmations/dayof", { method: "POST" }));
-    const t1 = await t1Post(new NextRequest("http://localhost/api/confirmations/t1", { method: "POST" }));
-    assert.equal(day.status, 401);
-    assert.equal(t1.status, 401);
-    assert.equal((await day.json()).error, "cron_secret_unconfigured");
+    const get = await dayofGet(new NextRequest(dayofUrl, { method: "GET" }));
+    const post = await dayofPost(new NextRequest(dayofUrl, { method: "POST" }));
+    const t1 = await t1Get();
+    const t1PostRes = await t1Post(new NextRequest("http://localhost/api/confirmations/t1", { method: "POST" }));
+    assert.equal(get.status, 401);
+    assert.equal(post.status, 401);
+    assert.equal((await get.json()).error, "cron_secret_unconfigured");
+    assert.equal((await post.json()).error, "cron_secret_unconfigured");
+    assert.equal(t1.status, 405);
+    assert.equal(t1PostRes.status, 401);
   } finally {
-    if (prev === undefined) delete process.env.CRON_SECRET;
-    else process.env.CRON_SECRET = prev;
+    if (prevSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = prevSecret;
+    if (prevAuto === undefined) delete process.env.CONFIRMATIONS_DAYOF_AUTO;
+    else process.env.CONFIRMATIONS_DAYOF_AUTO = prevAuto;
+    if (prevLive === undefined) delete process.env.SENDBLUE_LIVE;
+    else process.env.SENDBLUE_LIVE = prevLive;
   }
 
   process.env.CRON_SECRET = "test-secret";
+  delete process.env.CONFIRMATIONS_DAYOF_AUTO;
+  delete process.env.SENDBLUE_LIVE;
   try {
-    const denied = await dayofPost(
-      new NextRequest("http://localhost/api/confirmations/dayof", {
-        method: "POST",
-        headers: { authorization: "Bearer wrong" },
+    const deniedGet = await dayofGet(
+      new NextRequest(dayofUrl, { method: "GET", headers: { authorization: "Bearer wrong" } })
+    );
+    const nakedGet = await dayofGet(new NextRequest(dayofUrl, { method: "GET" }));
+    const deniedPost = await dayofPost(
+      new NextRequest(dayofUrl, { method: "POST", headers: { authorization: "Bearer wrong" } })
+    );
+    assert.equal(deniedGet.status, 401);
+    assert.equal((await deniedGet.json()).error, "unauthorized");
+    assert.equal(nakedGet.status, 401);
+    assert.equal((await nakedGet.json()).error, "unauthorized");
+    assert.equal(deniedPost.status, 401);
+    assert.equal((await deniedPost.json()).error, "unauthorized");
+
+    // T-1's GET handler takes no request, so a bearer header cannot authorize it.
+    const t1WithSecret = t1Get as (request?: NextRequest) => ReturnType<typeof t1Get>;
+    const t1Authed = await t1WithSecret(
+      new NextRequest("http://localhost/api/confirmations/t1", {
+        method: "GET",
+        headers: { authorization: "Bearer test-secret" },
       })
     );
-    assert.equal(denied.status, 401);
-    assert.equal((await denied.json()).error, "unauthorized");
+    assert.equal(t1Authed.status, 405);
+    assert.equal((await t1Authed.json()).error, "method_not_allowed");
+
+    // A matching bearer gets past auth. Drop DATABASE_URL so this cannot read
+    // a real database or text anyone. The worklist then throws, which the old
+    // GET 405 handler never did. Auto-send stays off for the call.
+    const prevDb = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    let threw = false;
+    try {
+      await dayofGet(
+        new NextRequest(dayofUrl, { method: "GET", headers: { authorization: "Bearer test-secret" } })
+      );
+    } catch (err) {
+      threw = true;
+      const message = err instanceof Error ? err.message : String(err);
+      assert.match(message, /DATABASE_URL/);
+    } finally {
+      if (prevDb === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDb;
+    }
+    assert.equal(threw, true);
   } finally {
-    if (prev === undefined) delete process.env.CRON_SECRET;
-    else process.env.CRON_SECRET = prev;
+    if (prevSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = prevSecret;
+    if (prevAuto === undefined) delete process.env.CONFIRMATIONS_DAYOF_AUTO;
+    else process.env.CONFIRMATIONS_DAYOF_AUTO = prevAuto;
+    if (prevLive === undefined) delete process.env.SENDBLUE_LIVE;
+    else process.env.SENDBLUE_LIVE = prevLive;
   }
 });
 

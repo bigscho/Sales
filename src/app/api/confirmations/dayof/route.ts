@@ -3,7 +3,7 @@ import { buildDayOfWorklist } from "@/lib/confirmations/worklist";
 import { sendConfirmation } from "@/lib/confirmations/send";
 import { nudgeRep } from "@/lib/confirmations/nudge";
 import { isLive } from "@/lib/sendblue";
-import { authorizeCron, dayOfAutoEnabled } from "@/lib/confirmations/guards";
+import { authorizeScheduler, dayOfAutoEnabled } from "@/lib/confirmations/guards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -12,16 +12,19 @@ const BASE_URL = process.env.VERCEL_URL
   ? `https://barn.grsfd.ai`
   : "http://localhost:3000";
 
-// Day-of cron — the testimonial + invite reminder. POST only, with
-// `Authorization: Bearer $CRON_SECRET` (Vercel cron style). GET is rejected
-// so a link preview or a monitor cannot text anyone.
+// Day-of cron — the testimonial + invite reminder. Vercel Cron calls GET
+// hourly (`0 * * * *` in vercel.json) and, when CRON_SECRET is set, sends
+// `Authorization: Bearer $CRON_SECRET`. POST with the same header still
+// runs this handler. A link preview does not send the header. Missing
+// secret fails closed. authorizeScheduler is the same check the reconnect
+// cron uses.
 //
 // Auto-send stays OFF unless CONFIRMATIONS_DAYOF_AUTO is exactly "true".
-// Vercel Cron invokes this path with GET, which now returns 405. Point a
-// scheduler at POST with the bearer secret before turning auto-send on.
 // SENDBLUE_LIVE remains the master kill switch inside sendConfirmation.
+// Quiet hours, one text per demo, and cancelled / already-started skips
+// stay in the worklist and sendConfirmation — this handler does not bypass them.
 export async function POST(request: NextRequest) {
-  const auth = authorizeCron(request);
+  const auth = authorizeScheduler(request);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -76,6 +79,6 @@ export async function POST(request: NextRequest) {
   });
 }
 
-export async function GET() {
-  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
+export async function GET(request: NextRequest) {
+  return POST(request);
 }

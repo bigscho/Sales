@@ -223,7 +223,8 @@ export function authorizeCron(
  * Scheduler auth that also allows GET. Vercel Cron calls GET and, when
  * CRON_SECRET is set, sends `Authorization: Bearer $CRON_SECRET`.
  * A link preview does not send that header. Missing secret fails closed.
- * Day-of and T-1 do not use this — their GET handlers never send.
+ * Day-of and reconnect use this. T-1 still uses authorizeCron, so its GET
+ * handler never sends.
  */
 export function authorizeScheduler(
   request: { method?: string; headers: { get(name: string): string | null } },
