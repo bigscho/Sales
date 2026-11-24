@@ -201,9 +201,9 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
           ))}
           {unattributed.activity.newBookings > 0 && (
             <div className="flex items-center gap-3 p-2.5 rounded-lg bg-yellow-50/50 border border-yellow-200">
-              <div className="w-8 text-center flex-shrink-0"><span className="text-lg">❓</span></div>
+              <div className="w-8 text-center flex-shrink-0"><span className="text-lg">📥</span></div>
               <div className="w-20 flex-shrink-0">
-                <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
+                <p className="font-bold text-sm text-[var(--muted-foreground)]">Inbound/<wbr />Referrals</p>
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
@@ -245,9 +245,9 @@ export function SetterLeaderboards({ scoreboard, unattributed, dimLabel = "This 
           ))}
           {(unattributed.results.shows + unattributed.results.noShows + unattributed.results.pending + unattributed.results.cancelled) > 0 && (
             <div className="flex items-center gap-3 p-2.5 rounded-lg bg-yellow-50/50 border border-yellow-200">
-              <div className="w-8 text-center flex-shrink-0"><span className="text-lg">❓</span></div>
+              <div className="w-8 text-center flex-shrink-0"><span className="text-lg">📥</span></div>
               <div className="w-20 flex-shrink-0">
-                <p className="font-bold text-sm text-[var(--muted-foreground)]">Unknown</p>
+                <p className="font-bold text-sm text-[var(--muted-foreground)]">Inbound/<wbr />Referrals</p>
               </div>
               <ShowAndAcceptBars results={unattributed.results} invites={unattributed.invites} />
             </div>

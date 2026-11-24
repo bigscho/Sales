@@ -395,8 +395,8 @@ export default function VerifyAdminPage() {
           <CardContent className="py-4 px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-yellow-800">{unattributedCount} unattributed demo(s)</p>
-                <p className="text-xs text-[var(--muted-foreground)]">Not assigned to any setter</p>
+                <p className="text-sm font-medium text-yellow-800">{unattributedCount} Inbound/Referrals demo(s)</p>
+                <p className="text-xs text-[var(--muted-foreground)]">Not assigned to any setter (inbound/referral bookings)</p>
               </div>
               <a href={`/demos?weekId=${weekId}`} className="text-sm text-[var(--teal)] underline">View in Demos</a>
             </div>

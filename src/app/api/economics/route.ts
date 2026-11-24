@@ -137,11 +137,11 @@ export async function GET(request: NextRequest) {
     // rows are not calls). Cash is LANDED: payments that hit the bank this
     // period, attributed to the setter of the deal's booking. Non-setter
     // bookers (excludeFromLeaderboard) fold into "Other", no-setter rows into
-    // "Unattributed", demo-less organic deals into "Organic (no demo)" — the
+    // "Inbound/Referrals", demo-less organic deals into "Organic (no demo)" — the
     // table must always sum to the period totals.
     const setterBucket = (setter: { name: string; excludeFromLeaderboard: boolean | null } | null, setterId: string | null) => {
       if (setter?.excludeFromLeaderboard) return { key: "other", name: "Other (non-setter bookers)" };
-      if (!setterId || !setter) return { key: "unattributed", name: "Unattributed" };
+      if (!setterId || !setter) return { key: "unattributed", name: "Inbound/Referrals" };
       return { key: setterId, name: setter.name };
     };
     const bySetter = new Map<string, { name: string; bookedCalls: number; shows: number; noShows: number; cancelled: number; cashCents: number }>();

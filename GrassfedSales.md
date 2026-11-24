@@ -284,6 +284,8 @@ Both have `Override` fields for manual correction via clickable badges in the UI
 - Operators correct these via `manual_backfill` audit-logged updates from the admin UI.
 - **Automation must not overwrite manual setter corrections.** The compositeId-match path in `sync/gcal/route.ts` does not re-parse the setter — see comment in that file. Only genuinely new booking events (reschedule splits, past-no-show rebooks) resolve a fresh setter, and even those fall back to the previous setter rather than clearing.
 
+**Roster trim (2026-11-24):** the active setter team is **Solomon Gerges, Chris Card, Ryan Holt, Cal McAuliffe** — every other setter row was set `isActive=false` + `excludeFromLeaderboard=true` (no deletes; all historical bookings/scores preserved; their cash folds into /economics "Other"). Exception: **Geoffrey Ramikuba** is `excludeFromLeaderboard=true` but still `isActive=true` so his final November payroll generates — deactivate him from /team once that's settled. The no-setter bucket (`setterId IS NULL`) is displayed as **"Inbound/Referrals"** on the leaderboards, /economics, and /verify/admin (those bookings are inbound/referral traffic, not attribution mysteries); the internal key remains `"unattributed"`.
+
 ---
 
 ## Immutable Week History (Aug 2026 redesign)
